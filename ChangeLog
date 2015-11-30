@@ -364,7 +364,7 @@
 	* configure: Regenerate.
 
 2015-02-06  Diego Novillo  <dnovillo@google.com>
-
+1
 	* MAINTAINERS (Global Reviewers, Plugin, LTO, tree-ssa,
 	middle-end, docstring): Remove myself.
 	(Write After Approval): Add myself.

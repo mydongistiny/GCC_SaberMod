@@ -1,3 +1,224 @@
+2015-11-30  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	PR tree-optimization/68565
+	* gfortran.dg/graphite/pr68565.f90: New.
+
+2015-11-30  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	* gcc.dg/graphite/pr35356-1.c: Adjust pattern.
+
+2015-11-30  Cesar Philippidis  <cesar@codesourcery.com>
+	    Nathan Sidwell  <nathan@codesourcery.com>
+
+	* gfortran.dg/goacc/routine-3.f90: New test.
+	* gfortran.dg/goacc/routine-4.f90: New test.
+	* gfortran.dg/goacc/routine-5.f90: New test.
+	* gfortran.dg/goacc/routine-6.f90: New test.
+	* gfortran.dg/goacc/subroutines: New test.
+
+2015-11-30  Tom de Vries  <tom@codesourcery.com>
+
+	* gcc.dg/pr46032-2.c: New test.
+	* gcc.dg/pr46032-3.c: New test.
+
+2015-11-30  Charles Baylis  <charles.baylis@linaro.org>
+
+	PR target/63870
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_f16_indices_1.c (f_vld2_lane_f16): Remove xfails for arm targets.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_f32_indices_1.c (f_vld2_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_f64_indices_1.c (f_vld2_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_p8_indices_1.c (f_vld2_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_s16_indices_1.c (f_vld2_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_s32_indices_1.c (f_vld2_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_s64_indices_1.c (f_vld2_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_s8_indices_1.c (f_vld2_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_u16_indices_1.c (f_vld2_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_u32_indices_1.c (f_vld2_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_u64_indices_1.c (f_vld2_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2_lane_u8_indices_1.c (f_vld2_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_f16_indices_1.c (f_vld2q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_f32_indices_1.c (f_vld2q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_f64_indices_1.c (f_vld2q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_p8_indices_1.c (f_vld2q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_s16_indices_1.c (f_vld2q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_s32_indices_1.c (f_vld2q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_s64_indices_1.c (f_vld2q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_s8_indices_1.c (f_vld2q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_u16_indices_1.c (f_vld2q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_u32_indices_1.c (f_vld2q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_u64_indices_1.c (f_vld2q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld2q_lane_u8_indices_1.c (f_vld2q_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_f16_indices_1.c (f_vld3_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_f32_indices_1.c (f_vld3_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_f64_indices_1.c (f_vld3_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_p8_indices_1.c (f_vld3_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_s16_indices_1.c (f_vld3_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_s32_indices_1.c (f_vld3_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_s64_indices_1.c (f_vld3_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_s8_indices_1.c (f_vld3_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_u16_indices_1.c (f_vld3_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_u32_indices_1.c (f_vld3_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_u64_indices_1.c (f_vld3_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3_lane_u8_indices_1.c (f_vld3_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_f16_indices_1.c (f_vld3q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_f32_indices_1.c (f_vld3q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_f64_indices_1.c (f_vld3q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_p8_indices_1.c (f_vld3q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_s16_indices_1.c (f_vld3q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_s32_indices_1.c (f_vld3q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_s64_indices_1.c (f_vld3q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_s8_indices_1.c (f_vld3q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_u16_indices_1.c (f_vld3q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_u32_indices_1.c (f_vld3q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_u64_indices_1.c (f_vld3q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld3q_lane_u8_indices_1.c (f_vld3q_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_f16_indices_1.c (f_vld4_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_f32_indices_1.c (f_vld4_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_f64_indices_1.c (f_vld4_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_p8_indices_1.c (f_vld4_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_s16_indices_1.c (f_vld4_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_s32_indices_1.c (f_vld4_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_s64_indices_1.c (f_vld4_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_s8_indices_1.c (f_vld4_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_u16_indices_1.c (f_vld4_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_u32_indices_1.c (f_vld4_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_u64_indices_1.c (f_vld4_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4_lane_u8_indices_1.c (f_vld4_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_f16_indices_1.c (f_vld4q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_f32_indices_1.c (f_vld4q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_f64_indices_1.c (f_vld4q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_p8_indices_1.c (f_vld4q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_s16_indices_1.c (f_vld4q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_s32_indices_1.c (f_vld4q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_s64_indices_1.c (f_vld4q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_s8_indices_1.c (f_vld4q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_u16_indices_1.c (f_vld4q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_u32_indices_1.c (f_vld4q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_u64_indices_1.c (f_vld4q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vld4q_lane_u8_indices_1.c (f_vld4q_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_f16_indices_1.c (f_vst2_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_f32_indices_1.c (f_vst2_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_f64_indices_1.c (f_vst2_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_p8_indices_1.c (f_vst2_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_s16_indices_1.c (f_vst2_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_s32_indices_1.c (f_vst2_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_s64_indices_1.c (f_vst2_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_s8_indices_1.c (f_vst2_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_u16_indices_1.c (f_vst2_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_u32_indices_1.c (f_vst2_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_u64_indices_1.c (f_vst2_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2_lane_u8_indices_1.c (f_vst2_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_f16_indices_1.c (f_vst2q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_f32_indices_1.c (f_vst2q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_f64_indices_1.c (f_vst2q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_p8_indices_1.c (f_vst2q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_s16_indices_1.c (f_vst2q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_s32_indices_1.c (f_vst2q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_s64_indices_1.c (f_vst2q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_s8_indices_1.c (f_vst2q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_u16_indices_1.c (f_vst2q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_u32_indices_1.c (f_vst2q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_u64_indices_1.c (f_vst2q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst2q_lane_u8_indices_1.c (f_vst2q_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_f16_indices_1.c (f_vst3_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_f32_indices_1.c (f_vst3_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_f64_indices_1.c (f_vst3_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_p8_indices_1.c (f_vst3_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_s16_indices_1.c (f_vst3_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_s32_indices_1.c (f_vst3_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_s64_indices_1.c (f_vst3_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_s8_indices_1.c (f_vst3_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_u16_indices_1.c (f_vst3_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_u32_indices_1.c (f_vst3_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_u64_indices_1.c (f_vst3_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3_lane_u8_indices_1.c (f_vst3_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_f16_indices_1.c (f_vst3q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_f32_indices_1.c (f_vst3q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_f64_indices_1.c (f_vst3q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_p8_indices_1.c (f_vst3q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_s16_indices_1.c (f_vst3q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_s32_indices_1.c (f_vst3q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_s64_indices_1.c (f_vst3q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_s8_indices_1.c (f_vst3q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_u16_indices_1.c (f_vst3q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_u32_indices_1.c (f_vst3q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_u64_indices_1.c (f_vst3q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst3q_lane_u8_indices_1.c (f_vst3q_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_f16_indices_1.c (f_vst4_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_f32_indices_1.c (f_vst4_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_f64_indices_1.c (f_vst4_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_p8_indices_1.c (f_vst4_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_s16_indices_1.c (f_vst4_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_s32_indices_1.c (f_vst4_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_s64_indices_1.c (f_vst4_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_s8_indices_1.c (f_vst4_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_u16_indices_1.c (f_vst4_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_u32_indices_1.c (f_vst4_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_u64_indices_1.c (f_vst4_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4_lane_u8_indices_1.c (f_vst4_lane_u8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_f16_indices_1.c (f_vst4q_lane_f16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_f32_indices_1.c (f_vst4q_lane_f32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_f64_indices_1.c (f_vst4q_lane_f64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_p8_indices_1.c (f_vst4q_lane_p8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_s16_indices_1.c (f_vst4q_lane_s16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_s32_indices_1.c (f_vst4q_lane_s32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_s64_indices_1.c (f_vst4q_lane_s64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_s8_indices_1.c (f_vst4q_lane_s8): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_u16_indices_1.c (f_vst4q_lane_u16): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_u32_indices_1.c (f_vst4q_lane_u32): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_u64_indices_1.c (f_vst4q_lane_u64): Ditto.
+	* gcc.target/aarch64/advsimd-intrinsics/vst4q_lane_u8_indices_1.c (f_vst4q_lane_u8): Ditto.
+
+2015-11-30  Tom de Vries  <tom@codesourcery.com>
+
+	PR tree-optimization/46032
+	* gcc.dg/pr46032.c: New test.
+
+2015-11-30  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68592
+	* gfortran.dg/pr68592.f: New testcase.
+
+2015-11-30  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/68534
+	* gfortran.dg/submodule_13.f08: New test.
+
+2015-11-30  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/load-relative-check.c: Add scan patterns for
+	-m31.
+
+2015-11-30  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+        * gcc.target/s390/load-relative-check.c: Add -mzarch.
+
+2015-11-30  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.dg/dump-ada-spec-1.c: Move to...
+	* c-c++-common/dump-ada-spec-1.c: ...here.
+	* c-c++-common/dump-ada-spec-2.c: New test.
+
+2015-11-30  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/loop_optimization22.ad[sb]: New test.
+
+2015-11-30  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/specs/rep_clause5.ads: New test.
+
+2015-11-29  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR c/67106
+	* gcc.c-torture/compile/pr67106.c: New testcase.
+
+2015-11-29  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR c/67581
+	* g++.dg/torture/pr67581.C: New testcase.
+
 2015-11-27  Richard Biener  <rguenther@suse.de>
 
 	PR tree-optimization/68559
