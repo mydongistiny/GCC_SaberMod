@@ -42676,66 +42676,36 @@ ix86_vectorize_builtin_scatter (const_tree vectype,
   return ix86_builtins[code];
 }
 
+/* Return true if it is safe to use the rsqrt optabs to optimize
+   1.0/sqrt.  */
+
+static bool
+use_rsqrt_p ()
+{
+  return (TARGET_SSE_MATH
+	  && flag_finite_math_only
+	  && !flag_trapping_math
+	  && flag_unsafe_math_optimizations);
+}
+
 /* Returns a code for a target-specific builtin that implements
    reciprocal of the function, or NULL_TREE if not available.  */
 
 static tree
-ix86_builtin_reciprocal (gcall *call)
+ix86_builtin_reciprocal (tree fndecl)
 {
-  if (! (TARGET_SSE_MATH && !optimize_insn_for_size_p ()
-	 && flag_finite_math_only && !flag_trapping_math
-	 && flag_unsafe_math_optimizations))
-    return NULL_TREE;
+  switch (DECL_FUNCTION_CODE (fndecl))
+    {
+      /* Vectorized version of sqrt to rsqrt conversion.  */
+    case IX86_BUILTIN_SQRTPS_NR:
+      return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR);
 
-  if (gimple_call_internal_p (call))
-    switch (gimple_call_internal_fn (call))
-      {
-	tree type;
-      case IFN_SQRT:
-	type = TREE_TYPE (gimple_call_lhs (call));
-	switch (TYPE_MODE (type))
-	  {
-	    /* Vectorized version of sqrt to rsqrt conversion.  */
-	  case V4SFmode:
-	    return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR);
+    case IX86_BUILTIN_SQRTPS_NR256:
+      return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR256);
 
-	  case V8SFmode:
-	    return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR256);
-
-	  default:
-	    return NULL_TREE;
-	  }
-
-      default:
-	return NULL_TREE;
-      }
-
-  tree fndecl = gimple_call_fndecl (call);
-  if (DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_MD)
-    /* Machine dependent builtins.  */
-    switch (DECL_FUNCTION_CODE (fndecl))
-      {
-	/* Vectorized version of sqrt to rsqrt conversion.  */
-      case IX86_BUILTIN_SQRTPS_NR:
-	return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR);
-
-      case IX86_BUILTIN_SQRTPS_NR256:
-	return ix86_get_builtin (IX86_BUILTIN_RSQRTPS_NR256);
-
-      default:
-	return NULL_TREE;
-      }
-  else
-    /* Normal builtins.  */
-    switch (DECL_FUNCTION_CODE (fndecl))
-      {
-	/* Sqrt to rsqrt conversion.  */
-      case BUILT_IN_SQRTF:
-	return ix86_get_builtin (IX86_BUILTIN_RSQRTF);
-
-      default:
-	return NULL_TREE;
-      }
+    default:
+      return NULL_TREE;
+    }
 }
 
 /* Helper for avx_vpermilps256_operand et al.  This is also used by
@@ -45267,8 +45237,9 @@ ix86_mitigate_rop (void)
   COPY_HARD_REG_SET (inout_risky, input_risky);
   IOR_HARD_REG_SET (inout_risky, output_risky);
 
-  compute_bb_for_insn ();
   df_note_add_problem ();
+  /* Fix up what stack-regs did.  */
+  df_insn_rescan_all ();
   df_analyze ();
 
   regrename_init (true);
@@ -54100,6 +54071,52 @@ ix86_operands_ok_for_move_multiple (rtx *operands, bool load,
   return true;
 }
 
+/* Implement the TARGET_OPTAB_SUPPORTED_P hook.  */
+
+static bool
+ix86_optab_supported_p (int op, machine_mode mode1, machine_mode,
+			optimization_type opt_type)
+{
+  switch (op)
+    {
+    case asin_optab:
+    case acos_optab:
+    case log1p_optab:
+    case exp_optab:
+    case exp10_optab:
+    case exp2_optab:
+    case expm1_optab:
+    case ldexp_optab:
+    case scalb_optab:
+    case round_optab:
+      return opt_type == OPTIMIZE_FOR_SPEED;
+
+    case rint_optab:
+      if (SSE_FLOAT_MODE_P (mode1)
+	  && TARGET_SSE_MATH
+	  && !flag_trapping_math
+	  && !TARGET_ROUND)
+	return opt_type == OPTIMIZE_FOR_SPEED;
+      return true;
+
+    case floor_optab:
+    case ceil_optab:
+    case btrunc_optab:
+      if (SSE_FLOAT_MODE_P (mode1)
+	  && TARGET_SSE_MATH
+	  && !flag_trapping_math
+	  && TARGET_ROUND)
+	return true;
+      return opt_type == OPTIMIZE_FOR_SPEED;
+
+    case rsqrt_optab:
+      return opt_type == OPTIMIZE_FOR_SPEED && use_rsqrt_p ();
+
+    default:
+      return true;
+    }
+}
+
 /* Address space support.
 
    This is not "far pointers" in the 16-bit sense, but an easy way
@@ -54644,6 +54661,9 @@ ix86_addr_space_zero_address_valid (addr_space_t as)
 
 #undef TARGET_ABSOLUTE_BIGGEST_ALIGNMENT
 #define TARGET_ABSOLUTE_BIGGEST_ALIGNMENT 512
+
+#undef TARGET_OPTAB_SUPPORTED_P
+#define TARGET_OPTAB_SUPPORTED_P ix86_optab_supported_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

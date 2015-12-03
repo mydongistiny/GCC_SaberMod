@@ -216,6 +216,22 @@ static const struct cpu_addrcost_table cortexa57_addrcost_table =
   0, /* imm_offset  */
 };
 
+static const struct cpu_addrcost_table exynosm1_addrcost_table =
+{
+    {
+      0, /* hi  */
+      0, /* si  */
+      0, /* di  */
+      2, /* ti  */
+    },
+  0, /* pre_modify  */
+  0, /* post_modify  */
+  1, /* register_offset  */
+  1, /* register_sextend  */
+  2, /* register_zextend  */
+  0, /* imm_offset  */
+};
+
 static const struct cpu_addrcost_table xgene1_addrcost_table =
 {
     {
@@ -262,6 +278,16 @@ static const struct cpu_regmove_cost cortexa53_regmove_cost =
   2 /* FP2FP  */
 };
 
+static const struct cpu_regmove_cost exynosm1_regmove_cost =
+{
+  1, /* GP2GP  */
+  /* Avoid the use of slow int<->fp moves for spilling by setting
+     their cost higher than memmov_cost (actual, 4 and 9).  */
+  9, /* GP2FP  */
+  9, /* FP2GP  */
+  1 /* FP2FP  */
+};
+
 static const struct cpu_regmove_cost thunderx_regmove_cost =
 {
   2, /* GP2GP  */
@@ -306,6 +332,22 @@ static const struct cpu_vector_cost cortexa57_vector_cost =
   3, /* vec_stmt_cost  */
   8, /* vec_to_scalar_cost  */
   8, /* scalar_to_vec_cost  */
+  5, /* vec_align_load_cost  */
+  5, /* vec_unalign_load_cost  */
+  1, /* vec_unalign_store_cost  */
+  1, /* vec_store_cost  */
+  1, /* cond_taken_branch_cost  */
+  1 /* cond_not_taken_branch_cost  */
+};
+
+static const struct cpu_vector_cost exynosm1_vector_cost =
+{
+  1, /* scalar_stmt_cost  */
+  5, /* scalar_load_cost  */
+  1, /* scalar_store_cost  */
+  3, /* vec_stmt_cost  */
+  3, /* vec_to_scalar_cost  */
+  3, /* scalar_to_vec_cost  */
   5, /* vec_align_load_cost  */
   5, /* vec_unalign_load_cost  */
   1, /* vec_unalign_store_cost  */
@@ -468,6 +510,30 @@ static const struct tune_params cortexa72_tunings =
   0,	/* cache_line_size.  */
   tune_params::AUTOPREFETCHER_OFF,	/* autoprefetcher_model.  */
   (AARCH64_EXTRA_TUNE_NONE)	/* tune_flags.  */
+};
+
+static const struct tune_params exynosm1_tunings =
+{
+  &exynosm1_extra_costs,
+  &exynosm1_addrcost_table,
+  &exynosm1_regmove_cost,
+  &exynosm1_vector_cost,
+  &generic_branch_cost,
+  4,	/* memmov_cost  */
+  3,	/* issue_rate  */
+  (AARCH64_FUSE_NOTHING), /* fusible_ops  */
+  4,	/* function_align.  */
+  4,	/* jump_align.  */
+  4,	/* loop_align.  */
+  2,	/* int_reassoc_width.  */
+  4,	/* fp_reassoc_width.  */
+  1,	/* vec_reassoc_width.  */
+  2,	/* min_div_recip_mul_sf.  */
+  2,	/* min_div_recip_mul_df.  */
+  48,	/* max_case_values.  */
+  64,	/* cache_line_size.  */
+  tune_params::AUTOPREFETCHER_OFF, /* autoprefetcher_model.  */
+  (AARCH64_EXTRA_TUNE_NONE) /* tune_flags.  */
 };
 
 static const struct tune_params thunderx_tunings =
@@ -7099,26 +7165,27 @@ aarch64_memory_move_cost (machine_mode mode ATTRIBUTE_UNUSED,
   return aarch64_tune_params.memmov_cost;
 }
 
+/* Return true if it is safe and beneficial to use the rsqrt optabs to
+   optimize 1.0/sqrt.  */
+
+static bool
+use_rsqrt_p (void)
+{
+  return (!flag_trapping_math
+	  && flag_unsafe_math_optimizations
+	  && (aarch64_tune_params.extra_tuning_flags
+	      & AARCH64_EXTRA_TUNE_RECIP_SQRT));
+}
+
 /* Function to decide when to use
    reciprocal square root builtins.  */
 
 static tree
-aarch64_builtin_reciprocal (gcall *call)
+aarch64_builtin_reciprocal (tree fndecl)
 {
-  if (flag_trapping_math
-      || !flag_unsafe_math_optimizations
-      || optimize_size
-      || ! (aarch64_tune_params.extra_tuning_flags
-	   & AARCH64_EXTRA_TUNE_RECIP_SQRT))
+  if (!use_rsqrt_p ())
     return NULL_TREE;
-
-  if (gimple_call_internal_p (call)
-    return NULL_TREE;
-
-  tree fndecl = gimple_call_fndecl (call);
-  enum built_in_function fn = DECL_FUNCTION_CODE (fndecl);
-  bool md_fn = DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_MD;
-  return aarch64_builtin_rsqrt (fn, md_fn);
+  return aarch64_builtin_rsqrt (DECL_FUNCTION_CODE (fndecl));
 }
 
 typedef rtx (*rsqrte_type) (rtx, rtx);
@@ -13561,6 +13628,23 @@ aarch64_promoted_type (const_tree t)
     return float_type_node;
   return NULL_TREE;
 }
+
+/* Implement the TARGET_OPTAB_SUPPORTED_P hook.  */
+
+static bool
+aarch64_optab_supported_p (int op, machine_mode, machine_mode,
+			   optimization_type opt_type)
+{
+  switch (op)
+    {
+    case rsqrt_optab:
+      return opt_type == OPTIMIZE_FOR_SPEED && use_rsqrt_p ();
+
+    default:
+      return true;
+    }
+}
+
 #undef TARGET_ADDRESS_COST
 #define TARGET_ADDRESS_COST aarch64_address_cost
 
@@ -13880,6 +13964,9 @@ aarch64_promoted_type (const_tree t)
 
 #undef TARGET_PRINT_OPERAND_ADDRESS
 #define TARGET_PRINT_OPERAND_ADDRESS aarch64_print_operand_address
+
+#undef TARGET_OPTAB_SUPPORTED_P
+#define TARGET_OPTAB_SUPPORTED_P aarch64_optab_supported_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
