@@ -62,6 +62,7 @@
 #include "sched-int.h"
 #include "cortex-a57-fma-steering.h"
 #include "target-globals.h"
+#include "common/common-target.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -2249,6 +2250,179 @@ aarch64_libgcc_cmp_return_mode (void)
   return SImode;
 }
 
+#define PROBE_INTERVAL (1 << STACK_CHECK_PROBE_INTERVAL_EXP)
+
+/* We use the 12-bit shifted immediate arithmetic instructions so values
+   must be multiple of (1 << 12), i.e. 4096.  */
+#define ARITH_FACTOR 4096
+
+#if (PROBE_INTERVAL % ARITH_FACTOR) != 0
+#error Cannot use simple address calculation for stack probing
+#endif
+
+/* The pair of scratch registers used for stack probing.  */
+#define PROBE_STACK_FIRST_REG  9
+#define PROBE_STACK_SECOND_REG 10
+
+/* Emit code to probe a range of stack addresses from FIRST to FIRST+SIZE,
+   inclusive.  These are offsets from the current stack pointer.  */
+
+static void
+aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
+{
+  rtx reg1 = gen_rtx_REG (ptr_mode, PROBE_STACK_FIRST_REG);
+
+  /* See the same assertion on PROBE_INTERVAL above.  */
+  gcc_assert ((first % ARITH_FACTOR) == 0);
+
+  /* See if we have a constant small number of probes to generate.  If so,
+     that's the easy case.  */
+  if (size <= PROBE_INTERVAL)
+    {
+      const HOST_WIDE_INT base = ROUND_UP (size, ARITH_FACTOR);
+
+      emit_set_insn (reg1,
+		     plus_constant (ptr_mode,
+				    stack_pointer_rtx, -(first + base)));
+      emit_stack_probe (plus_constant (ptr_mode, reg1, base - size));
+    }
+
+  /* The run-time loop is made up of 8 insns in the generic case while the
+     compile-time loop is made up of 4+2*(n-2) insns for n # of intervals.  */
+  else if (size <= 4 * PROBE_INTERVAL)
+    {
+      HOST_WIDE_INT i, rem;
+
+      emit_set_insn (reg1,
+		     plus_constant (ptr_mode,
+				    stack_pointer_rtx,
+				    -(first + PROBE_INTERVAL)));
+      emit_stack_probe (reg1);
+
+      /* Probe at FIRST + N * PROBE_INTERVAL for values of N from 2 until
+	 it exceeds SIZE.  If only two probes are needed, this will not
+	 generate any code.  Then probe at FIRST + SIZE.  */
+      for (i = 2 * PROBE_INTERVAL; i < size; i += PROBE_INTERVAL)
+	{
+	  emit_set_insn (reg1,
+			 plus_constant (ptr_mode, reg1, -PROBE_INTERVAL));
+	  emit_stack_probe (reg1);
+	}
+
+      rem = size - (i - PROBE_INTERVAL);
+      if (rem > 256)
+	{
+	  const HOST_WIDE_INT base = ROUND_UP (rem, ARITH_FACTOR);
+
+	  emit_set_insn (reg1, plus_constant (ptr_mode, reg1, -base));
+	  emit_stack_probe (plus_constant (ptr_mode, reg1, base - rem));
+	}
+      else
+	emit_stack_probe (plus_constant (ptr_mode, reg1, -rem));
+    }
+
+  /* Otherwise, do the same as above, but in a loop.  Note that we must be
+     extra careful with variables wrapping around because we might be at
+     the very top (or the very bottom) of the address space and we have
+     to be able to handle this case properly; in particular, we use an
+     equality test for the loop condition.  */
+  else
+    {
+      rtx reg2 = gen_rtx_REG (ptr_mode, PROBE_STACK_SECOND_REG);
+
+      /* Step 1: round SIZE to the previous multiple of the interval.  */
+
+      HOST_WIDE_INT rounded_size = size & -PROBE_INTERVAL;
+
+
+      /* Step 2: compute initial and final value of the loop counter.  */
+
+      /* TEST_ADDR = SP + FIRST.  */
+      emit_set_insn (reg1,
+		     plus_constant (ptr_mode, stack_pointer_rtx, -first));
+
+      /* LAST_ADDR = SP + FIRST + ROUNDED_SIZE.  */
+      emit_set_insn (reg2,
+		     plus_constant (ptr_mode, stack_pointer_rtx,
+				    -(first + rounded_size)));
+
+
+      /* Step 3: the loop
+
+	 do
+	   {
+	     TEST_ADDR = TEST_ADDR + PROBE_INTERVAL
+	     probe at TEST_ADDR
+	   }
+	 while (TEST_ADDR != LAST_ADDR)
+
+	 probes at FIRST + N * PROBE_INTERVAL for values of N from 1
+	 until it is equal to ROUNDED_SIZE.  */
+
+      if (ptr_mode == DImode)
+	emit_insn (gen_probe_stack_range_di (reg1, reg1, reg2));
+      else
+	emit_insn (gen_probe_stack_range_si (reg1, reg1, reg2));
+
+
+      /* Step 4: probe at FIRST + SIZE if we cannot assert at compile-time
+	 that SIZE is equal to ROUNDED_SIZE.  */
+
+      if (size != rounded_size)
+	{
+	  HOST_WIDE_INT rem = size - rounded_size;
+
+	  if (rem > 256)
+	    {
+	      const HOST_WIDE_INT base = ROUND_UP (rem, ARITH_FACTOR);
+
+	      emit_set_insn (reg2, plus_constant (ptr_mode, reg2, -base));
+	      emit_stack_probe (plus_constant (ptr_mode, reg2, base - rem));
+	    }
+	  else
+	    emit_stack_probe (plus_constant (ptr_mode, reg2, -rem));
+	}
+    }
+
+  /* Make sure nothing is scheduled before we are done.  */
+  emit_insn (gen_blockage ());
+}
+
+/* Probe a range of stack addresses from REG1 to REG2 inclusive.  These are
+   absolute addresses.  */
+
+const char *
+aarch64_output_probe_stack_range (rtx reg1, rtx reg2)
+{
+  static int labelno = 0;
+  char loop_lab[32];
+  rtx xops[2];
+
+  ASM_GENERATE_INTERNAL_LABEL (loop_lab, "LPSRL", labelno++);
+
+  /* Loop.  */
+  ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, loop_lab);
+
+  /* TEST_ADDR = TEST_ADDR + PROBE_INTERVAL.  */
+  xops[0] = reg1;
+  xops[1] = GEN_INT (PROBE_INTERVAL);
+  output_asm_insn ("sub\t%0, %0, %1", xops);
+
+  /* Probe at TEST_ADDR.  */
+  output_asm_insn ("str\txzr, [%0]", xops);
+
+  /* Test if TEST_ADDR == LAST_ADDR.  */
+  xops[1] = reg2;
+  output_asm_insn ("cmp\t%0, %1", xops);
+
+  /* Branch.  */
+  fputs ("\tb.ne\t", asm_out_file);
+  assemble_name_raw (asm_out_file, loop_lab);
+  fputc ('\n', asm_out_file);
+
+  return "";
+}
+
 static bool
 aarch64_frame_pointer_required (void)
 {
@@ -2648,6 +2822,18 @@ aarch64_expand_prologue (void)
 
   if (flag_stack_usage_info)
     current_function_static_stack_size = frame_size;
+
+  if (flag_stack_check == STATIC_BUILTIN_STACK_CHECK)
+    {
+      if (crtl->is_leaf && !cfun->calls_alloca)
+	{
+	  if (frame_size > PROBE_INTERVAL && frame_size > STACK_CHECK_PROTECT)
+	    aarch64_emit_probe_stack_range (STACK_CHECK_PROTECT,
+					    frame_size - STACK_CHECK_PROTECT);
+	}
+      else if (frame_size > 0)
+	aarch64_emit_probe_stack_range (STACK_CHECK_PROTECT, frame_size);
+    }
 
   /* Store pairs and load pairs have a range only -512 to 504.  */
   if (offset >= 512)
@@ -4823,12 +5009,74 @@ aarch64_legitimize_address (rtx x, rtx /* orig_x  */, machine_mode mode)
      We try to pick as large a range for the offset as possible to
      maximize the chance of a CSE.  However, for aligned addresses
      we limit the range to 4k so that structures with different sized
-     elements are likely to use the same base.  */
+     elements are likely to use the same base.  We need to be careful
+     not to split a CONST for some forms of address expression, otherwise
+     it will generate sub-optimal code.  */
 
   if (GET_CODE (x) == PLUS && CONST_INT_P (XEXP (x, 1)))
     {
       HOST_WIDE_INT offset = INTVAL (XEXP (x, 1));
       HOST_WIDE_INT base_offset;
+
+      if (GET_CODE (XEXP (x, 0)) == PLUS)
+	{
+	  rtx op0 = XEXP (XEXP (x, 0), 0);
+	  rtx op1 = XEXP (XEXP (x, 0), 1);
+
+	  /* Address expressions of the form Ra + Rb + CONST.
+
+	     If CONST is within the range supported by the addressing
+	     mode "reg+offset", do not split CONST and use the
+	     sequence
+	       Rt = Ra + Rb;
+	       addr = Rt + CONST.  */
+	  if (REG_P (op0) && REG_P (op1))
+	    {
+	      machine_mode addr_mode = GET_MODE (x);
+	      rtx base = gen_reg_rtx (addr_mode);
+	      rtx addr = plus_constant (addr_mode, base, offset);
+
+	      if (aarch64_legitimate_address_hook_p (mode, addr, false))
+		{
+		  emit_insn (gen_adddi3 (base, op0, op1));
+		  return addr;
+		}
+	    }
+	  /* Address expressions of the form Ra + Rb<<SCALE + CONST.
+
+	     If Reg + Rb<<SCALE is a valid address expression, do not
+	     split CONST and use the sequence
+	       Rc = CONST;
+	       Rt = Ra + Rc;
+	       addr = Rt + Rb<<SCALE.
+
+	     Here we split CONST out of memory referece because:
+	       a) We depend on GIMPLE optimizers to pick up common sub
+		  expression involving the scaling operation.
+	       b) The index Rb is likely a loop iv, it's better to split
+		  the CONST so that computation of new base Rt is a loop
+		  invariant and can be moved out of loop.  This is more
+		  important when the original base Ra is sfp related.  */
+	  else if (REG_P (op0) || REG_P (op1))
+	    {
+	      machine_mode addr_mode = GET_MODE (x);
+	      rtx base = gen_reg_rtx (addr_mode);
+
+	      /* Switch to make sure that register is in op0.  */
+	      if (REG_P (op1))
+		std::swap (op0, op1);
+
+	      rtx addr = gen_rtx_PLUS (addr_mode, op1, base);
+
+	      if (aarch64_legitimate_address_hook_p (mode, addr, false))
+		{
+		  base = force_operand (plus_constant (addr_mode,
+						       op0, offset),
+					NULL_RTX);
+		  return gen_rtx_PLUS (addr_mode, op1, base);
+		}
+	    }
+	}
 
       /* Does it look like we'll need a load/store-pair operation?  */
       if (GET_MODE_SIZE (mode) > 16
@@ -7869,19 +8117,6 @@ aarch64_override_options_internal (struct gcc_options *opts)
   /* This target defaults to strict volatile bitfields.  */
   if (opts->x_flag_strict_volatile_bitfields < 0 && abi_version_at_least (2))
     opts->x_flag_strict_volatile_bitfields = 1;
-
-  /* -mgeneral-regs-only sets a mask in target_flags, make sure that
-     aarch64_isa_flags does not contain the FP/SIMD/Crypto feature flags
-     in case some code tries reading aarch64_isa_flags directly to check if
-     FP is available.  Reuse the aarch64_parse_extension machinery since it
-     knows how to disable any other flags that fp implies.  */
-  if (TARGET_GENERAL_REGS_ONLY_P (opts->x_target_flags))
-    {
-      /* aarch64_parse_extension takes char* rather than const char* because
-	 it is usually called from within other parsing functions.  */
-      char tmp_str[] = "+nofp";
-      aarch64_parse_extension (tmp_str, &opts->x_aarch64_isa_flags);
-    }
 
   initialize_aarch64_code_model (opts);
   initialize_aarch64_tls_size (opts);
