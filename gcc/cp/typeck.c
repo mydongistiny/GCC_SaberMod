@@ -2358,8 +2358,11 @@ build_class_member_access_expr (cp_expr object, tree member,
       int type_quals;
       tree member_type;
 
-      null_object_p = (INDIRECT_REF_P (object)
-		       && integer_zerop (TREE_OPERAND (object, 0)));
+      if (INDIRECT_REF_P (object))
+	null_object_p =
+	  integer_zerop (tree_strip_nop_conversions (TREE_OPERAND (object, 0)));
+      else
+	null_object_p = false;
 
       /* Convert OBJECT to the type of MEMBER.  */
       if (!same_type_p (TYPE_MAIN_VARIANT (object_type),
@@ -8644,9 +8647,15 @@ check_return_expr (tree retval, bool *no_warning)
 	/* Leave it.  */;
       else if (functype == current_function_auto_return_pattern)
 	apply_deduced_return_type (current_function_decl, type);
-      else
-	/* A mismatch should have been diagnosed in do_auto_deduction.  */
-	gcc_assert (same_type_p (type, functype));
+      else if (!same_type_p (type, functype))
+	{
+	  if (LAMBDA_FUNCTION_P (current_function_decl))
+	    error ("inconsistent types %qT and %qT deduced for "
+		   "lambda return type", functype, type);
+	  else
+	    error ("inconsistent deduction for auto return type: "
+		   "%qT and then %qT", functype, type);
+	}
       functype = type;
     }
 

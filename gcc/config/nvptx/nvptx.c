@@ -452,6 +452,33 @@ write_one_arg (std::stringstream &s, int for_reg, int argno,
   return argno + 1;
 }
 
+static bool
+write_return (std::stringstream &s, bool for_proto, tree type,
+	      machine_mode ret_mode)
+{
+  machine_mode mode = TYPE_MODE (type);
+  bool return_in_mem = mode != VOIDmode && !RETURN_IN_REG_P (mode);
+
+  mode = arg_promotion (mode);
+  if (for_proto)
+    {
+      if (!return_in_mem && mode != VOIDmode)
+	s << "(.param" << nvptx_ptx_type_from_mode (mode, false)
+	  << " %out_retval) ";
+    }
+  else
+    {
+      /* Prologue.  C++11 ABI causes us to return a reference to the
+	 passed in pointer for return_in_mem.  */
+      ret_mode = arg_promotion (ret_mode);
+      if (ret_mode != VOIDmode)
+	s << "\t.reg" << nvptx_ptx_type_from_mode (ret_mode, false)
+	  << " %retval;\n";
+    }
+
+  return return_in_mem;
+}
+
 /* Look for attributes in ATTRS that would indicate we must write a function
    as a .entry kernel rather than a .func.  Return true if one is found.  */
 
@@ -520,19 +547,7 @@ write_fn_proto (std::stringstream &s, bool is_defn,
   tree result_type = TREE_TYPE (fntype);
 
   /* Declare the result.  */
-  bool return_in_mem = false;
-  if (TYPE_MODE (result_type) != VOIDmode)
-    {
-      machine_mode mode = TYPE_MODE (result_type);
-      if (!RETURN_IN_REG_P (mode))
-	return_in_mem = true;
-      else
-	{
-	  mode = arg_promotion (mode);
-	  s << "(.param" << nvptx_ptx_type_from_mode (mode, false)
-	    << " %out_retval) ";
-	}
-    }
+  bool return_in_mem = write_return (s, true, result_type, VOIDmode);
 
   s << name;
 
@@ -725,8 +740,8 @@ nvptx_declare_function_name (FILE *file, const char *name, const_tree decl)
   write_fn_proto (s, true, name, decl);
   s << "{\n";
 
-  bool return_in_mem = (TYPE_MODE (result_type) != VOIDmode
-			&& !RETURN_IN_REG_P (TYPE_MODE (result_type)));
+  bool return_in_mem = write_return (s, false, result_type,
+				     (machine_mode)cfun->machine->ret_reg_mode);
   if (return_in_mem)
     argno = write_one_arg (s, 0, argno, ptr_type_node, true);
   
@@ -754,16 +769,6 @@ nvptx_declare_function_name (FILE *file, const char *name, const_tree decl)
     argno = write_one_arg (s, STATIC_CHAIN_REGNUM, argno, ptr_type_node, true);
 
   fprintf (file, "%s", s.str().c_str());
-
-  /* C++11 ABI causes us to return a reference to the passed in
-     pointer for return_in_mem.  */
-  if (cfun->machine->ret_reg_mode != VOIDmode)
-    {
-      machine_mode mode = arg_promotion
-	((machine_mode)cfun->machine->ret_reg_mode);
-      fprintf (file, "\t.reg%s %%retval;\n",
-	       nvptx_ptx_type_from_mode (mode, false));
-    }
 
   fprintf (file, "\t.reg.u%d %s;\n", GET_MODE_BITSIZE (Pmode),
 	   reg_names[OUTGOING_STATIC_CHAIN_REGNUM]);
@@ -1479,73 +1484,70 @@ nvptx_hard_regno_mode_ok (int regno, machine_mode mode)
   return mode == cfun->machine->ret_reg_mode;
 }
 
-/* Machinery to output constant initializers.  When beginning an initializer,
-   we decide on a chunk size (which is visible in ptx in the type used), and
-   then all initializer data is buffered until a chunk is filled and ready to
-   be written out.  */
+/* Machinery to output constant initializers.  When beginning an
+   initializer, we decide on a fragment size (which is visible in ptx
+   in the type used), and then all initializer data is buffered until
+   a fragment is filled and ready to be written out.  */
 
-/* Used when assembling integers to ensure data is emitted in
-   pieces whose size matches the declaration we printed.  */
-static unsigned int decl_chunk_size;
-static machine_mode decl_chunk_mode;
-/* Used in the same situation, to keep track of the byte offset
-   into the initializer.  */
-static unsigned HOST_WIDE_INT decl_offset;
-/* The initializer part we are currently processing.  */
-static HOST_WIDE_INT init_part;
-/* The total size of the object.  */
-static unsigned HOST_WIDE_INT object_size;
-/* True if we found a skip extending to the end of the object.  Used to
-   assert that no data follows.  */
-static bool object_finished;
+static struct
+{
+  unsigned HOST_WIDE_INT mask; /* Mask for storing fragment.  */
+  unsigned HOST_WIDE_INT val; /* Current fragment value.  */
+  unsigned HOST_WIDE_INT remaining; /*  Remaining bytes to be written
+					out.  */
+  unsigned size;  /* Fragment size to accumulate.  */
+  unsigned offset;  /* Offset within current fragment.  */
+  bool started;   /* Whether we've output any initializer.  */
+} init_frag;
 
-/* Write the necessary separator string to begin a new initializer value.  */
+/* The current fragment is full,  write it out.  SYM may provide a
+   symbolic reference we should output,  in which case the fragment
+   value is the addend.  */
 
 static void
-begin_decl_field (void)
+output_init_frag (rtx sym)
 {
-  /* We never see decl_offset at zero by the time we get here.  */
-  if (decl_offset == decl_chunk_size)
-    fprintf (asm_out_file, " = { ");
-  else
-    fprintf (asm_out_file, ", ");
-}
+  fprintf (asm_out_file, init_frag.started ? ", " : " = { ");
+  unsigned HOST_WIDE_INT val = init_frag.val;
 
-/* Output the currently stored chunk as an initializer value.  */
-
-static void
-output_decl_chunk (void)
-{
-  begin_decl_field ();
-  output_address (VOIDmode, gen_int_mode (init_part, decl_chunk_mode));
-  init_part = 0;
-}
-
-/* Add value VAL sized SIZE to the data we're emitting, and keep writing
-   out chunks as they fill up.  */
-
-static void
-nvptx_assemble_value (HOST_WIDE_INT val, unsigned int size)
-{
-  unsigned HOST_WIDE_INT chunk_offset = decl_offset % decl_chunk_size;
-  gcc_assert (!object_finished);
-  while (size > 0)
+  init_frag.started = true;
+  init_frag.val = 0;
+  init_frag.offset = 0;
+  init_frag.remaining--;
+  
+  if (sym)
     {
-      int this_part = size;
-      if (chunk_offset + this_part > decl_chunk_size)
-	this_part = decl_chunk_size - chunk_offset;
-      HOST_WIDE_INT val_part;
-      HOST_WIDE_INT mask = 2;
-      mask <<= this_part * BITS_PER_UNIT - 1;
-      val_part = val & (mask - 1);
-      init_part |= val_part << (BITS_PER_UNIT * chunk_offset);
-      val >>= BITS_PER_UNIT * this_part;
-      size -= this_part;
-      decl_offset += this_part;
-      if (decl_offset % decl_chunk_size == 0)
-	output_decl_chunk ();
+      fprintf (asm_out_file, "generic(");
+      output_address (VOIDmode, sym);
+      fprintf (asm_out_file, val ? ") + " : ")");
+    }
 
-      chunk_offset = 0;
+  if (!sym || val)
+    fprintf (asm_out_file, HOST_WIDE_INT_PRINT_DEC, val);
+}
+
+/* Add value VAL of size SIZE to the data we're emitting, and keep
+   writing out chunks as they fill up.  */
+
+static void
+nvptx_assemble_value (unsigned HOST_WIDE_INT val, unsigned size)
+{
+  val &= ((unsigned  HOST_WIDE_INT)2 << (size * BITS_PER_UNIT - 1)) - 1;
+
+  for (unsigned part = 0; size; size -= part)
+    {
+      val >>= part * BITS_PER_UNIT;
+      part = init_frag.size - init_frag.offset;
+      if (part > size)
+	part = size;
+
+      unsigned HOST_WIDE_INT partial
+	= val << (init_frag.offset * BITS_PER_UNIT);
+      init_frag.val |= partial & init_frag.mask;
+      init_frag.offset += part;
+
+      if (init_frag.offset == init_frag.size)
+	output_init_frag (NULL);
     }
 }
 
@@ -1562,8 +1564,7 @@ nvptx_assemble_integer (rtx x, unsigned int size, int ARG_UNUSED (aligned_p))
       gcc_unreachable ();
 
     case CONST_INT:
-      val = INTVAL (x);
-      nvptx_assemble_value (val, size);
+      nvptx_assemble_value (INTVAL (x), size);
       break;
 
     case CONST:
@@ -1575,19 +1576,13 @@ nvptx_assemble_integer (rtx x, unsigned int size, int ARG_UNUSED (aligned_p))
       /* FALLTHROUGH */
 
     case SYMBOL_REF:
-      gcc_assert (size = decl_chunk_size);
-      if (decl_offset % decl_chunk_size != 0)
+      gcc_assert (size == init_frag.size);
+      if (init_frag.offset)
 	sorry ("cannot emit unaligned pointers in ptx assembly");
-      decl_offset += size;
-      begin_decl_field ();
 
       nvptx_maybe_record_fnsym (x);
-      fprintf (asm_out_file, "generic(");
-      output_address (VOIDmode, x);
-      fprintf (asm_out_file, ")");
-
-      if (val)
-	fprintf (asm_out_file, " + " HOST_WIDE_INT_PRINT_DEC, val);
+      init_frag.val = val;
+      output_init_frag (x);
       break;
     }
 
@@ -1601,21 +1596,28 @@ nvptx_assemble_integer (rtx x, unsigned int size, int ARG_UNUSED (aligned_p))
 void
 nvptx_output_skip (FILE *, unsigned HOST_WIDE_INT size)
 {
-  if (decl_offset + size >= object_size)
+  /* Finish the current fragment, if it's started.  */
+  if (init_frag.offset)
     {
-      if (decl_offset % decl_chunk_size != 0)
-	nvptx_assemble_value (0, decl_chunk_size);
-      object_finished = true;
-      return;
+      unsigned part = init_frag.size - init_frag.offset;
+      if (part > size)
+	part = (unsigned) size;
+      size -= part;
+      nvptx_assemble_value (0, part);
     }
 
-  while (size > decl_chunk_size)
+  /* If this skip doesn't terminate the initializer, write as many
+     remaining pieces as possible directly.  */
+  if (size < init_frag.remaining * init_frag.size)
     {
-      nvptx_assemble_value (0, decl_chunk_size);
-      size -= decl_chunk_size;
+      while (size >= init_frag.size)
+	{
+	  size -= init_frag.size;
+	  output_init_frag (NULL_RTX);
+	}
+      if (size)
+	nvptx_assemble_value (0, size);
     }
-  while (size-- > 0)
-    nvptx_assemble_value (0, 1);
 }
 
 /* Output a string STR with length SIZE.  As in nvptx_output_skip we
@@ -1643,22 +1645,32 @@ nvptx_assemble_decl_begin (FILE *file, const char *name, const char *section,
   while (TREE_CODE (type) == ARRAY_TYPE)
     type = TREE_TYPE (type);
 
-  if (!INTEGRAL_TYPE_P (type) && !SCALAR_FLOAT_TYPE_P (type))
-    type = ptr_type_node;
+  if (TREE_CODE (type) == VECTOR_TYPE
+      || TREE_CODE (type) == COMPLEX_TYPE)
+    /* Neither vector nor complex types can contain the other.  */
+    type = TREE_TYPE (type);
+
   unsigned elt_size = int_size_in_bytes (type);
-  if (elt_size > UNITS_PER_WORD)
-    {
-      type = ptr_type_node;
-      elt_size = int_size_in_bytes (type);
-    }
 
-  decl_chunk_size = elt_size;
-  decl_chunk_mode = int_mode_for_mode (TYPE_MODE (type));
-  decl_offset = 0;
-  init_part = 0;
+  /* Largest mode we're prepared to accept.  For BLKmode types we
+     don't know if it'll contain pointer constants, so have to choose
+     pointer size, otherwise we can choose DImode.  */
+  machine_mode elt_mode = TYPE_MODE (type) == BLKmode ? Pmode : DImode;
 
-  object_size = size;
-  object_finished = !size;
+  elt_size |= GET_MODE_SIZE (elt_mode);
+  elt_size &= -elt_size; /* Extract LSB set.  */
+
+  init_frag.size = elt_size;
+  /* Avoid undefined shift behaviour by using '2'.  */
+  init_frag.mask = ((unsigned HOST_WIDE_INT)2
+		    << (elt_size * BITS_PER_UNIT - 1)) - 1;
+  init_frag.val = 0;
+  init_frag.offset = 0;
+  init_frag.started = false;
+  /* Size might not be a multiple of elt size, if there's an
+     initialized trailing struct array with smaller type than
+     elt_size. */
+  init_frag.remaining = (size + elt_size - 1) / elt_size;
 
   fprintf (file, "%s .align %d .u%d ",
 	   section, align / BITS_PER_UNIT,
@@ -1668,8 +1680,7 @@ nvptx_assemble_decl_begin (FILE *file, const char *name, const char *section,
   if (size)
     /* We make everything an array, to simplify any initialization
        emission.  */
-    fprintf (file, "[" HOST_WIDE_INT_PRINT_DEC "]",
-	     (size + elt_size - 1) / elt_size);
+    fprintf (file, "[" HOST_WIDE_INT_PRINT_DEC "]", init_frag.remaining);
 }
 
 /* Called when the initializer for a decl has been completely output through
@@ -1678,14 +1689,10 @@ nvptx_assemble_decl_begin (FILE *file, const char *name, const char *section,
 static void
 nvptx_assemble_decl_end (void)
 {
-  if (decl_offset != 0)
-    {
-      if (!object_finished && decl_offset % decl_chunk_size != 0)
-	nvptx_assemble_value (0, decl_chunk_size);
-
-      fprintf (asm_out_file, " }");
-    }
-  fprintf (asm_out_file, ";\n");
+  if (init_frag.offset)
+    /* This can happen with a packed struct with trailing array member.  */
+    nvptx_assemble_value (0, init_frag.size - init_frag.offset);
+  fprintf (asm_out_file, init_frag.started ? " };\n" : ";\n");
 }
 
 /* Output an uninitialized common or file-scope variable.  */
@@ -1702,7 +1709,7 @@ nvptx_output_aligned_decl (FILE *file, const char *name,
 
   nvptx_assemble_decl_begin (file, name, section_for_decl (decl),
 			     TREE_TYPE (decl), size, align);
-  fprintf (file, ";\n");
+  nvptx_assemble_decl_end ();
 }
 
 /* Implement TARGET_ASM_DECLARE_CONSTANT_NAME.  Begin the process of
@@ -1882,6 +1889,13 @@ nvptx_output_call_insn (rtx_insn *insn, rtx result, rtx callee)
       assemble_name (asm_out_file, buf);
     }
   fprintf (asm_out_file, ";\n");
+
+  if (find_reg_note (insn, REG_NORETURN, NULL))
+    /* No return functions confuse the PTX JIT, as it doesn't realize
+       the flow control barrier they imply.  It can seg fault if it
+       encounters what looks like an unexitable loop.  Emit a trailing
+       trap, which it does grok.  */
+    fprintf (asm_out_file, "\t\ttrap; // (noreturn)\n");
 
   return result != NULL_RTX ? "\tld.param%t0\t%0, [%%retval_in];\n\t}" : "}";
 }
