@@ -1,3 +1,206 @@
+2015-12-13  David Edelsohn  <dje.gcc@gmail.com>
+
+	* gcc.dg/graphite/pr42729.c: XFAIL AIX.
+
+2015-12-13  Jeff Law  <law@redhat.com>
+
+	* gcc.target/m68k/pr19201.c: New test.
+
+	* gcc.target/m68k/pr63347.c: Remove #include <stdlib> add -w to
+	command line options.
+	* gcc.target/m68k/20090709-1.c: Adjust expected output.
+
+2015-12-12  David Edelsohn  <dje.gcc@gmail.com>
+
+	* g++.dg/opt/pr48549.C: XFAIL AIX.
+	* g++.dg/abi/anon1.C: XFAIL AIX.
+	* gcc.dg/graphite/pr42917.c: XFAIL AIX.
+
+2015-12-12  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/45859
+	* gfortran.dg/coarray_args_2.f90: Remove dg-error.
+
+2015-12-12  David Edelsohn  <dje.gcc@gmail.com>
+
+	* gcc.target/powerpc/pr67808.c: Add -mlong-double-128 option.
+	* g++.dg/cpp1y/pr58708.C: Test appropriate value for size of
+	wchar_t.
+
+2015-12-12  Paolo Bonzini  <bonzini@gnu.org>
+
+	PR sanitizer/68418
+	* gcc.dg/ubsan/c99-wrapv-shift-1.c,
+	gcc.dg/ubsan/c99-wrapv-shift-2.c: New testcases.
+
+2015-12-11  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/68844
+	* gcc.dg/tree-ssa/ssa-dom-thread-4.c: Update expected output.
+
+2015-12-11  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.dg/pr59605-1.c: Reduce iterations for nvptx.
+
+2015-12-11  Jan Beulich  <jbeulich@suse.com>
+
+	* gcc.c-torture/execute/stkalign.c: New.
+
+2015-12-11  Tsvetkova Alexandra  <aleksandra.tsvetkova@intel.com>
+
+	* gcc.target/i386/mpx/memmove-1.c: New test.
+	* gcc.target/i386/mpx/memmove-2.c: New test.
+
+2015-12-11  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.target/nvptx/ary-init.c: Repair dg_final syntax.
+	* gcc.target/nvptx/decl-init.c: Likewise.  Add TI case.
+
+2015-12-11  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68064
+	* g++.dg/torture/pr68064.C: New test.
+
+2015-12-11  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* gcc.target/s390/md/setmem_long-1.c: New test.
+
+2015-12-11  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* gcc.target/s390/md/movstr-1.c: New test.
+	* gcc.target/s390/s390.exp: Add subdir md.
+	Do not run hotpatch tests twice.
+
+2015-12-11  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* gcc.dg/vect/vect-32-chars.c: New test.
+
+2015-12-11  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/61886
+	* gcc.dg/lto/pr61886_0.c: New testcase
+
+2015-12-10  Jan Hubicka  <hubicka@ucw.cz>
+
+	* gcc.c-torture/execute/20010122-1.c: Disable cloning.
+
+2015-12-10  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR rtl-optimization/68691
+	* gcc.target/i386/pr68691.c: New.
+
+2015-12-10  David Malcolm  <dmalcolm@redhat.com>
+
+	* lib/multiline.exp (_multiline_expected_outputs): Update comment.
+	(dg-end-multiline-output): Capture line numbers within
+	_multiline_expected_outputs.
+	(handle-multiline-outputs): Access global $testname_with_flags
+	and add it as a prefix to pass/fail results.  Extract line numbers
+	from $_multiline_expected_outputs and print them within pass/fail
+	results, replacing the printing of $index.  Consolidate the
+	string prefix shared between pass/fail into a new local ($title).
+
+2015-12-10  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/68619
+	* gcc.dg/tree-ssa/pr68619-1.c: New test.
+	* gcc.dg/tree-ssa/pr68619-2.c: New test.
+	* gcc.dg/tree-ssa/pr68619-3.c: New test.
+	* gcc.dg/tree-ssa/pr68619-4.c: New test.
+	* gcc.dg/tree-ssa/pr68619-5.c: New test.
+
+2015-12-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/68376
+	PR rtl-optimization/68670
+	* gcc.c-torture/execute/pr68376-2.c (f5, f6, f7, f8): New
+	tests.
+	(main): Call them.
+	* gcc.dg/pr68670-1.c: New test.
+	* gcc.dg/pr68670-2.c: New test.
+
+2015-12-10  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/68348
+	* g++.dg/cpp0x/pr68348.C: New test.
+
+2015-12-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/specs/elab4.ads: New test.
+	* gnat.dg/specs/elab4_proc.ad[sb]: New helper.
+
+2015-12-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/array25.adb: New test.
+	* gnat.dg/array25_pkg.ad[sb]: New helper.
+
+2015-12-10  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* lib/target-supports.exp (check_effective_target_arc_atomic): New
+	function.
+	(check_effective_target_sync_int_long): Add checks for ARC atomic
+	feature.
+	(check_effective_target_sync_char_short): Likewise.
+
+2015-12-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68817
+	* gfortran.dg/pr68817.f90: New testcase.
+
+2015-12-10  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	Revert [testsuite][ARM target attributes] Fix effective_target tests
+	2015-12-08  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* lib/target-supports.exp
+	(check_effective_target_arm_vfp_ok_nocache): New.
+	(check_effective_target_arm_vfp_ok): Call the new
+	check_effective_target_arm_vfp_ok_nocache function.
+	(check_effective_target_arm_fp_ok_nocache): New.
+	(check_effective_target_arm_fp_ok): New.
+	(add_options_for_arm_fp): New.
+	(check_effective_target_arm_crypto_ok_nocache): Require
+	target_arm_v8_neon_ok instead of arm32.
+	(check_effective_target_arm_crypto_pragma_ok_nocache): New.
+	(check_effective_target_arm_crypto_pragma_ok): New.
+	(add_options_for_arm_vfp): New.
+	* gcc.target/arm/attr-crypto.c: Use arm_crypto_pragma_ok effective
+	target. Do not force -mfloat-abi=softfp, use arm_vfp effective
+	target instead.
+	* gcc.target/arm/attr-neon-builtin-fail.c: Do not force
+	-mfloat-abi=softfp, use arm_fp effective target instead.
+	* gcc.target/arm/attr-neon-fp16.c: Likewise. Remove arm_neon_ok
+	dependency.
+	* gcc.target/arm/attr-neon2.c: Do not force -mfloat-abi=softfp,
+	use arm_vfp effective target instead.
+	* gcc.target/arm/attr-neon3.c: Likewise.
+
+2015-12-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/specs/access1.ads: New test.
+	* gnat.dg/specs/access2.ads: Likewise.
+
+2015-12-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/68785
+	* gcc.dg/pr68785.c: New test.
+
+2015-12-10  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/68331
+	* gcc.dg/torture/ipa-pta-3.c: New testcase.
+	* g++.dg/ipa/ipa-pta-1.C: Likewise.
+
+2015-12-10  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/68721
+	* gcc.dg/torture/pr68721.c: New testcase.
+
+2015-12-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68806
+	* gcc.dg/torture/pr68806.c: New testcase.
+
 2015-12-08  Jan Hubicka  <hubicka@ucw.cz>
 
 	PR ipa/61886
@@ -6660,7 +6863,7 @@
 	PR c++-common/67882
 	* c-c++-common/builtin-offsetof-2.c: New test.
 
-015-11-03  Dominique d'Humieres <dominiq@lps.ens.fr>
+2015-11-03  Dominique d'Humieres <dominiq@lps.ens.fr>
 
 	PR fortran/67982
 	* gfortran.dg/warn_unused_function_3.f90: New test.
