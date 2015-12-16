@@ -1,3 +1,237 @@
+2015-12-15  Martin Sebor  <msebor@redhat.com>
+
+	c++/42121
+	* tree-chkp.c (chkp_find_bound_slots_1): Handle flexible array
+	members.
+	* tree.c (type_contains_placeholder_1): Avoid assuming type has
+	a non-null domain or an upper bound to handle flexible array
+	members.
+	* varasm.c (output_constructor_regular_field):  Same.
+	(output_constructor): Set min_index to integer_zero_node rather
+	than null when a type has no domain to avoid crashing later.
+
+2015-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.c (write_one_arg): Rename to ...
+	(write_arg_mode): ... here.  Update callers.
+	(write_arg): Rename to ...
+	(write__arg_type): ... here.  Update callers.
+	(write_return_mode): New fn, broken out of ...
+	(write_return): ... here.  Rename to ...
+	(write_return_type): ... here.  Call it. Update callers.
+	(write_fn_proto_from_insn): Use write_arg_mode and
+	write_return_mode.
+	(init_frame): New fn.
+	(nvptx_declare_function_name): Call it for frame and varargs. Only
+	emit outgoing static chain, if it's live.
+	(nvptx_output_return): Use reg_names for return reg name.
+	(nvptx_output_call_insn): Likewise.
+	(nvptx_reorg): Mark unused hard regs too.
+
+2015-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.md (nvptx_register_operand): Don't accept and
+	then reject subregs.
+	(nvptx_reg_or_mem_operand): Likewise.
+	(nvptx_nonmemory_operand): Likewise.
+	(call_insn_operand): A regular predicate, check	SYMBOL_REF_FUNCTION_P.
+	(call_insn, call_value_insn): Address is not SImode.
+	* config/nvptx/nvptx.h (FIXED_REGISTERS): Make return reg fixed.
+	(enum reg_class, REG_CLASS_NAMES, REG_CLASS_CONTENTS): Remove
+	RETURN_REG class.
+	(REGNO_REG_CLASS): Alwaus ALL_REGS.
+	(PROMOTE_MODE): QI and HI are the only smaller than SI int modes.
+	(HARD_FRAME_POINTER_REGNUM): Delete.
+	(REGISTER_NAMES): Move earlier.
+	(struct nvptx_args): Remove 'off'.
+	(INIT_CUMULATIVE_ARGS): Don't initialize 'off'.
+	(ELIMINABLE_REGS): Remove HARD_FRAME_POINTER_REGNUM.
+	* config/nvptx/nvptx.c (arg_promotion): Delete.
+	(nvptx_expand_call): Remove check for funtype being an fntype.
+
+2015-12-15  Jason Merrill  <jason@redhat.com>
+
+	* hash-map.h, hash-table.h: Make copy constructors explicit.
+
+2015-12-15  Ilya Verbin  <ilya.verbin@intel.com>
+
+	* cgraphunit.c (output_in_order): Do not assemble "omp declare target
+	link" variables in ACCEL_COMPILER.
+	* gimplify.c (gimplify_adjust_omp_clauses): Do not remove mapping of
+	"omp declare target link" variables.
+	* omp-low.c (scan_sharing_clauses): Do not remove mapping of "omp
+	declare target link" variables.
+	(add_decls_addresses_to_decl_constructor): For "omp declare target
+	link" variables output address of the artificial pointer instead
+	of address of the variable.  Set most significant bit of the size
+	to mark them.
+	(pass_data_omp_target_link): New pass_data.
+	(pass_omp_target_link): New class.
+	(find_link_var_op): New static function.
+	(make_pass_omp_target_link): New function.
+	* passes.def: Add pass_omp_target_link.
+	* tree-pass.h (make_pass_omp_target_link): Declare.
+	* varpool.c (symbol_table::output_variables): Do not assemble "omp
+	declare target link" variables in ACCEL_COMPILER.
+
+2015-12-15  Bernd Schmidt  <bschmidt@redhat.com>
+
+	PR middle-end/21273
+	* gensupport.c (collect_insn_data): Look for number of alternatives
+	in MATCH_SCRATCH.
+
+2015-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.h (HARD_REGNO_NREGS): Reformat.
+	(CANNOT_CHANGE_MODE_CLASS): Always return true.
+	(HARD_REGNO_MODE_OK): Reformat.
+	* config/nvptx/nvptx.md (define_expand mov<mode>): No
+	RETURN_REGNUM handling here.
+	* config/nvptx/nvptx.c (nvptx_function_value): Set ret_reg_mode
+	here.
+	(write_one_arg): No QI or HI mode args.
+	(write_fn_proto_from_insn): No argument promotion here.
+	(nvptx_output_return_insn): No return promotion here.
+	(nvptx_output_mov_insn): No RETURN_REGNUM handling needed.
+	(nvptx_output_call_insn): No return promotion here.
+
+2015-12-15  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68851
+	* cgraph.c (collect_callers_of_node_1): Do not collect thunks.
+	* cgraph.h (cgraph_node): Change comment of collect_callers.
+
+2015-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/66688
+	* tree-cfgcleanup.c (cleanup_control_flow_bb): Handle
+	noreturn call followed only by debug stmts by removing
+	the debug stmts and handling it the same as if the noreturn
+	call is the last stmt.
+
+2015-12-14  Steve Ellcey  <sellcey@imgtec.com>
+
+	* config/mips/mips.c (mips_promote_function_mode): New function.
+	(TARGET_PROMOTE_FUNCTION_MODE): Define as above function.
+	(TARGET_PROMOTE_PROTOTYPES): Remove.
+
+2015-12-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/68309
+	* hash-table.h: Add copy constructor.
+	* hash-map.h: Add copy constructor.
+
+2015-12-14  Tom de Vries  <tom@codesourcery.com>
+
+	PR other/68882
+	* gimple-pretty-print.c (dump_ssaname_info_to_file): New function.
+	* gimple-pretty-print.h (dump_ssaname_info_to_file): Declare.
+	* tree-cfg.c (dump_default_def): New function.
+	(dump_function_to_file): Dump default defs for arguments, static chain,
+	and decl-by-reference.
+
+2015-12-14  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.h (PARM_BOUNDARY): Set to 32.
+	* config/nvptx/nvptx.c (PASS_IN_REG_P, RETURN_IN_REG_P): Delete.
+	(pass_in_memory, promote_arg, promote_return): New.
+	(nvptx_function_arg_boundary): Delete.
+	(nvptx_function_value): Use promote_return.
+	(nvptx_pass_by_reference): Use pass_in_memory.
+	(nvptx_return_in_memory): Use pass_in_memory.
+	(nvptx_promote_function_mode): Use promote_arg.
+	(write_arg): Adjust arg splitting logic.
+	(write_return): Check and clear ret_reg_mode, if needed.
+	(write_fn_proto, nvptx_declare_function_name): Adust write_return
+	calls.
+	(TARGET_RUNCTION_ARG_BOUNDARY,
+	TARGET_FUNCTION_ARG_ROUND_BOUNDARY): Don't override.
+
+2015-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/68833
+	* common.opt (Wmissing-noreturn): Add Warning option.
+	* opts-common.c (control_warning_option): If opt is
+	alias_target with alias_arg, set arg to it.
+
+2015-12-14  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/68865
+	PR target/68879
+	* config/rs6000/rs6000.md (cstore_si_as_di): Force all operands
+	into registers.
+
+2015-12-14  Richard Biener  <rguenther@suse.de>
+
+	Revert accidentially applied
+	PR tree-optimization/68707
+	PR tree-optimization/67323
+	* tree-vect-slp.c (vect_analyze_slp_instance): Drop SLP instances
+	if they can be vectorized using load/store-lane instructions.
+
+2015-12-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68852
+	* tree-vectorizer.h (struct _slp_tree): Add def_type member.
+	(SLP_TREE_DEF_TYPE): New accessor.
+	* tree-vect-stmts.c (vect_is_simple_use): Remove BB vectorization
+	hack.
+	* tree-vect-slp.c (vect_create_new_slp_node): Initialize
+	SLP_TREE_DEF_TYPE.
+	(vect_build_slp_tree): When a node is to be built up from scalars
+	do not push a NULL as child but instead set its def_type to
+	vect_external_def.
+	(vect_analyze_slp_cost_1): Check for child def-type instead
+	of NULL.
+	(vect_detect_hybrid_slp_stmts): Likewise.
+	(vect_bb_slp_scalar_cost): Likewise.
+	(vect_get_slp_defs): Likewise.
+	(vect_slp_analyze_node_operations): Likewise.  Before
+	processing node push the children def-types to the underlying
+	stmts vinfo and restore it afterwards.
+	(vect_schedule_slp_instance): Likewise.
+	(vect_slp_analyze_bb_1): Do not mark stmts not in SLP instances
+	as not vectorizable.
+
+2015-12-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68775
+	* tree-vect-slp.c (vect_build_slp_tree): Make sure to apply
+	a operand swapping even if replacing the op with scalars.
+
+2015-12-14  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* combine.c (change_zero_ext): Do not create a shift of zero length.
+
+2015-12-14  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.c (TARGET_NO_SPECULATION_IN_DELAY_SLOTS_P):
+	Provide target hook.
+	(arc_no_speculation_in_delay_slots_p): New function.
+
+2015-12-14  Claudiu Zissulescu  <claziss@synopsys.com>
+	    Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* config/arc/arc.c (frame_move): Set frame related flag.
+	(arc_save_restore): Emit epilogue related DWARF2 information.
+	(arc_expand_epilogue): Likewise.
+	* config/arc/arc.opt (mno-epilogue-cfi): Remove.
+	(mepilogue-cfi): Likewise.
+	* doc/invoke.texi: Remove -m[no]-epilogue-cfi documentation.
+
+2015-12-14  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/66616
+	* ipa-cp.c (propagate_constants_accross_call): Move thuk check...
+	(call_passes_through_thunk_p): ...here.
+	(find_more_scalar_values_for_callers_subset): Perform thunk checks
+	like propagate_constants_accross_call does.
+
+2015-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/68730
+	* cfgrtl.c (cfg_layout_finalize): Free dominators.
+
 2015-12-13  Alexandre Oliva <aoliva@redhat.com>
 
 	PR debug/67355

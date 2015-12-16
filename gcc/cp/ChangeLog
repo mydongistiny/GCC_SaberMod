@@ -1,3 +1,58 @@
+2015-12-15  Martin Sebor  <msebor@redhat.com>
+
+	c++/42121
+	c++/68478
+	c++/68613
+	c++/68689
+	c++/68710
+	* class.c (walk_subobject_offsets): Avoid assuming type domain
+	is non-null or has an upper bound.
+	(layout_class_type): Include type size in error message.
+	(flexmems_t): New type.
+	(field_nonempty_p, find_flexarrays, diagnose_flexarrays)
+	(check_flexarrays): New	functions.
+	(finish_struct_1): Call check_flexarrays.
+	* decl.c (compute_array_index_type): Distinguish flexible array
+	members from zero-length arrays.
+	(grokdeclarator): Reject flexible array members in unions.  Avoid
+	rejecting members of incomplete types that are flexible array members.
+	* error.c (dump_type_suffix): Handle flexible array members with null
+	upper bound.
+	* init.c (perform_member_init): Same.
+	* pt.c (instantiate_class_template_1): Allow flexible array members.
+	(tsubst): Handle flexible array members with null upper bound.
+	* typeck2.c (digest_init_r): Warn for initialization of flexible
+	array members.
+	(process_init_constructor_record): Handle flexible array members.
+
+2015-12-15  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/21802
+	PR c++/53223
+	* cp-tree.h (cp_tree_code_length): Declare.
+	(build_min_non_dep_op_overload): Declare.
+	* tree.c (cp_tree_code_length): Define.
+	(build_min_non_dep_op_overload): Define.
+	(build_win_non_dep_call_vec): Copy the KOENIG_LOOKUP_P flag.
+	* typeck.c (build_x_indirect_ref): Use
+	build_min_non_dep_op_overload when the given expression
+	has been resolved to an operator overload.
+	(build_x_binary_op): Likewise.
+	(build_x_array_ref): Likewise.
+	(build_x_unary_op): Likewise.
+	(build_x_compound_expr): Likewise.
+	(build_x_modify_expr): Likewise.
+	* decl2.c (grok_array_decl): Likewise.
+	* call.c (build_new_op_1): If during template processing we
+	chose an operator overload that is a hidden friend function, set
+	the call's KOENIG_LOOKUP_P flag to 1.
+
+2015-12-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/68309
+	* pt.c (instantiate_decl): Copy local_specializations for nested
+	function.
+
 2015-12-09  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	PR c++/60218

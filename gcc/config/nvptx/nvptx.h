@@ -46,7 +46,8 @@
 /* Chosen such that we won't have to deal with multi-word subregs.  */
 #define UNITS_PER_WORD 8
 
-#define PARM_BOUNDARY 8
+/* Alignments in bits.  */
+#define PARM_BOUNDARY 32
 #define STACK_BOUNDARY 64
 #define FUNCTION_BOUNDARY 32
 #define BIGGEST_ALIGNMENT 64
@@ -84,21 +85,25 @@
    hard registers for special purposes and leave pseudos unallocated.  */
 
 #define FIRST_PSEUDO_REGISTER 16
+/* We have to have some available hard registers, to keep gcc setup
+   happy.  */
 #define FIXED_REGISTERS					\
-  { 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1 }
+  { 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 }
 #define CALL_USED_REGISTERS				\
   { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }
 
-#define HARD_REGNO_NREGS(regno, mode)	((void)(regno), (void)(mode), 1)
-#define CANNOT_CHANGE_MODE_CLASS(M1, M2, CLS) ((CLS) == RETURN_REG)
-#define HARD_REGNO_MODE_OK(REG, MODE) nvptx_hard_regno_mode_ok (REG, MODE)
+#define HARD_REGNO_NREGS(REG, MODE)		\
+  ((void)(REG), (void)(MODE), 1)
+#define CANNOT_CHANGE_MODE_CLASS(M1, M2, CLS)	\
+  ((void)(M1), (void)(M2), (void)(CLS), true)
+#define HARD_REGNO_MODE_OK(REG, MODE)		\
+     ((void)(REG), (void)(MODE), true)
 
 /* Register Classes.  */
 
 enum reg_class
   {
     NO_REGS,
-    RETURN_REG,
     ALL_REGS,
     LIM_REG_CLASSES
   };
@@ -106,7 +111,6 @@ enum reg_class
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
 
 #define REG_CLASS_NAMES {	  \
-    "RETURN_REG",		  \
     "NO_REGS",			  \
     "ALL_REGS" }
 
@@ -114,15 +118,13 @@ enum reg_class
 {				\
   /* NO_REGS.  */		\
   { 0x0000 },			\
-  /* RETURN_REG.  */		\
-  { 0x0008 },			\
   /* ALL_REGS.  */		\
   { 0xFFFF },			\
 }
 
 #define GENERAL_REGS ALL_REGS
 
-#define REGNO_REG_CLASS(R) ((R) == 4 ? RETURN_REG : ALL_REGS)
+#define REGNO_REG_CLASS(R) ((void)(R), ALL_REGS)
 
 #define BASE_REG_CLASS ALL_REGS
 #define INDEX_REG_CLASS NO_REGS
@@ -136,10 +138,11 @@ enum reg_class
 #define MODES_TIEABLE_P(M1, M2) false
 
 #define PROMOTE_MODE(MODE, UNSIGNEDP, TYPE)		\
-  if (GET_MODE_CLASS (MODE) == MODE_INT			\
-      && GET_MODE_SIZE (MODE) < GET_MODE_SIZE (SImode))	\
+  if ((MODE) == QImode || (MODE) == HImode)		\
     {							\
       (MODE) = SImode;					\
+      (void)(UNSIGNEDP);				\
+      (void)(TYPE);					\
     }
 
 /* Stack and Calling.  */
@@ -149,13 +152,18 @@ enum reg_class
 #define STACK_GROWS_DOWNWARD 1
 
 #define STACK_POINTER_REGNUM 1
-#define HARD_FRAME_POINTER_REGNUM 2
 #define NVPTX_RETURN_REGNUM 4
 #define FRAME_POINTER_REGNUM 15
 #define ARG_POINTER_REGNUM 14
 
 #define STATIC_CHAIN_REGNUM 12
 #define OUTGOING_STATIC_CHAIN_REGNUM 10
+
+#define REGISTER_NAMES							\
+  {									\
+    "%hr0", "%outargs", "%hfp", "%hr3", "%retval", "%hr5", "%hr6", "%hr7",	\
+    "%hr8", "%hr9", "%chain_out", "%hr11", "%chain_in", "%hr13", "%argp", "%frame" \
+  }
 
 #define FIRST_PARM_OFFSET(FNDECL) ((void)(FNDECL), 0)
 #define PUSH_ARGS_REVERSED 1
@@ -169,15 +177,13 @@ struct nvptx_args {
   tree fntype;
   /* Number of arguments passed in registers so far.  */
   int count;
-  /* Offset into the stdarg area so far.  */
-  HOST_WIDE_INT off;
 };
 #endif
 
 #define CUMULATIVE_ARGS struct nvptx_args
 
 #define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, FNDECL, N_NAMED_ARGS) \
-  ((CUM).fntype = (FNTYPE), (CUM).count = 0, (CUM).off = 0, (void)0)
+  ((CUM).fntype = (FNTYPE), (CUM).count = 0, (void)0)
 
 #define FUNCTION_ARG_REGNO_P(r) 0
 
@@ -195,8 +201,7 @@ struct nvptx_args {
    expand_builtin_setjmp_receiver from generating invalid insns.  */
 #define ELIMINABLE_REGS					\
   {							\
-    { FRAME_POINTER_REGNUM, HARD_FRAME_POINTER_REGNUM},	\
-    { ARG_POINTER_REGNUM, HARD_FRAME_POINTER_REGNUM}	\
+    { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM}	\
   }
 
 /* Define the offset between two registers, one to be eliminated, and the other
@@ -248,12 +253,6 @@ struct GTY(()) machine_function
 #define ASM_APP_ON "\t// #APP \n"
 #undef ASM_APP_OFF
 #define ASM_APP_OFF "\t// #NO_APP \n"
-
-#define REGISTER_NAMES							\
-  {									\
-    "%hr0", "%outargs", "%hfp", "%hr3", "%retval", "%hr5", "%hr6", "%hr7",	\
-    "%hr8", "%hr9", "%chain_out", "%hr11", "%chain_in", "%hr13", "%argp", "%frame" \
-  }
 
 #define DBX_REGISTER_NUMBER(N) N
 

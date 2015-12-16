@@ -1,3 +1,123 @@
+2015-12-15  Martin Sebor  <msebor@redhat.com>
+
+	c++/42121
+	c++/68478
+	c++/68613
+	c++/68689
+	c++/68710
+	* g++.dg/compat/struct-layout-1_generate.c: Avoid generating
+	further fields after the first flexible array member.
+	* g++.dg/ext/flexary2.C: Expect a sole flexible array member
+	to be rejected.  Add a test case exercising zero-length array.
+	* g++.dg/ext/flexary3.C: Expect a sole flexible array member
+	to be rejected.
+	* g++.dg/ext/flexary.h: New file.
+	* g++.dg/ext/flexary4.C: New file.
+	* g++.dg/ext/flexary5.C: New file.
+	* g++.dg/ext/flexary6.C: New file.
+	* g++.dg/ext/flexary7.C: New file.
+	* g++.dg/ext/flexary8.C: New file.
+	* g++.dg/other/dump-ada-spec-2.C: Adjust to reflect flexible
+	array members.
+	* g++.dg/parse/pr43765.C: Add a member to make a struct with
+	a flexible array member valid.  Adjust expected error message.
+	* g++.dg/torture/pr64280.C: Expect a sole flexible array member
+	to be rejected.
+	* g++.dg/torture/pr64312.C: Add a member to make a struct with
+	a flexible array member valid.
+	* g++.dg/ubsan/object-size-1.C: Adjust expected diagnostic.
+
+2015-12-15  Marek Polacek  <polacek@redhat.com>
+
+	PR c/68907
+	* gcc.dg/pr68907.c: New test.
+
+2015-12-15  Alessandro Fanfarillo  <fanfarillo.gcc@gmail.com>
+
+	* gfortran.dg/coarray_critical_1.f90: New.
+
+2015-12-15  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68851
+	* g++.dg/ipa/pr68851.C: New test.
+
+2015-12-15  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/63506
+	* g++.dg/cpp0x/pr63506-1.C: New.
+	* g++.dg/cpp0x/pr63506-2.C: Likewise.
+
+2015-12-15  Olivier Hainque  <hainque@adacore.com>
+
+	* gcc.target/visium/block_move.c: Skip for -mcpu=gr5.
+
+2015-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/66688
+	* gcc.dg/pr66688.c: New test.
+
+2015-12-15  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/21802
+	PR c++/53223
+	* g++.dg/cpp0x/pr53223.C: New test.
+	* g++.dg/lookup/pr21802.C: New test.
+	* g++.dg/lookup/two-stage4.C: Remove XFAIL.
+
+2015-12-14 Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	* gfortran.dg/quad_2.f90: Update test.
+
+2015-12-14  Steve Ellcey  <sellcey@imgtec.com>
+
+	* gcc.dg/tree-ssa/ssa-fre-4.c: Remove mips*-*-* target.
+	* gcc.target/mips/ext-2.c: Update scan checks.
+
+2015-12-14  Nathan Sidwell  <nathan@acm.org>
+
+	* g++.dg/abi/nvptx-nrv1.C: New.
+	* g++.dg/abi/nvptx-ptrmem1.C: New.
+	* gcc.target/nvptx/abi-complex-arg.c: New.
+	* gcc.target/nvptx/abi-complex-ret.c: New.
+	* gcc.target/nvptx/abi-enum-arg.c: New.
+	* gcc.target/nvptx/abi-enum-ret.c: New.
+	* gcc.target/nvptx/abi-knr-arg.c: New.
+	* gcc.target/nvptx/abi-knr-ret.c: New.
+	* gcc.target/nvptx/abi-scalar-arg.c: New.
+	* gcc.target/nvptx/abi-scalar-ret.c: New.
+	* gcc.target/nvptx/abi-struct-arg.c: New.
+	* gcc.target/nvptx/abi-struct-ret.c: New.
+	* gcc.target/nvptx/abi-vararg-1.c: New.
+	* gcc.target/nvptx/abi-vararg-2.c: New.
+	* gcc.target/nvptx/abi-vect-arg.c: New.
+	* gcc.target/nvptx/abi-vect-ret.c: New.
+
+2015-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/68833
+	* c-c++-common/pr68833-1.c: New test.
+	* c-c++-common/pr68833-2.c: New test.
+
+2015-12-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68852
+	* g++.dg/torture/pr68852.C: New testcase.
+
+2015-12-14  Alexander Monakov  <amonakov@ispras.ru>
+
+	* gcc.dg/builtin-return-1.c: Correct effective-target test.
+	* gcc.dg/stack-usage-2.c: Use effective-target test.
+
+2015-12-14  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/66616
+	* g++.dg/ipa/pr66616.C: New test.
+
+2015-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/68730
+	* gcc.dg/pr68730.c: New test.
+
 2015-12-14  Thomas Preud'homme  <thomas.preudhomme@arm.com>
 
 	PR testsuite/68629
