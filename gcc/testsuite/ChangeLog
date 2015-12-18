@@ -1,10 +1,210 @@
+2015-12-18  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/68831
+	* g++.dg/pr68831.C: New test.
+
+2015-12-17  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/split-path-1.c: Explicitly ask for path
+	splitting optimizations.
+
+2015-12-17  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.dg/ipa/ipa-icf-merge-1.c: New.
+	
+2015-12-17  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/diagnostic-range-bad-return.c: New test case.
+
+2015-12-17  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68946
+	* gcc.dg/torture/pr68946.c: New testcase.
+
+2015-12-17  Nathan Sidwell  <nathan@acm.org>
+
+	* c-c++-common/Wunused-var-13.c: Requires label values.
+	* gcc.dg/torture/pr46216.c: Likewise.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* gnat.dg/specs/debug1.ads: Update the expected number of
+	DW_AT_artificial attribute in compiler output.
+
+2015-12-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/68835
+	* gcc.dg/pr68835-1.c: New test.
+	* gcc.dg/pr68835-2.c: New test.
+
+2015-12-17  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68951
+	* gcc.dg/torture/pr68951.c: New testcase.
+
+2015-12-17  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR target/67973
+	* lib/target-supports.exp (check_effective_target_stabs): New
+	proc.
+	* g++.dg/cpp0x/alias-decl-debug-0.C: Restrict to stabs targets.
+	* g++.dg/other/PR23205.C: Likewise.
+	* g++.dg/other/pr23205-2.C: Likewise.
+	* gcc.dg/20040813-1.c: Likewise.
+	* gcc.dg/darwin-20040809-2.c: Likewise.
+	* objc.dg/stabs-1.m: Likewise.
+
+2015-12-17  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* gcc.target/arc/loop-hazard-1.c: New file.
+
+2015-12-17  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* gcc.target/arc/jump-around-jump.c (rtc_set_time): Declare.
+
+2015-12-17  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	Revert:
+	2015-12-14  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	PR testsuite/68629
+	* lib/target-supports.exp (check_effective_target_cilkplus): Also
+	check that compiling with -fcilkplus does not give an error.
+	* c-c++-common/attr-simd-3.c: Require cilkplus effective target.
+
+2015-12-16  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/16333
+	PR c++/41426
+	PR c++/59879
+	PR c++/66895
+	* g++.dg/conversion/pr16333.C: New test.
+	* g++.dg/conversion/pr41426.C: New test.
+	* g++.dg/conversion/pr59879.C: New test.
+	* g++.dg/conversion/pr66895.C: New test.
+
+2015-12-16  Martin Sebor  <msebor@redhat.com>
+
+	PR c/68868
+	* testsuite/gcc.dg/atomic/stdatomic-init.c: New test.
+
+2015-12-15  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/68805
+	* gcc.target/powerpc/pr68805.c: New test.
+
+2015-12-16  Martin Sebor  <msebor@redhat.com>
+
+	PR objc++/68932
+	* obj-c++.dg/property/at-property-23.mm: Remove check for
+	an error message.
+
+2015-12-13  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/pr68619-4.c: Change size of code bitfield.
+
+2015-12-16  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-c++-common/conflict-markers-1.c: New testcase.
+	* c-c++-common/conflict-markers-2.c: Likewise.
+	* c-c++-common/conflict-markers-3.c: Likewise.
+	* c-c++-common/conflict-markers-4.c: Likewise.
+	* c-c++-common/conflict-markers-5.c: Likewise.
+	* c-c++-common/conflict-markers-6.c: Likewise.
+	* c-c++-common/conflict-markers-7.c: Likewise.
+	* c-c++-common/conflict-markers-8.c: Likewise.
+	* c-c++-common/conflict-markers-9.c: Likewise.
+	* c-c++-common/conflict-markers-10.c: Likewise.
+	* c-c++-common/conflict-markers-11.c: Likewise.
+	* g++.dg/conflict-markers-1.C: Likewise.
+
+2015-12-16  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/cast-function-1.c (bar): Update column numbers.
+	* gcc.dg/diagnostic-range-bad-called-object.c: New test case.
+
+2015-12-16  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/diagnostic-range-static-assert.c: New test case.
+
+2015-12-16  Marek Polacek  <polacek@redhat.com>
+
+	PR c/64637
+	* gcc.dg/pr64637.c: New test.
+
+2015-12-16  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.dg/sibcall-9.c: Xfail for nvptx.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68870
+	* gcc.dg/torture/pr68870.c: New testcase.
+
+2015-12-16  Tom de Vries  <tom@codesourcery.com>
+
+	* g++.dg/ipa/devirt-37.C: Update for new fre2 pass.
+	* g++.dg/ipa/devirt-40.C: Same.
+	* g++.dg/tree-ssa/pr61034.C: Same.
+	* gcc.dg/ipa/ipa-pta-1.c: Update for new pta1 pass.
+	* gcc.dg/ipa/ipa-pta-10.c: Same.
+	* gcc.dg/ipa/ipa-pta-11.c: Same.
+	* gcc.dg/ipa/ipa-pta-14.c: Same.
+	* gcc.dg/ipa/ipa-pta-16.c: Same.
+	* gcc.dg/ipa/ipa-pta-2.c: Same.
+	* gcc.dg/ipa/ipa-pta-5.c: Same.
+	* gcc.dg/ipa/ipa-pta-6.c: Same.
+	* gcc.dg/torture/ipa-pta-1.c: Same.
+	* gcc.dg/ipa/ipa-pta-13.c: Update for new fre2 and pta1 pass.
+	* gcc.dg/ipa/ipa-pta-3.c: Same.
+	* gcc.dg/ipa/ipa-pta-4.c: Same.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR testsuite/68915
+	* gcc.dg/vect/pr46032.c: Use dg-additional-options.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR testsuite/68916
+	PR testsuite/68914
+	* gcc.dg/vect/pr45752.c: Require vect_perm and adjust expected
+	dump.
+	* gcc.dg/vect/slp-perm-4.c: Likewise.
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* lib/target-supports.exp (add_options_for_arm_v8_1a_neon): Update
+	comment.  Use check_effective_target_arm_v8_1a_neon_ok to select
+	the command line options.
+	(check_effective_target_arm_v8_1a_neon_ok_nocache): Update initial
+	test to allow ARM targets.  Select and record a working set of
+	command line options.
+	(check_effective_target_arm_v8_1a_neon_hw): Add tests for ARM
+	targets.
+
+2015-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68648
+	* gcc.c-torture/execute/pr68648.c: New test.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68892
+	* gcc.dg/vect/bb-slp-pr68892.c: New testcase.
+
+2015-12-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/65980
+	* gcc.dg/pr65980.c: New test.
+
 2015-12-15  Martin Sebor  <msebor@redhat.com>
 
-	c++/42121
-	c++/68478
-	c++/68613
-	c++/68689
-	c++/68710
+	PR c++/42121
+	PR c++/68478
+	PR c++/68613
+	PR c++/68689
+	PR c++/68710
 	* g++.dg/compat/struct-layout-1_generate.c: Avoid generating
 	further fields after the first flexible array member.
 	* g++.dg/ext/flexary2.C: Expect a sole flexible array member

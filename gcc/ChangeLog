@@ -1,6 +1,578 @@
+2015-12-17  Jeff Law  <law@redhat.com>
+
+	* doc/invoke.texi (-O2 options): Remove -fsplit-paths.
+	(-O3 options): Add -fsplit-paths.
+	* gimple-ssa-split-paths.c: Include predict.h
+	(split_paths): Only split paths in a loop that should be
+	optimized for speed.
+	* opts.c (default_options_table): Move -fsplit-paths from -O2 to
+	-O3.
+
+2015-12-17  Nathan Sidwell  <nathan@acm.org>
+
+	* ipa-icf.c (sem_item_optimizer::merge): Don't pick 'main' as the
+	source function.
+
+2015-12-17  Sebastian Pop  <s.pop@samsung.com>
+
+	* Makefile.in: Replace ISL with isl.
+	* common.opt: Same.
+	* configure: Regenerate.
+	* configure.ac: Same.
+	* doc/install.texi: Same.
+	* doc/invoke.texi: Same.
+	* graphite-isl-ast-to-gimple.c: Same.
+	* graphite-scop-detection.c: Same.
+	* graphite-sese-to-poly.c: Same.
+	* graphite.c: Same.
+	* graphite.h: Same.
+	* params.def: Same.
+	* testsuite/gcc.dg/graphite/fuse-1.c: Same.
+	* testsuite/gcc.dg/graphite/fuse-2.c: Same.
+	* testsuite/gcc.dg/graphite/interchange-1.c: Same.
+	* testsuite/gcc.dg/graphite/pr35356-1.c: Same.
+	* toplev.c: Same.
+
+2015-12-17  Sebastian Pop  <s.pop@samsung.com>
+
+	* graphite-dependences.c: Move all isl include files to...
+	* graphite-isl-ast-to-gimple.c: Same.
+	* graphite-optimize-isl.c: Same.
+	* graphite-poly.c: Same.
+	* graphite-scop-detection.c: Same.
+	* graphite.c: Same.
+	* graphite.h: ... here.
+
+2015-12-17  Senthil Kumar Selvaraj  <senthil_kumar.selvaraj@atmel.com>
+
+	* config/avr/avr.h (MOVE_MAX): Set value to 1.
+	(MOVE_MAX_PIECES): Define.
+	(MOVE_RATIO): Define.
+	* config/avr/avr.c (TARGET_USE_BY_PIECES_INFRASTRUCTURE_P):
+	Provide target hook.
+	(avr_use_by_pieces_infrastructure_p): New function.
+
+2015-12-17  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config.gcc: mark *-interix* as obsolete.
+
+2015-12-17  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config.gcc: Mark openbsd 2.0 and 3.X as obsolete.
+
+2015-12-17  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config.gcc: Mark knetbsd targets as obsolete.
+
+2015-12-17  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.h (NVPTX_RETURN_REGNUM, FRAME_POINTER_REGNUM,
+	ARG_POINTER_REGNUM, STATIC_CHAIN_REGNUM): Renumber.
+	(REGISTER_NAMES): Update and rename.
+	(FIXED_REGISTERS, CALL_USED_REGISTERS): Update.
+	(enum_reg_class, REG_CLASS_NAMES, REG_CLASS_CONTENTS): Reformat.
+
+2015-12-17  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68946
+	* tree-vect-slp.c (vect_slp_analyze_node_operations): Push
+	SLP def type to stmt operands one stmt at a time.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* langhooks.h (struct lang_hooks_for_types): New get_bias_field.
+	* langhooks-def.h (LANG_HOOKS_GET_TYPE_BIAS): New.
+	(LANG_HOOKS_FOR_TYPES_INITIALIZER): Initialize the
+	get_bias_field.
+	* dwarf2out.c
+	(base_type_die): In non-strict DWARF mode, invoke the
+	get_type_bias language hook for INTEGER_TYPE nodes.  If it
+	returns a bias, emit an attribute for it.
+	(subrange_type_die): Change signature to handle bias.  If
+	non-strict DWARF mode, emit an attribute for it, if one passed.
+	(modified_type_die): For subrange types, invoke the
+	get_type_bias langage hook and pass the bias to
+	subrange_type_die.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* dwarf2out.h (DWARF2OUT_ARRAY_DESCR_INFO_MAX_DIMEN): New macro.
+	(struct array_descr_info): Use it for the dimensions array's
+	size.
+	* dwarf2out.c (gen_type_die_with_usage): Check that the array
+	descr. language hook does not return an array with more
+	dimensions that it should.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* langhooks.h (struct lang_hooks_for_types): Add a
+	get_fixed_point_type_info field.
+	* langhooks-def.h (LANG_HOOKS_GET_FIXED_POINT_TYPE_INFO): New
+	macro.
+	(LANG_HOOKS_FOR_TYPES_INITIALIZER): Initialize the
+	get_fixed_point_type_info field.
+	* dwarf2out.h (enum fixed_point_scale_factor): New.
+	(struct fixed_point_type_info): New.
+	* dwarf2out.c (base_type_die): In DWARFv3 or non-strict DWARF
+	mode, get fixed-point type information using the debugging hook
+	and describe it in DWARF, if any.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* langhooks.h (struct lang_hooks_for_types): Add a
+	get_debug_type field.
+	* langhooks-def.h (LANG_HOOKS_GET_DEBUG_TYPE): New macro.
+	(LANG_HOOKS_FOR_TYPES_INITIALIZER): Initialize the
+	get_debug_type field.
+	* dwarf2out.h (struct array_descr_info): Add an array-wide
+	stride field.
+	* dwarf2out.c (modified_type_die): Invoke the get_debug_type
+	language hook, process its result instead, if any.
+	(gen_descr_array_type_die): Add array-wide stride processing.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* debug.h (struct gcc_debug_hooks): Add a new size_function
+	hook.
+	* debug.c (do_nothing_debug_hooks): Set the size_function field
+	to no-op.
+	* dbxout.c (dbx_debug_hooks, xcoff_debug_hooks): Likewise.
+	* sdbout.c (sdb_debug_hooks): Likewise.
+	* vmsdbgout.c (vmsdbg_debug_hooks): Likewise.
+	* stor-layout.c (finalize_size_functions): Let the debug info
+	back-end know about the implementation of size functions.
+	* dwarf2out.h (dw_discr_list_ref): New typedef.
+	(enum dw_val_class): Add value classes for discriminant values
+	and discriminant lists.
+	(struct dw_discr_value): New structure.
+	(struct dw_val_node): Add discriminant values and discriminant
+	lists to the union.
+	(struct dw_loc_descr_node): Add frame_offset_rel and
+	dw_loc_frame_offset (only for checking) fields to handle DWARF
+	procedures generation.
+	(struct dw_discr_list_node): New structure.
+	* dwarf2out.c (dwarf2out_size_function): New.
+	(dwarf2_debug_hooks): Set the size_function field to
+	dwarf2out_size_function.
+	(dwarf2_lineno_debug_hooks): Set the size_function field to
+	no-op.
+	(new_loc_descr): Initialize the
+	dw_loc_frame_offset field.
+	(dwarf_proc_stack_usage_map): New.
+	(dw_val_equal_p): Handle discriminants.
+	(size_of_discr_value): New.
+	(size_of_discr_list): New.
+	(size_of_die): Handle discriminants.
+	(add_loc_descr_to_each): New.
+	(add_loc_list): New.
+	(print_discr_value): New.
+	(print_dw_val): Handle discriminants.
+	(value_format): Handle discriminants.
+	(output_discr_value): New.
+	(output_die): Handle discriminants.
+	(output_loc_operands): Handle DW_OP_call2 and DW_OP_call4.
+	(uint_loc_descriptor): New.
+	(uint_comparison_loc_list): New.
+	(loc_list_from_uint_comparison): New.
+	(add_discr_value): New.
+	(add_discr_list): New.
+	(AT_discr_list): New.
+	(loc_descr_to_next_no_op): New.
+	(free_loc_descr): New.
+	(loc_descr_without_nops): New.
+	(struct loc_descr_context): Add a dpi field.
+	(struct dwarf_procedure_info): New helper structure.
+	(new_dwarf_proc_die): New.
+	(is_handled_procedure_type): New.
+	(resolve_args_picking_1): New.
+	(resolve_args_picking): New.
+	(function_to_dwarf_procedure): New.
+	(copy_dwarf_procedure): New.
+	(copy_dwarf_procs_ref_in_attrs): New.
+	(copy_dwarf_procs_ref_in_dies): New.
+	(break_out_comdat_types): Copy DWARF procedures along with the
+	types that reference them.
+	(loc_list_from_tree): Rename into loc_list_from_tree_1.  Handle
+	CALL_EXPR in the cases suitable for DWARF procedures.  Handle
+	for PARM_DECL when generating a location description for a DWARF
+	procedure.  Handle big unsigned INTEGER_CST nodes.  Handle
+	NON_LVALUE_EXPR, EXACT_DIV_EXPR and all unsigned comparison
+	operators.  Add a wrapper for loc_list_from_tree that strips
+	DW_OP_nop operations from the result.
+	(type_byte_size): New.
+	(struct vlr_context): New helper structure.
+	(field_byte_offset): Change signature to return either a
+	constant offset or a location description for dynamic ones.
+	Handle dynamic byte offsets with constant bit offsets and handle
+	fields in variant parts.
+	(add_data_member_location): Change signature to handle dynamic
+	member offsets and fields in variant parts.  Update call to
+	field_byte_offset.  Handle location lists.  Emit a variable data
+	member location only when -fgnat-encodings=minimal.
+	(add_bound_info): Emit self-referential bounds only when
+	-fgnat-encodings=minimal.
+	(add_byte_size_attribute): Use type_byte_size in order to handle
+	dynamic type sizes.  Emit variable byte size only when
+	-fgnat-encodings=minimal and when the target DWARF version
+	allows them.
+	(add_bit_offset_attribute): Change signature to handle
+	variable-length records.  Update call to field_byte_offset.
+	(gen_descr_array_type_die): Update call to gen_field_die.
+	Update loc_descr_context literal.
+	(gen_type_die_for_member): Likewise.
+	(gen_subprogram_die): Update calls to get_decl_die.
+	(gen_field_die): Change signature to handle variable-length
+	records.  Update calls to add_bit_offset_attribute and
+	add_data_member_location_attribute.
+	(gen_inheritance_die): Update call to
+	add_data_member_location_attribute.
+	(gen_decl_die): Change signature to handle variable-length
+	records.  Update call to gen_field_die.
+	(gen_inheritance_die): Change signature to handle
+	variable-length records.  Update call to
+	add_data_member_location_attribute.
+	(is_variant_part): New.
+	(analyze_discr_in_predicate): New.
+	(get_discr_value): New.
+	(analyze_variants_discr): New.
+	(gen_variant_part): New.
+	(gen_member_die): Update calls to gen_decl_die.  Call instead
+	gen_variant_part for variant parts.
+	(gen_type_die_with_usage): Update calls to gen_decl_die.
+	(process_scope_var): Likewise.
+	(force_decl_die): Likewise.
+	(declare_in_namespace): Likewise.
+	(dwarf2out_decl): Likewise.
+	(prune_unused_types_walk_loc_descr): New.
+	(prune_unused_types_walk_attribs): Mark DIEs referenced by
+	location descriptions and loc. descr. lists.
+	(prune_unused_types_walk): Don't mark DWARF procedures by
+	default.  Mark variant parts since nothing is supposed to
+	reference them.
+	(dwarf2out_init): Allocate dwarf_proc_stack_usage_map.
+	(dwarf2out_c_finalize): Deallocate and reset
+	dwarf_proc_stack_usage_map.
+
+2015-12-17  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* common.opt (gnat_encodings): New variable
+	(dwarf_gnat_encodings): New enum type.
+	(fgnat_encodings): New option.
+	* flag-types.h (enum dwarf_gnat_encodings): New.
+
+2015-12-17  Christian Bruel  <christian.bruel@st.com>
+
+	* tree.h (TYPE_MODE_RAW): New macro.
+	* tree-streamer-out.c (pack_ts_type_common_value_fields):
+	Replace TYPE_MODE by TYPE_MODE_RAW.
+
+2015-12-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/68835
+	* tree.c (get_int_cst_ext_nunits): Return
+	cst.get_precision () / HOST_BITS_PER_WIDE_INT + 1
+	for all unsigned wi::neg_p (cst) constants.
+	(build_new_int_cst): If cst.get_precision is not a multiple
+	of HOST_BITS_PER_WIDE_INT, zero extend -1 to the precision
+	% HOST_BITS_PER_WIDE_INT.
+
+2015-12-17  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68951
+	* tree-vect-data-refs.c (vect_peeling_hash_get_lowest_cost):
+	Ignore strided non-group accesses.
+
+2015-12-17  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* config/arc/arc.c (arc_loop_hazard): Don't convert the jump label
+	rtx to an rtx_insn until we confirm it's not a return rtx.
+
+2015-12-17  Richard Biener  <rguenther@suse.de>
+
+	* gimple-ssa.h (struct gimple_df): Remove modified_noreturn_calls
+	field.
+	* tree-ssa.c (delete_tree_ssa): Do not zero it.
+
+2015-12-17  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR target/67973
+	* configure.ac (gcc_cv_as_stabs_directive): New test.
+	* configure: Regenerate.
+	* config.in: Regenerate.
+	* config/darwin.h (DBX_DEBUGGING_INFO): Wrap in
+	HAVE_AS_STABS_DIRECTIVE.
+	(PREFERRED_DEBUGGING_TYPE): Likewise.
+	* config/i386/darwin.h (PREFERRED_DEBUGGING_TYPE): Only include
+	DBX_DEBUG if HAVE_AS_STABS_DIRECTIVE.
+
+	* doc/sourcebuild.texi (Effective-Target Keywords, Environment
+	attributes): Document stabs.
+
+2015-12-16  Martin Sebor  <msebor@redhat.com>
+
+	PR c/68868
+	* ginclude/stdatomic.h (atomic_init): Use atomic_store instead
+	of plain assignment.
+
+2015-12-15  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/68805
+	* config/rs6000/rs6000.c (rs6000_gen_le_vsx_permute): Use ROTATE
+	instead of VEC_SELECT for TImode.
+
+	* config/rs6000/vsx.md (VSX_LE): Move TImode from VSX_LE to
+	VSX_LE_128, so that we use ROTATE to swap the 64-bit words instead
+	of using VEC_SELECT.
+	(VSX_LE_128): Likewise.
+	(define_peephole2): Add peephole to eliminate double xxpermdi when
+	copying TImode.
+
+2015-12-16  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/68779
+	* config/pa/pa.md (atomic_loaddi): Honor -mdisable-fpregs.
+	(atomic_loaddi_1): Likewise.
+	(atomic_storedi): Likewise.
+	(atomic_storedi_1): Likewise.
+	(atomic_loaddf): Likewise.
+	(atomic_loaddf_1): Likewise.
+	(atomic_storedf): Likewise.
+	(atomic_storedf_1): Likewise.
+	Move all atomic patterns to end of file.
+
+2015-12-16  Abderrazek Zaafrani  <a.zaafrani@samsung.com>
+
+	* graphite-isl-ast-to-gimple.c: Include isl/schedule_node.h.
+	(set_separate_option): New.
+	(translate_isl_ast_to_gimple::set_options_for_schedule_tree): New.
+	(translate_isl_ast_to_gimple::scop_to_isl_ast): Use scop->schedule.
+	* graphite-optimize-isl.c (optimize_isl): Set scop->schedule, do not
+	free the computed schedule tree.
+	* graphite-poly.c (new_scop): Initialize scop->schedule.
+	* graphite.h: Include isl/schedule.h.
+	(struct scop): Add field schedule.
+
+2015-12-16  Nathan Sidwell  <nathan@acm.org>
+
+	* ipa-visibility.c (can_replace_by_local_alias): Make static,
+	check ASM_OUTPUT_DEF.
+	(can_replace_by_local_alias_in_vtable): Make static.
+	(function_and_variable_visibility): Reformat overlong comment.
+
+2015-12-16  Jeff Law  <law@redhat.com>
+
+	* ree.c (add_removable_extension): Use reg_overlap_mentioned_p
+	rather than testing hard register #s.
+
+2015-12-16  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.h (OUTGOING_STATIC_CHAIN_REGNUM): Remove.
+	(REGISTER_NAMES): Adjust.
+	* config/nvptx/nvptx.c (nvptx_pass_by_reference): Avoid long line.
+	(nvptx_static_hain): Delete.
+	(write_arg_mode): Don't emit initializer if argno < 0.
+	(write_arg_type): Fix whitespace.
+	(init_frame): Initialize reg to zero if frame is zero-sized.
+	(nvptx_declare_function_name):  Use write_arg_type to emit chain
+	decl.
+	(nvptx_output_call_insn): Adjust static chain emission.
+	(nvptx_goacc_reduction): Make static.
+	(TARGET_STATIC_CHAIN): Don't override.
+
+2015-12-16  Aditya Kumar  <aditya.k7@samsung.com>
+
+	* graphite-dependences.c (scop_get_dependences): Use local pointers.
+	* graphite-isl-ast-to-gimple.c
+	(translate_isl_ast_to_gimple::scop_to_isl_ast): Use scop->dependence.
+	* graphite-optimize-isl.c (optimize_isl): Same.
+	* graphite-poly.c (new_scop): Remove initialization of removed
+	members.
+	(free_scop): Same.
+	* graphite.h (struct scop): Remove individial dependence pointers and
+	add a scop::dependence to contain all the dependence.
+
+2015-12-16  Aditya Kumar  <aditya.k7@samsung.com>
+
+	* graphite-sese-to-poly.c (build_poly_sr): Use refs.
+
+2015-12-16  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	* config.in: Regenerate.
+	* configure: Regenerate.
+	* configure.ac: Remove checks for functions that exist in isl 0.13
+	or later.
+	* graphite-isl-ast-to-gimple.c: Remove #ifdefs and code for isl 0.12.
+	* graphite-optimize-isl.c: Same.
+	* graphite-poly.c: Same.
+	* graphite-sese-to-poly.c: Same.
+	* graphite.h: Add comment for isl 0.14.
+	* toplev.c (print_version): Print isl version.
+
+2015-12-10  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-cp.c (ipa_get_indirect_edge_target_1): Use can_refer; do not
+	speculate to impossible targets.
+	* ipa-prop.c (try_make_edge_direct_virtual_call): Likewise.
+
+2015-12-16  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	* graphite-dependences.c (scop_get_reads): Add more dumps.
+	(scop_get_must_writes): Same.
+	(scop_get_may_writes): Same.
+	* graphite-poly.c (new_poly_dr): Same.
+	* graphite-scop-detection.c (build_cross_bb_scalars_def): Same.
+	(gather_bbs::before_dom_children): Same.
+
+2015-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_extend_bitfield_pattern_p):
+	New function.
+	(aarch64_rtx_costs, ZERO_EXTEND, SIGN_EXTEND cases): Use the above
+	to handle extend+shift rtxes.
+
+2015-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68696
+	* config/aarch64/aarch64-simd.md (*aarch64_simd_bsl<mode>_alt):
+	New pattern.
+	(aarch64_simd_bsl<mode>_internal): Update comment to reflect
+	the above.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68870
+	* tree-cfgcleanup.c (cleanup_control_expr_graph): Add first_p
+	parameter, if set only perform trivial constant folding.
+	Queue other blocks with conditions for later processing.
+	(cleanup_control_flow_bb): Add first_p parameter and pass it through.
+	(cleanup_tree_cfg_1): Pass true for the first iteration
+	cleanup_control_expr_graph.
+
+2015-12-16  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx-protos.h (nvptx_hard_regno_mode_ok): Delete.
+	* config/nvptx/nvptx.h (struct machine_function):
+	Reimplement. Adjust all users.
+	* config/nvptx/nvptx.c (nvptx_declare_function_name): Move stack
+	and frame array generation earlier.
+	(nvptx_call_args): Reimplement.
+	(nvptx_expand_call): Adjust.
+	(nvptx_hard_reno_mode_ok): Delete.
+	(nvptx_reorg): Revert scan of hard regs.
+
+2015-12-16  Tom de Vries  <tom@codesourcery.com>
+
+	* opts.c (default_options_optimization): Set fipa-pta on by
+	default for fopenacc.
+	* passes.def: Move kernels pass group to pass_ipa_oacc.
+	* tree-pass.h (make_pass_oacc_kernels2): Remove.
+	(make_pass_ipa_oacc, make_pass_ipa_oacc_kernels): Declare.
+	* tree-ssa-loop.c (pass_oacc_kernels2, make_pass_oacc_kernels2):
+	Remove.
+	(pass_ipa_oacc, pass_ipa_oacc_kernels): New pass.
+	(make_pass_ipa_oacc, make_pass_ipa_oacc_kernels): New function.
+	* tree-ssa-structalias.c (pass_ipa_pta::clone): New function.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68861
+	* tree-vect-slp.c (vect_build_slp_tree): Properly handle
+	duplicate stmts when applying swapping to stmts.
+
+2015-12-16  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	* config/i386/i386-c.c (ix86_target_macros_internal): Remove
+	duplicate check (__CLZERO__).
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm_neon.h (vqrdmlahq_lane_s16): New.
+	(vqrdmlahq_lane_s32): New.
+	(vqrdmlah_lane_s16): New.
+	(vqrdmlah_lane_s32): New.
+	(vqrdmlshq_lane_s16): New.
+	(vqrdmlshq_lane_s32): New.
+	(vqrdmlsh_lane_s16): New.
+	(vqrdmlsh_lane_s32): New.
+	* config/arm/arm_neon_builtins.def: Add "vqrdmlah_lane" and
+	"vqrdmlsh_lane".
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm_neon.h (vqrdmlah_s16, vqrdmlah_s32): New.
+	(vqrdmlahq_s16, vqrdmlahq_s32): New.
+	(vqrdmlsh_s16, vqrdmlsh_s32): New.
+	(vqrdmlahq_s16, vqrdmlshq_s32): New.
+	* config/arm/arm_neon_builtins.def: Add "vqrdmlah" and "vqrdmlsh".
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* doc/sourcebuild.texi (ARM-specific attributes): Add
+	"arm_v8_1a_neon_ok" and "arm_v8_1a_neon_hw".
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-c.c (arm_cpu_builtins): Define
+	__ARM_FEATURE_QRDMX.  Clean up some trailing whitespace.
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/iterators.md (VQRDMLH_AS): New.
+	(neon_rdma_as): New.
+	* config/arm/neon.md
+	(neon_vqrdml<VQRDMLH_AS:neon_rdma_as>h<mode>): New.
+	(neon_vqrdml<VQRDMLH_AS:neon_rdma_as>h_lane<mode>): New.
+	* config/arm/unspecs.md (UNSPEC_VQRDMLAH): New.
+	(UNSPEC_VQRDMLSH): New.
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/t-aprofile: Make "armv8.1-a" and "armv8.1-a+crc"
+	matches for "armv8-a".
+
+2015-12-16  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-arches.def: Add "armv8.1-a" and "armv8.1-a+crc".
+	* config/arm/arm-protos.h (FL2_ARCH8_1): New.
+	(FL2_FOR_ARCH8_1A): New.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm.c (arm_arch8_1): New.
+	(arm_option_override): Set arm_arch8_1.
+	* config/arm/arm.h (TARGET_NEON_RDMA): New.
+	(arm_arch8_1): Declare.
+	* doc/invoke.texi (ARM Options, -march): Add "armv8.1-a" and
+	"armv8.1-a+crc".
+	(ARM Options, -mfpu): Fix a typo.
+
+2015-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68648
+	* config/arm/arm.md (*andsi_iorsi3_notsi): Try to simplify
+	the complement of operands[3] during splitting.
+
+2015-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68892
+	* tree-vect-slp.c (vect_analyze_slp_cost_1): Properly compute
+	cost for permuted loads.
+
+2015-12-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/65980
+	* jump.c (rtx_renumbered_equal_p) <case LABEL_REF>: Use
+	next_nonnote_nondebug_insn instead of next_real_insn and
+	skip over CODE_LABELs too.
+
+2015-12-10  Jan Hubicka  <hubicka@ucw.cz>
+
+	* symtab.c (symtab_node::fixup_same_cpp_alias_visibility):
+	Do not copy DECL_VIRTUAL_P.
+
 2015-12-15  Martin Sebor  <msebor@redhat.com>
 
-	c++/42121
+	PR c++/42121
 	* tree-chkp.c (chkp_find_bound_slots_1): Handle flexible array
 	members.
 	* tree.c (type_contains_placeholder_1): Avoid assuming type has
