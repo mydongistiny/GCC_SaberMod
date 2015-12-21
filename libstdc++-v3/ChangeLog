@@ -1,3 +1,21 @@
+2015-12-18  Ville Voutilainen  <ville.voutilainen@gmail.com>
+
+	Fix a regression introduced by the fix of libstdc++/68276.
+	* src/c++11/ios.cc (_M_grow_words): Catch bad_alloc again so that
+	bad_array_new_length is handled properly.
+
+2015-12-18  Ville Voutilainen  <ville.voutilainen@gmail.com>
+
+	PR libstdc++/68276
+
+	* src/c++11/ios.cc (_M_grow_words): Use nothrow new.
+	* testsuite/27_io/ios_base/storage/11584.cc: Adjust.
+
+2015-12-18  Andris Pavenis  <andris.pavenis@iki.fi>
+
+	* config/os/djgpp/error_constants.h: update according to DJGPP errno
+	macros.
+
 2015-12-15  Jonathan Wakely  <jwakely@redhat.com>
 
 	PR libstdc++/68921

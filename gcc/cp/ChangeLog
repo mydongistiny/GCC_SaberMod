@@ -1,3 +1,32 @@
+2015-12-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/67411
+	* decl2.c (decl_maybe_constant_var_p): Use DECL_HAS_VALUE_EXPR_P.
+
+	PR c++/67411
+	* lambda.c (generic_lambda_fn_p): Split out from...
+	(maybe_add_lambda_conv_op): ...here.
+	* semantics.c (process_outer_var_ref): Don't defer maybe-constant
+	variables in a generic lambda.
+	* pt.c (instantiate_non_dependent_or_null): New.
+	* init.c (constant_value_1): Use it.
+	* cp-tree.h: Declare it and generic_lambda_fn_p.
+
+	PR c++/67411
+	* decl2.c (decl_maybe_constant_var_p): A proxy isn't constant.
+
+2015-12-18  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/68978
+	* tree.c (lvalue_kind) [MODOP_EXPR]: New case.
+
+2015-12-18  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/67592
+	* decl.c (grokdeclarator): Reject constexpr virtual member functions;
+	in error messages, prefer %<virtual%> and %<constexpr%> to virtual
+	and constexpr, respectively.
+
 2015-12-18  Patrick Palka  <ppalka@gcc.gnu.org>
 
 	PR c++/68831
