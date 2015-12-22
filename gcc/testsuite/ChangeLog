@@ -1,3 +1,63 @@
+2015-12-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/67376
+	* g++.dg/cpp0x/constexpr-67376.C: New test.
+
+2015-12-22  Richard Henderson  <rth@redhat.com>
+
+	* g++.dg/tm/noexcept-1.C: Update expected must_not_throw count.
+	* g++.dg/tm/noexcept-4.C: Likewise.
+	* g++.dg/tm/noexcept-5.C: Likewise.
+	* g++.dg/tm/pr67811.C: New.
+
+2015-12-22  Peter Bergner  <bergner@vnet.ibm.com>
+
+	PR target/68772
+	* gcc.target/powerpc/pr68872.c: New test.
+
+2015-12-22  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/68937
+	* gcc.target/i386/pr68937-1.c: New test.
+	* gcc.target/i386/pr68937-2.c: Likewise.
+	* gcc.target/i386/pr68937-3.c: Likewise.
+	* gcc.target/i386/pr68937-4.c: Likewise.
+	* gcc.target/i386/pr68937-5.c: Likewise.
+	* gcc.target/i386/pr68937-6.c: Likewise.
+
+2015-12-22  Marek Polacek  <polacek@redhat.com>
+
+	PR c/69002
+	* gcc.dg/c11-atomic-1.c: Add dg-warnings.
+	* gcc.dg/c11-atomic-4.c: New test.
+
+2015-12-22  Sujoy Saraswati  <sujoy.saraswati@hpe.com>
+
+	* gcc.dg/pr61441.c: New testcase.
+
+2015-12-22  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.dg/torture/pr68264.c: Tweak for Solaris.
+
+2015-12-21  David Malcolm  <dmalcolm@redhat.com>
+
+	* g++.dg/diagnostic/bad-binary-ops.C: New test case.
+	* gcc.dg/bad-binary-ops.c: New test case.
+	gcc.dg/plugin/diagnostic_plugin_show_trees.c (get_range_for_expr):
+	Remove material copied from gcc-rich-location.c
+	(gcc_rich_location::add_expr): Likewise.
+
+2015-12-21  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* gcc.target/arc/builtin_general.c: New test.
+	* gcc.target/arc/builtin_simd.c: Likewise.
+	* gcc.target/arc/builtin_special.c: Likewise.
+
+2015-12-20  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/64910
+	* gcc.target/i386/bittest.c: New test.
+
 2015-12-20  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* gnat.dg/complex1.adb: New test.

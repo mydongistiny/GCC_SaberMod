@@ -1,3 +1,189 @@
+2015-12-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/67376
+	* fold-const.c (size_low_cst): Removed.
+	(fold_comparison): For POINTER_PLUS_EXPR where base is ADDR_EXPR
+	call get_inner_reference and handle INDIRECT_REF base of it.  Use
+	offset_int for computation of the bitpos.
+	(fold_binary_loc) <case EQ_EXPR, NE_EXPR>: Formatting
+	fixes for X +- Y CMP X and C - X CMP X folding.  Add X CMP X +- Y
+	and X CMP C - X folding.
+
+2015-12-22  Richard Henderson  <rth@redhat.com>
+
+	PR ipa/67811
+	* gimple.h (struct gtransaction): Add label_norm, label_uninst;
+	replace label with label_over.
+	(gimple_build_transaction): Remove label parameter.
+	(gimple_transaction_label_norm): New.
+	(gimple_transaction_label_uninst): New.
+	(gimple_transaction_label_over): Rename from gimple_transaction_label.
+	(gimple_transaction_label_norm_ptr): New.
+	(gimple_transaction_label_uninst_ptr): New.
+	(gimple_transaction_label_over_ptr): Rename from
+	gimple_transaction_label_ptr.
+	(gimple_transaction_set_label_norm): New.
+	(gimple_transaction_set_label_uninst): New.
+	(gimple_transaction_set_label_over): Rename from
+	gimple_transaction_set_label.
+	* gimple-pretty-print.c (dump_gimple_transaction): Update.
+	* gimple-streamer-in.c (input_gimple_stmt) [GIMPLE_TRANSACTION]: Same.
+	* gimple-streamer-out.c (output_gimple_stmt) [GIMPLE_TRANSACTION]: Same.
+	* gimple-walk.c (walk_gimple_op) [GIMPLE_TRANSACTION]: Same.
+	* tree-cfg.c (make_edges_bb) [GIMPLE_TRANSACTION]: Same.
+	(cleanup_dead_labels) [GIMPLE_TRANSACTION]: Same.
+	(verify_gimple_transaction): Same.
+	(gimple_redirect_edge_and_branch) [GIMPLE_TRANSACTION]: Same.
+	* tree-inline.c (remap_gimple_stmt) [GIMPLE_TRANSACTION]: Same.
+	* gimple.c (gimple_build_transaction): Remove label parameter;
+	initialize all three label memebers.
+	* gimplify.c (gimplify_transaction): Update call
+	to gimple_build_transaction.
+	* trans-mem.c (make_tm_uninst): New.
+	(lower_transaction): Create uninstrumented code path here...
+	(ipa_tm_scan_calls_transaction): ... not here.
+	(ipa_uninstrument_transaction): Remove.
+
+	* tree-eh.c (honor_protect_cleanup_actions): Do not wrap eh_else
+	in a must-not-throw; set ehp_region for it too.
+
+2015-12-22  Peter Bergner  <bergner@vnet.ibm.com>
+
+	PR target/68772
+	* config/rs6000/rs6000.h (ASM_CPU_SPEC): For -mcpu=powerpc64le,
+	pass %(asm_cpu_power8).
+
+2015-12-22  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/68937
+	* config/i386/i386.c (ix86_function_ok_for_sibcall): Count
+	call to global function via GOT slot as indirect call.
+	* config/i386/i386.md (*sibcall_GOT_32): New pattern.
+	(*sibcall_value_GOT_32): Likewise.
+	* config/i386/predicates.md (sibcall_memory_operand): Rewrite.
+	Allow 32-bit GOT slot only with pseudo register as GOT base.
+	(GOT32_symbol_operand): New predicate.
+
+2015-12-22  Sujoy Saraswati  <sujoy.saraswati@hpe.com>
+
+	* fold-const.c (const_binop): Convert sNaN to qNaN when
+	flag_signaling_nans is off.
+	(const_unop): Avoid the operation, other than NEGATE and
+	ABS, if flag_signaling_nans is on and the operand is an sNaN.
+	(fold_convert_const_real_from_real): Avoid the operation if
+	flag_signaling_nans is on and the operand is an sNaN.
+	(integer_valued_real_unary_p): Update comment stating it
+	returns false for sNaN values.
+	(integer_valued_real_binary_p, integer_valued_real_call_p): Same.
+	(integer_valued_real_single_p): Same.
+	(integer_valued_real_invalid_p, integer_valued_real_p): Same.
+	* fold-const-call.c (fold_const_pow): Avoid the operation
+	if flag_signaling_nans is on and the operand is an sNaN.
+	(fold_const_builtin_load_exponent) Same.
+	(fold_const_call_sss): Same for CASE_CFN_POWI.
+	* gimple-fold.c (gimple_assign_integer_valued_real_p): Same.
+	(gimple_call_integer_valued_real_p): Same.
+	(gimple_phi_integer_valued_real_p): Same.
+	(gimple_stmt_integer_valued_real_p): Same.
+	* simplify-rtx.c (simplify_const_unary_operation): Avoid the
+	operation if flag_signaling_nans is on and the operand is an sNaN.
+	(simplify_const_binary_operation): Same.
+	* tree-ssa-math-opts.c (gimple_expand_builtin_pow): Avoid the
+	operation if flag_signaling_nans is on and the operand is an sNaN.
+
+2015-12-22  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* combine.c (simplify_comparison): Convert preprocessor check of
+	WORD_REGISTER_OPERATIONS into runtime check.
+
+2015-12-22  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR debug/60756
+	* var-tracking.c (tracked_record_parameter_p): New predicate.
+	(track_expr_p): Invoke it.
+	(add_stores): Likewise.
+
+2015-12-21  Jeff Law  <law@redhat.com>
+
+	* dbgcnt.def (dom_unreachable_edges): New debug counter.
+	* tree-ssa-dom.c: Include dbgcnt.h
+	(dom_opt_dom_walker::before_dom_children): Handle the new counter.
+
+2015-12-21  Andrew Pinski <apinski@cavium.com>
+
+	* config/aarch64/aarch64-option-extensions.def (LSE): Change
+	FEAT_STRING to "atomics".
+
+2015-12-21  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* dwarf2out.c (add_data_member_location_attribute): Do not
+	disable dynamic data member offsets descriptions for TREE_BINFO
+	members.
+
+2015-12-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR tree-optimization/65337
+	* tree-ssa-pre.c (eliminate): Also clean up abnormal edges if need be.
+
+2015-12-21  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/s390.c (s390_emit_prologue): Fix base reg condition.
+
+2015-12-21  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/builtins.def: New file.
+	* config/arc/arc.c (arc_init_simd_builtins): Remove.
+	(arc_builtins): Likewise.
+	(TARGET_BUILTIN_DECL): Define.
+	(arc_builtin_id): New enum.
+	(arc_builtin_description): New structure.
+	(arc_bdesc): New variable.
+	(arc_tolower): New function.
+	(def_mbuiltin): Remove.
+	(arc_builtin_decl): New function.
+	(arc_expand_builtin_aligned ): Likewise.
+	(apply_GEN_FCN): Likewise.
+	(arc_init_builtins): Refurbish.
+	(arc_expand_builtin): Likewise.
+	(simd_insn_args_type): Remove.
+	(builtin_description): Likewise
+	(arc_simd_builtin_desc_list): Likewise.
+	(arc_expand_simd_builtin): Likewise.
+	(arc_process_double_reg_moves): Use the new builtin name format.
+	* config/arc/arc.md (unspec): New builtin function UNSPEC codes.
+	(vunspec): New builtin function VUNSPEC codes.
+	(UNSPEC_SWAP, UNSPEC_MUL64, UNSPEC_MULU64, UNSPEC_DIVAW)
+	(UNSPEC_DIRECT, UNSPEC_LP, UNSPEC_CASESI, VUNSPEC_RTIE)
+	(VUNSPEC_SYNC, VUNSPEC_BRK, VUNSPEC_FLAG, VUNSPEC_SLEEP)
+	(VUNSPEC_SWI, VUNSPEC_CORE_READ, VUNSPEC_CORE_WRITE, VUNSPEC_LR)
+	(VUNSPEC_SR, VUNSPEC_TRAP_S, VUNSPEC_UNIMP_S, VUNSPEC_NOP)
+	(UNSPEC_ARC_MEMBAR,VUNSPEC_ARC_CAS, VUNSPEC_ARC_LL)
+	(VUNSPEC_ARC_SC, VUNSPEC_ARC_EX, VUNSPEC_DEXCL)
+	(VUNSPEC_DEXCL_NORES, VUNSPEC_LR_HIGH): Remove.
+	(mul64, mulu64): Remove patterns.
+	(store_direct, *movdf_insn_nolrsr, casesi, casesi_load)
+	(casesi_compact_jump, nopv, swap, divaw, flag, brk, rtie, sync)
+	(swi, sleep, core_read, core_write, lr, sr, trap_s, unimp_s)
+	(doloop_begin_i): Use new builtin function code naming.
+	(kflag, clri, ffs, ffs_f, ffssi2, fls, seti): New patterns.
+	* config/arc/builtins.def: New file.
+	* config/arc/fpx.md: Use new builtin function code naming.
+	* config/arc/simdext.md: New SIMD builtin function UNSPEC
+	codes. Use them in the SIMD patterns.
+
+2015-12-21  Sujoy Saraswati  <sujoy.saraswati@hpe.com>
+
+	PR tree-optimization/61441
+	* real.c (do_add): Make resulting NaN value to be qNaN.
+	(do_multiply, do_divide, do_fix_trunc): Same.
+	(real_arithmetic, real_ldexp, real_convert): Same.
+	(real_isinteger): Updated comment stating it returns false for sNaN.
+
+2015-12-20  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/64910
+	* config/i386/i386.md (testqi_ext_3): Allow HImode.
+
 2015-12-20  Andrew Pinsi  <apinski@cavium.com>
 
 	* config/aarch64/atomics.md
@@ -18,8 +204,9 @@
 
 2015-12-19  Jan Hubicka  <hubicka@ucw.cz>
 
-	PR middle-end/65337
+	PR tree-optimization/65337
 	* tree-ssa-dce.c (bb_postorder): New static var.
+	(mark_stmt_necessary): Add guard for setting bb_contains_live_stmts.
 	(forward_edge_to_pdom): Remove.
 	(remove_dead_stmt): Instead of redirecting edges only keep an edge
 	on a path to nearest live BB.
@@ -30,7 +217,7 @@
 2015-12-19  Eric Botcazou  <ebotcazou@adacore.com>
 
 	PR rtl-optimization/68910
-	* emit-rtl.c (set_unique_reg_note) <>REG_EQUAL>: Add bypass for USEs.
+	* emit-rtl.c (set_unique_reg_note) <REG_EQUAL>: Add bypass for USEs.
 	* config/sparc/sparc.md (anddi3): Enable only in 64-bit mode.
 	(iordi3): Likewise.
 	(xordi3): Likewise.
