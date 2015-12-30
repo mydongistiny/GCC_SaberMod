@@ -1,3 +1,84 @@
+2015-12-29  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/69011
+	* gfortran.dg/allocate_with_source_16.f90: New test.
+
+2015-12-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.target/i386/*.c: Remove extra braces from target selectors.
+
+2015-12-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.target/i386/pr68473-1.c: Add dg-do compile directive.
+
+2015-12-28  John David Anglin  <danglin@gcc.gnu.org>
+
+	* gfortran.dg/coarray_40.f90: Link with libatomic if available.
+
+	* gcc.dg/pr49551.c: Skip on hppa*-*-hpux*.
+
+	* gcc.dg/torture/pr67609.c: Add -fno-common option on hppa*-*-hpux*.
+
+2015-12-28  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* gcc.target/powerpc/p9-lxvx-stxvx-1.c: New.
+	* gcc.target/powerpc/p9-lxvx-stxvx-2.c: New.
+
+2015-12-24  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	* g++.dg/other/i386-2.C: Add -mpku.
+	* g++.dg/other/i386-3.C: Ditto.
+	* gcc.target/i386/rdpku-1.c: New test.
+	* gcc.target/i386/sse-12.c: Add -mpku.
+	* gcc.target/i386/sse-13.c: Ditto.
+	* gcc.target/i386/sse-22.c: Ditto.
+	* gcc.target/i386/sse-33.c: Ditto.
+	* gcc.target/i386/wrpku-1.c: New test.
+
+2015-12-23  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/69023
+	* g++.dg/lookup/name-clash11.C: New test.
+
+2015-12-23  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.dg/alias-15.c: Revert.
+
+2015-12-23  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	PR testsuite/68232
+	* gcc.dg/ifcvt-4.c: Skip for arm*-*-* and powerpc64le*-*-*.
+
+2015-12-23  Nathan Sidwell  <nathan@acm.org>
+
+	* gcc.dg/alias-15.c: New.
+
+2015-12-23  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* g++.dg/dg.exp (tests): Prune "goacc/*" and "goacc-gomp/*" files.
+
+2015-12-23  David Sherwood  <david.sherwood@arm.com>
+
+	* gcc.target/arm/fmaxmin.x: New file used by tests below.
+	* gcc.target/arm/fmaxmin.c: New test.
+	* gcc.target/arm/vect-fmaxmin.c: Likewise.
+
+2015-12-23  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/66232
+	* gcc.target/i386/pr66232-10.c: New test.
+	* gcc.target/i386/pr66232-11.c: Likewise.
+	* gcc.target/i386/pr66232-12.c: Likewise.
+	* gcc.target/i386/pr66232-13.c: Likewise.
+
+2015-12-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/68473
+	* gcc.dg/plugin/diagnostic-test-expressions-1.c (fminl): New decl.
+	(TEST_EQ): New macro.
+	(test_macro): New function.
+	* gcc.target/i386/pr68473-1.c: New test case.
+
 2015-12-22  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/67376
@@ -12,7 +93,7 @@
 
 2015-12-22  Peter Bergner  <bergner@vnet.ibm.com>
 
-	PR target/68772
+	PR target/68872
 	* gcc.target/powerpc/pr68872.c: New test.
 
 2015-12-22  H.J. Lu  <hongjiu.lu@intel.com>
@@ -205,8 +286,7 @@
 2015-12-17  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
 
 	PR target/67973
-	* lib/target-supports.exp (check_effective_target_stabs): New
-	proc.
+	* lib/target-supports.exp (check_effective_target_stabs): New proc.
 	* g++.dg/cpp0x/alias-decl-debug-0.C: Restrict to stabs targets.
 	* g++.dg/other/PR23205.C: Likewise.
 	* g++.dg/other/pr23205-2.C: Likewise.
@@ -246,7 +326,7 @@
 2015-12-16  Martin Sebor  <msebor@redhat.com>
 
 	PR c/68868
-	* testsuite/gcc.dg/atomic/stdatomic-init.c: New test.
+	* gcc.dg/atomic/stdatomic-init.c: New test.
 
 2015-12-15  Michael Meissner  <meissner@linux.vnet.ibm.com>
 

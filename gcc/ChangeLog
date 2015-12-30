@@ -1,3 +1,213 @@
+2015-12-29  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.c (init_float128_ieee): Remove IEEE 128-bit
+	comparison functions in cmp_optab and ucmp_optab.
+	(rs6000_generate_compare): Rewrite IEEE 128-bit floating point
+	software emulation comparisons to only use __eqkf2, __gekf2,
+	__lekf2, and __unordkf2 functions.
+	(rs6000_invalid_binary_op): Add support for -mfloat128-convert.
+
+	* config/rs6000/rs6000-c.c (rs6000_cpu_cpp_builtins): Define
+	__FLOAT128_HARDWARE__ if hardware IEEE 128-bit support is
+	available.
+
+	* config/rs6000/rs6000.opt (-mfloat128-convert): Add debug switch
+	to allow IBM extended double and IEEE 128-bit floating point to be
+	converted with default conversions.
+
+	* config/rs6000/rs6000.md (extendkftf2): Add converters between
+	KFmode and TFmode if -mabi=ieeelongdouble.
+	(trunctfkf2): Likewise.
+	(ieee128_mfvsrd): Split 64-bit integer conversions into 32-bit and
+	64-bit insns.
+	(ieee128_mfvsrd_64bit): Likewise.
+	(ieee128_mfvsrd_32bit): Likewise.
+	(ieee128_mtvsrd): Likewise.
+	(ieee128_mtvsrd_64bit): Likewise.
+	(ieee128_mtvsrd_32bit): Likewise.
+
+	* doc/extend.texi (Floating Types): Document that complex
+	__float128 does not work currently.
+
+	* doc/invoke.texi (RS/6000 and PowerPC Options): Document that
+	-mfloat128 is only supported on PowerPC 64-bit Linux systems.
+
+2015-12-28  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.c (rs6000_emit_le_vsx_move): Verify that
+	this is never called when lxvx/stxvx are available.
+	(pass_analyze_swaps::gate): Don't perform swap optimization when
+	lxvx/stxvx are available.
+	* config/rs6000/vector.md (mov<mode>): Don't call
+	rs6000_emit_le_vsx_move when lxvx/stxvx are available.
+	* config/rs6000/vsx.md (*p9_vecload_<mode>): New define_insn.
+	(*p9_vecstore_<mode>): Likewise.
+	(*vsx_le_perm_load_<mode>:VSX_LE): Disable when lxvx/stxvx are
+	available.
+	(*vsx_le_perm_load_<mode>:VSX_W): Likewise.
+	(*vsx_le_perm_load_v8hi): Likewise.
+	(*vsx_le_perm_load_v16qi): Likewise.
+	(*vsx_le_perm_store_<mode>:VSX_LE): Likewise.
+	([related define_splits]): Likewise.
+	(*vsx_le_perm_store_<mode>:VSX_W): Likewise.
+	([related define_splits]): Likewise.
+	(*vsx_le_perm_store_v8hi): Likewise.
+	([related define_splits]): Likewise.
+	(*vsx_le_perm_store_v16qi): Likewise.
+	([related define_splits]): Likewise.
+	(*vsx_lxvd2x2_le_<mode>): Likewise.
+	(*vsx_lxvd2x4_le_<mode>): Likewise.
+	(*vsx_lxvd2x8_le_V8HI): Likewise.
+	(*vsx_lvxd2x16_le_V16QI): Likewise.
+	(*vsx_stxvd2x2_le_<mode>): Likewise.
+	(*vsx_stxvd2x4_le_<mode>): Likewise.
+	(*vsx_stxvd2x8_le_V8HI): Likewise.
+	(*vsx_stxvdx16_le_V16QI): Likewise.
+	([define_peepholes for vector load fusion]): Likewise.
+
+2015-12-28  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.c (nvptx_output_call_insn): Expect hard regs.
+	* config/nvptx/nvptx.md (nvptx_reg_or_mem_operand): Rename to ...
+	(nvptx_nonimmediate_operand): ... here.  Update all uses.
+	(call_insn_operand): Use REG_P.
+	(call_operation): Allow hard regs.
+
+2015-12-25  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-visibility.c (function_and_variable_visibility): Do not
+	dissolve comdat groups when in LTO mode.
+
+2015-12-25  Andreas Tobler  <andreast@gcc.gnu.org>
+
+	* config/rs6000/freebsd64.h: Delete FREEBSD_DYNAMIC_LINKER32/64
+	defines. Use FBSD_DYNAMIC_LINKER instead.
+	Rename and simplify LINK_OS_FREEBSD_SPEC_DEF32/64 to
+	LINK_OS_FREEBSD_SPEC_DEF.
+
+2015-12-24  Aditya Kumar  <aditya.k7@samsung.com>
+
+	* graphite-sese-to-poly.c (build_loop_iteration_domains): Use ref instead of value.
+	* sese.c (invariant_in_sese_p_rec): Use const ref instead of value.
+	(scalar_evolution_in_region): Same
+	* sese.h (bb_in_region): Same
+	(bb_in_sese_p): Same.
+	(stmt_in_sese_p): Same.
+	(defined_in_sese_p): Same.
+	(loop_in_sese_p): Same.
+
+2015-12-24  Aditya Kumar  <aditya.k7@samsung.com>
+
+	* graphite-scop-detection.c
+	(scop_detection::get_nearest_dom_with_single_entry): Check l ==	l2.
+	(scop_detection::get_nearest_pdom_with_single_exit): Same.
+	(scop_detection::merge_sese): Whitespace.
+	(scop_detection::add_scop): Comment.
+	(build_scops): Whitespace.
+
+2015-12-24  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	* common/config/i386/i386-common.c (OPTION_MASK_ISA_PKU_SET): New.
+	(OPTION_MASK_ISA_PKU_UNSET): Ditto.
+	(ix86_handle_option): Handle OPT_mpku.
+	* config.gcc: Add pkuintrin.h to i[34567]86-*-* and x86_64-*-*
+	targets.
+	* config/i386/cpuid.h (host_detect_local_cpu): Detect PKU feature.
+	* config/i386/i386-c.c (ix86_target_macros_internal): Handle PKU ISA
+	flag.
+	* config/i386/i386.c (ix86_target_string): Add "-mpku" to
+	ix86_target_opts.
+	(ix86_option_override_internal): Define PTA_PKU, mention new key
+	in skylake-avx512. Handle new ISA bits.
+	(ix86_valid_target_attribute_inner_p): Add "pku".
+	(enum ix86_builtins): Add IX86_BUILTIN_RDPKRU and IX86_BUILTIN_WRPKRU.
+	(builtin_description bdesc_special_args[]): Add new built-ins.
+	* config/i386/i386.h (define TARGET_PKU): New.
+	(define TARGET_PKU_P): Ditto.
+	* config/i386/i386.md (define_c_enum "unspecv"): Add UNSPEC_PKU.
+	(define_expand "rdpkru"): New.
+	(define_insn "*rdpkru"): Ditto.
+	(define_expand "wrpkru"): Ditto.
+	(define_insn "*wrpkru"): Ditto.
+	* config/i386/i386.opt (mpku): Ditto.
+	* config/i386/pkuintrin.h: New file.
+	* config/i386/x86intrin.h: Include pkuintrin.h
+	* doc/extend.texi: Describe new built-ins.
+	* doc/invoke.texi: Describe new switches.
+
+2015-12-23  Richard Henderson  <rth@redhat.com>
+
+	PR ipa/67811
+	* tree-cfg.c (make_edges_bb): Add abort edge for outer transactions.
+
+2015-12-23  Nathan Sidwell  <nathan@acm.org>
+
+	* cgraph.h (decl_in_symtab_p): Revert check DECL_IN_CONSTANT_POOL.
+
+2015-12-23  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx-protos.h
+	(nvptx_maybe_convert_symbolic_operand): Delete prototype.
+	* config/nvptx/nvptx.c (nvptx_maybe_convert_symbolic_operand): Delete.
+	(nvptx_output_mov_insn): Record fnsym here.
+	(nvptx_wpropagate): Don't create UNSPEC_TO_GENERIC unspec.
+	* config/nvptx/nvptx.md (UNSPEC_TO_GENERIC): Delete.
+	(symbolic_operand): Delete predicate.
+	(nvptx_nonimmediate_operand): Delete predicate.
+	(mov<mode>): Hard regs are perfectly ok here.
+	(convaddr_<mode>): Delete.
+
+2015-12-23  Nathan Sidwell  <nathan@acm.org>
+
+	* alias.c (compare_base_decls): Simplify in-symtab check.
+	* cgraph.h (decl_in_symtab_p): Check DECL_IN_CONSTANT_POOL.
+
+2015-12-23  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/predicates.md ("larl_operand"): Remove now superfluous
+	const_int and const_double.
+	* genrecog.c (safe_predicate_mode): Return false for VOIDmode
+	LABEL_REFs even if the predicate does not handle const_int,
+	const_double or const_wide_int.
+	* genpreds.c (add_mode_tests): Treat LABEL_REF like CONST_INT.
+
+2015-12-23  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* tree-core.h (enum omp_clause_code): Merge OMP_CLAUSE_USE_DEVICE
+	into OMP_CLAUSE_USE_DEVICE_PTR.  Adjust all users.
+
+2015-12-23  David Sherwood  <david.sherwood@arm.com>
+
+	* config/arm/iterators.md (VMAXMINFNM): New int iterator.
+	(fmaxmin): New int attribute.
+	(fmaxmin_op): Likewise.
+	* config/arm/unspecs.md (UNSPEC_VMAXNM): New unspec.
+	(UNSPEC_VMINNM): Likewise.
+	* config/arm/neon.md (fmaxmin): New pattern.
+	* config/arm/vfp.md (fmaxmin): Likewise.
+
+2015-12-23  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/66232
+	* config/i386/constraints.md (Bs): Allow GOT slot for x32 with
+	64-bit Pmode.
+	(Bw): Likewise.
+	(Bz): Likewise.
+	* config/i386/predicates.md (call_insn_operand): Likewise.
+	(sibcall_insn_operand): Likewise.
+
+2015-12-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/68473
+	* diagnostic-show-locus.c (layout::layout): Make loc_range const.
+	Sanitize the layout_range against ranges that finish before they
+	start.
+
+2015-12-22  Jeff Law  <law@redhat.com>
+
+	* gimple-ssa-split-paths.c (split_paths): Avoid unnecessary block
+	copying.
+
 2015-12-22  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/67376
@@ -49,7 +259,7 @@
 
 2015-12-22  Peter Bergner  <bergner@vnet.ibm.com>
 
-	PR target/68772
+	PR target/68872
 	* config/rs6000/rs6000.h (ASM_CPU_SPEC): For -mcpu=powerpc64le,
 	pass %(asm_cpu_power8).
 
