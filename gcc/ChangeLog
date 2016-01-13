@@ -1,3 +1,51 @@
+2016-01-12  Renlin Li  <renlin.li@arm.com>
+
+	PR target/69082
+	Backport from mainline.
+	2015-08-24  Renlin Li  <renlin.li@arm.com>
+
+	* config/arm/arm-protos.h (arm_valid_symbolic_address_p): Declare.
+	* config/arm/arm.c (arm_valid_symbolic_address_p): Define.
+	* config/arm/arm.md (arm_movt): Use arm_valid_symbolic_address_p.
+	* config/arm/constraints.md ("j"): Add check for high code.
+
+2016-01-12  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	Backport from mainline.
+	2015-12-09  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	PR rtl-optimization/67609
+	* config/aarch64/aarch64.c
+	(aarch64_cannot_change_mode_class): Don't permit word_mode
+	subregs of full vector modes.
+	* config/aarch64/aarch64.md (aarch64_movdi_<mode>low): Use
+	zero_extract rather than truncate.
+	(aarch64_movdi_<mode>high): Likewise.
+
+2016-01-11  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.c (pa_emit_move_sequence): Handle floating point
+	reloads for other unsupported memory operands.
+
+2016-01-11  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/66616
+	* ipa-cp.c (propagate_constants_accross_call): Move thuk check...
+	(call_passes_through_thunk_p): ...here.
+	(find_more_scalar_values_for_callers_subset): Perform thunk checks
+	like propagate_constants_accross_call does.
+	* cgraphclones.c (duplicate_thunk_for_node): Copy can_change_signature
+	flag from the node to the new flag.
+
+2016-01-08  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline
+	2015-12-15  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68851
+	* cgraph.c (collect_callers_of_node_1): Do not collect thunks.
+	(collect_callers): Change comment.
+
 2015-12-25  Andreas Tobler  <andreast@gcc.gnu.org>
 
 	Backport from mainline
