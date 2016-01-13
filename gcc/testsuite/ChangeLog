@@ -1,3 +1,61 @@
+2016-01-12  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	Backport from mainline r222186.
+	2015-04-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/65689
+	* gcc.target/aarch64/c-output-template-4.c: New test.
+
+2015-01-10  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backport from mainline.
+	PR fortran/50221
+	* gfortran.dg/deferred_character_1.f90: New test.
+	* gfortran.dg/deferred_character_4.f90: New test for comment
+	#4 of the PR.
+
+	Backport from mainline.
+	PR fortran/68216
+	* gfortran.dg/deferred_character_2.f90: New test.
+
+	Backport from mainline.
+	PR fortran/67674
+	* gfortran.dg/deferred_character_3.f90: New test.
+
+	Backport from mainline.
+	PR fortran/63932
+	* gfortran.dg/deferred_character_5.f90: New test.
+
+	Backport from mainline.
+	PR fortran/66408
+	* gfortran.dg/deferred_character_6.f90: New test.
+
+	Backport from mainline.
+	PR fortran/49954
+	* gfortran.dg/deferred_character_7.f90: New test.
+
+	Backport from mainline.
+	PR fortran/67779
+	* gfortran.dg/actual_array_offset_1: New test.
+
+2016-01-08  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/68449
+	* g++.dg/pr68449.C: New.
+
+2016-01-08  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline
+	2015-12-15  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68851
+	* g++.dg/ipa/pr68851.C: New test.
+
+2016-01-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68648
+	* gcc.c-torture/execute/pr68648.c: New test.
+
 2015-12-31  Kirill Yukhin  <kirill.yukhin@intel.com>
 
 	* gcc.target/i386/avx512f-vbroadcastsd-3.c: New test.
@@ -111,7 +169,7 @@
 2015-12-14  James Greenhalgh  <james.greenhalgh@arm.com>
 
 	Backport from mainline.
-	2015-12-09  James Greenhalgh  <james.greenhalgh@arm.com> 
+	2015-12-09  James Greenhalgh  <james.greenhalgh@arm.com>
 
 	PR rtl-optimization/67609
 	* gcc.dg/torture/pr67609.c: New.
