@@ -1,3 +1,29 @@
+2016-01-15  Jason Merrill  <jason@redhat.com>
+
+	PR c++/68847
+	* call.c (build_cxx_call): Use fold_non_dependent_expr.
+
+	* typeck2.c (cxx_incomplete_type_diagnostic): Use the location of
+	value.
+
+	PR c++/69257
+	* typeck.c (decay_conversion): Don't call mark_rvalue_use for
+	array/function-to-pointer conversion.  Call
+	complete_type_or_maybe_complain for lvalue-to-rvalue conversion.
+	* call.c (convert_like_real): Print call context if
+	decay_conversion errors.
+
+2016-01-14  Tom de Vries  <tom@codesourcery.com>
+
+	PR tree-optimization/68773
+	* parser.c (cp_parser_oacc_declare, cp_parser_omp_declare_target): Don't
+	set force_output.
+
+2016-01-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/69261
+	* constexpr.c (find_array_ctor_elt): Handle splitting RANGE_EXPR.
+
 2016-01-12  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/68979
