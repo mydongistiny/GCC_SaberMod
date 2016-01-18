@@ -1,3 +1,84 @@
+2016-01-17 John David Anglin  <danglin@gcc.gnu.org>
+
+	* gcc.dg/torture/builtin-integral-1.c: Require c99_runtime.
+
+2016-01-16  Tom de Vries  <tom@codesourcery.com>
+
+	* c-c++-common/goacc/kernels-alias-ipa-pta-4.c: New test.
+
+2016-01-16  Tom de Vries  <tom@codesourcery.com>
+
+	* gcc.dg/parloops-exit-first-loop-alt.c: Move ...
+	* gcc.dg/autopar/parloops-exit-first-loop-alt.c: ... here.  Remove
+	redundant dg-require-effective-target pthread.
+	* gcc.dg/parloops-exit-first-loop-alt-2.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-3.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-4.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-5.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-6.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-7.c: Same.
+	* gcc.dg/parloops-exit-first-loop-alt-pr66652.c: Same.
+
+2016-01-16  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR target/68609
+	* gcc.target/powerpc/recip-6.c: Enable on AIX.
+	* gcc.target/powerpc/recip-7.c: Same.
+
+2016-01-16  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/69091
+	* g++.dg/template/pr69091.C: New test.
+
+2016-01-16  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	* c-c++-common/cilk-plus/AN/an-if.c: Check that the original
+	dump does not contain an error_mark_node.
+	* c-c++-common/cilk-plus/CK/pr60469.c: Likewise.
+	* c-c++-common/cilk-plus/AN/fn_ptr-2.c: New xfail'd test.
+
+2016-01-16  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/68936
+	* g++.dg/template/pr68936.C: New test.
+
+2016-01-15  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR target/68609
+	* gcc.target/powerpc/recip-1.c: Adjust for Goldschmidt's Algorithm.
+	* gcc.target/powerpc/recip-2.c: Same.
+	* gcc.target/powerpc/recip-3.c: Same.
+	* gcc.target/powerpc/recip-4.c: Same.
+	* gcc.target/powerpc/recip-sqrtf.c: Same.
+
+2016-01-15  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69270
+	* gcc.dg/tree-ssa/pr69270-2.c: New test.
+	* gcc.dg/tree-ssa/pr69270-3.c: New test.
+
+2016-01-15  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/49630
+	* gfortran.dg/deferred_character_13.f90: New test for the fix
+	of comment 3 of the PR.
+
+	PR fortran/54070
+	* gfortran.dg/deferred_character_8.f90: New test
+	* gfortran.dg/allocate_error_5.f90: New test
+
+	PR fortran/60593
+	* gfortran.dg/deferred_character_10.f90: New test
+
+	PR fortran/60795
+	* gfortran.dg/deferred_character_14.f90: New test
+
+	PR fortran/61147
+	* gfortran.dg/deferred_character_11.f90: New test
+
+	PR fortran/64324
+	* gfortran.dg/deferred_character_9.f90: New test
+
 2016-01-15  Vladimir Makarov  <vmakarov@redhat.com>
 
 	PR rtl-optimization/69030

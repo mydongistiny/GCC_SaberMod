@@ -1,3 +1,69 @@
+2016-01-18  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	* config/arm/arm.c (thumb1_reorg): Check that the comparison is
+	against the constant 0.
+
+2016-01-17  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	PR tree-optimization/68799
+	* gimple-ssa-strength-reduction.c (create_phi_basis): Directly
+	look up phi candidates in the statement-candidate map.
+	(phi_add_costs): Likewise.
+	(record_phi_increments): Likewise.
+	(phi_incr_cost): Likewise.
+	(ncd_with_phi): Likewise.
+	(all_phi_incrs_profitable): Likewise.
+
+2016-01-17  Jakub Jelinek  <jakub@redhat.com>
+
+	* omp-low.c (mark_loops_in_oacc_kernels_region): Work around
+	-Wmaybe-uninitialized warning.
+
+2016-01-16  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* doc/invoke.texi (Invoking GCC): Add new section to menu.
+	(Option Summary): Update to reflect new section and moved options.
+	(C++ Dialect Options): Move -fvtable-verify and related options.
+	(Debugging Options): Move Sanitizer, Pointer Bounds Checker,
+	and profiling-related options.
+	(Optimization Options): Move profile generation options and
+	-fstack-protector and related options.
+	(Instrumentation Options): New section incorporating moved options.
+	(Code Generation Options): Move -finstrument-functions and
+	related options, -fstack-check, -fstack-limit*, and -fbounds-check.
+
+2016-01-16  Tom de Vries  <tom@codesourcery.com>
+
+	* passes.def: Move pass_expand_omp_ssa out of pass_parallelize_loops.
+
+2016-01-16  Tom de Vries  <tom@codesourcery.com>
+
+	* omp-low.c (expand_omp_atomic_fetch_op):  Release defs of update stmt.
+
+2016-01-16  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* hash-table.h (hash_table::empty): Turn into an inline wrapper
+	that checks whether the table is already empty.  Rename the
+	original implementation to...
+	(hash_table::empty_slot): ...this new private function.
+
+2016-01-15  David Malcolm  <dmalcolm@redhat.com>
+
+	PR diagnostic/68899
+	* diagnostic-show-locus.c (layout::print_source_line): Move x
+	offset of line until after call to
+	get_line_width_without_trailing_whitespace.
+
+2016-01-15  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69270
+	* tree-ssanames.c (ssa_name_has_boolean_range): Moved here from
+	tree-ssa-dom.c.  Improve test for [0..1] ranve from VRP.
+	* tree-ssa-dom.c (ssa_name_has_boolean_range): Remove.
+	* tree-ssanames.h (ssa_name_has_boolean_range): Prototype.
+	* tree-ssa-uncprop.c (associate_equivalences_with_edges): Use
+	ssa_name_has_boolean_range and constant_boolean_node.
+
 2016-01-15  Vladimir Makarov  <vmakarov@redhat.com>
 
 	PR rtl-optimization/69030
