@@ -1,3 +1,24 @@
+2016-01-27  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* gcc.dg/and-1.c: Remove nand test for powerpc*-*-*.
+
+2016-01-27  Tom de Vries  <tom@codesourcery.com>
+
+	* gcc.dg/autopar/pr69110.c: Fix pass number.
+
+2016-01-26  Tom de Vries  <tom@codesourcery.com>
+
+	PR tree-optimization/69110
+	* gcc.dg/autopar/pr69110.c: New test.
+
+2016-01-25  Tom de Vries  <tom@codesourcery.com>
+
+	backport from trunk:
+	PR tree-optimization/PR64091
+	2014-11-27  Richard Biener  <rguenther@suse.de>
+
+	* gcc.dg/torture/pr64091.c: New testcase.
+
 2016-01-22  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
 
 	Backport from mainline
