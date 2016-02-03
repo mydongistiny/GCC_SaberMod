@@ -1,3 +1,313 @@
+2016-02-02  Jakub Jelinek  <jakub@redhat.com>
+
+	* wide-int.cc (canonize_uhwi): New function.
+	(wi::divmod_internal): Use it.
+
+2016-02-02  James Norris  <jnorris@codesourcery.com
+
+	* gimplify.c (omp_notice_variable): Add usage check.
+
+2016-02-02  Alexander Monakov  <amonakov@ispras.ru>
+
+	* config/nvptx/nvptx.c (nvptx_print_operand): Treat LEU, GEU, LTU, GTU
+	like LE, GE, LT, GT when emitting relational operator.
+
+2016-02-02  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* ira-costs.c (find_costs_and_classes): Add extra argument.
+	* target.def (ira_change_pseudo_allocno_class): Add parameter.
+	* targhooks.h (ira_change_pseudo_allocno_class): Likewise.
+	* targhooks.c (ira_change_pseudo_allocno_class): Likewise.
+	* config/aarch64/aarch64.c (aarch64_ira_change_pseudo_allocno_class)
+	Add best_class parameter, and return it if not ALL_REGS.
+	* config/mips/mips.c (mips_ira_change_pseudo_allocno_class):
+	Add parameter.
+	* doc/tm.texi (TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS):
+	Update target hook.
+
+2016-02-02  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/aarch64/aarch64.c
+	(TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS): New define.
+	(aarch64_ira_change_pseudo_allocno_class): New function.
+
+2016-02-02  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/67032
+	* config/i386/i386.c (geode_cost): Increase cost of MMX and SSE moves.
+
+2016-02-02  Senthil Kumar Selvaraj  <senthil_kumar.selvaraj@atmel.com>
+
+	* config/avr/avr.c (avr_option_override): Set
+	PARAM_ALLOW_STORE_DATA_RACES to 1.
+
+2016-02-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69595
+	* match.pd: Add range test simplifications to true/false.
+
+2016-02-02  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* omp-builtins.def (BUILT_IN_GOACC_HOST_DATA): Remove.
+	* omp-low.c (expand_omp_target): Use BUILT_IN_GOACC_DATA_START
+	instead.
+
+2016-02-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69606
+	* tree-ssa-math-opts.c (bswap_replace): Clear flow sensitive
+	info on the result before moving a stmt.
+
+2016-02-02  Yuri Rumyantsev  <ysrumyan@gmail.com>
+
+	PR middle-end/68542
+	* config/i386/i386.c (ix86_expand_branch): Add support for conditional
+	branch with vector comparison.
+	* config/i386/sse.md (VI48_AVX): New mode iterator.
+	(define_expand "cbranch<mode>4): Add support for conditional branch
+	with vector comparison.
+	* tree-vect-loop.c (optimize_mask_stores): New function.
+	* tree-vect-stmts.c (vectorizable_mask_load_store): Initialize
+	has_mask_store field of vect_info.
+	* tree-vectorizer.c (vectorize_loops): Invoke optimaze_mask_stores for
+	vectorized loops having masked stores after vec_info destroy.
+	* tree-vectorizer.h (loop_vec_info): Add new has_mask_store field and
+	correspondent macros.
+	(optimize_mask_stores): Add prototype.
+
+2016-02-02  Alan Modra  <amodra@gmail.com>
+
+	PR target/69548
+	* config/rs6000/predicates.md (quad_int_reg_operand): Don't
+	allow subregs.
+
+2016-02-02  Alan Modra  <amodra@gmail.com>
+
+	PR target/68662
+	* config/rs6000/rs6000.c (need_toc_init): New var, set it
+	whenever toc_label_name used.
+	(rs6000_file_start): Don't set up toc section here,
+	(rs6000_output_function_epilogue): do so here instead,
+	(rs6000_xcoff_file_start): and here.
+	* config/rs6000/rs6000.md (load_toc_aix_si): Set need_toc_init.
+	(load_toc_aix_di): Likewise.
+
+2016-02-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/69592
+	* rtlanal.c (nonzero_bits_binary_arith_p): New inline function.
+	(cached_nonzero_bits): Use it instead of ARITHMETIC_P.
+	(num_sign_bit_copies_binary_arith_p): New inline function.
+	(cached_num_sign_bit_copies): Use it instead of ARITHMETIC_P.
+
+2016-02-01  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69580
+	* params.def (FSM_MAXIMUM_PHI_ARGUMENTS): New param.
+	* tree-ssa-threadbackward.c
+	(fsm_find_control_statement_thread_paths): Do not try to walk
+	through large PHI nodes.
+
+2016-02-01  Jakub Jelinek  <jakub@redhat.com>
+
+	* ifcvt.c (bb_ok_for_noce_convert_multiple_sets): Return false
+	when count is incremented above limit, don't analyze further
+	insns afterwards.
+
+	* omp-low.c (oacc_parse_default_dims): Avoid
+	-Wsign-compare warning, make sure value fits into int
+	rather than just unsigned int.
+
+2016-02-01  Bin Cheng  <bin.cheng@arm.com>
+
+	PR tree-optimization/67921
+	* fold-const.c (split_tree): New parameters.  Convert pointer
+	type variable part to proper type before negating.
+	(fold_binary_loc): Pass new arguments to split_tree.
+
+2016-02-01  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* config/nvptx/nvptx.c (PTX_GANG_DEFAULT): New.
+	(nvptx_goacc_validate_dims): Extend to handle global defaults.
+	* target.def (OACC_VALIDATE_DIMS): Extend documentation.
+	* doc/tm.texti: Rebuilt.
+	* doc/invoke.texi (fopenacc-dim): Document.
+	* lto-wrapper.c (merge_and_complain): Add OPT_fopenacc_dim_ case.
+	(append_compiler_options): Likewise.
+	* omp-low.c (oacc_default_dims, oacc_min_dims): New.
+	(oacc_parse_default_dims): New.
+	(oacc_validate_dims): Add USED arg.  Select non-unity default when
+	possible.
+	(oacc_loop_fixed_partitions): Return mask of used partitions.
+	(oacc_loop_auto_partitions): Emit dump info.
+	(oacc_loop_partition): Return mask of used partitions.
+	(execute_oacc_device_lower): Parse default dimension arg.  Adjust
+	loop partitioning and validation calls.
+
+2016-02-01  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69556
+	* match.pd: Guard (C1/X)*C2 -> (C1*C2)/X with single_use.
+
+2016-02-01  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69574
+	* tree-chrec.c (hide_evolution_in_other_loops_than_loop): Instead
+	of asserting return chrec_dont_know.
+
+2016-02-01  Martin Liska  <mliska@suse.cz>
+
+	* mem-stats-traits.h: Add copyright header.
+	* mem-stats.h: Likewise.
+
+2016-02-01  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69579
+	* tree-ssa-loop-ivcanon.c (propagate_constants_for_unrolling):
+	Do not propagate through abnormal PHI results.
+
+2016-02-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* postreload.c (reload_cse_simplify): Remove dead code.
+
+2016-02-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/69570
+	* ifcvt.c (bb_ok_for_noce_convert_multiple_sets): Return true only
+	if there is more than one set, not if there is a single set.
+
+2016-02-01  Richard Henderson  <rth@redhat.com>
+
+	PR rtl-opt/69535
+	* combine.c (make_compound_operation): When looking through a
+	subreg, make sure to re-extend to the width of the outer mode.
+
+2016-01-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/69546
+	* wide-int.cc (wi::divmod_internal): For unsigned division
+	where both operands fit into uhwi, if o1 is 1 and o0 has
+	msb set, if divident_prec is larger than bits per hwi,
+	clear another quotient word and return 2 instead of 1.
+	Similarly for remainder with msb in HWI set, if dividend_prec
+	is larger than bits per hwi.
+
+2016-01-29  Martin Jambor  <mjambor@suse.cz>
+
+	* hsa-gen.c (get_memory_order_name): Mask with MEMMODEL_BASE_MASK.
+	Use short lowercase names.
+	(get_memory_order): Mask with MEMMODEL_BASE_MASK.  Support
+	MEMMODEL_CONSUME with acquire semantics and MEMMODEL_SEQ_CST with
+	acq_rel one.  Protect warning agains segfaults if
+	get_memory_order_name returns NULL.
+	(gen_hsa_ternary_atomic_for_builtin): Support with MEMMODEL_SEQ_CST
+	with release semantics.  Do not warn if get_memory_order already did.
+	(gen_hsa_insns_for_call): Support with MEMMODEL_SEQ_CST with acquire
+	semantics.  Fix check for relaxed or acquire semantics.  Do not warn
+	if get_memory_order already did.
+
+2016-01-29  Sebastian Pop  <s.pop@samsung.com>
+
+	* doc/install.texi: Document that isl-0.16 is supported.
+
+2016-01-29  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR target/69299
+	* config/i386/constraints.md (Bm): Describe as special memory
+	constraint.
+	* doc/md.texi (DEFINE_SPECIAL_MEMORY_CONSTRAINT): Describe it.
+	* genoutput.c (main): Process DEFINE_SPECIAL_MEMORY_CONSTRAINT.
+	* genpreds.c (struct constraint_data): Add is_special_memory.
+	(have_special_memory_constraints, special_memory_start): New
+	static vars.
+	(special_memory_end): Ditto.
+	(add_constraint): Add new arg is_special_memory.  Add code to
+	process its true value.  Update have_special_memory_constraints.
+	(process_define_constraint): Pass the new arg.
+	(process_define_register_constraint): Ditto.
+	(choose_enum_order): Process special memory.
+	(write_tm_preds_h): Generate enum const CT_SPECIAL_MEMORY and
+	function insn_extra_special_memory_constraint.
+	(main): Process DEFINE_SPECIAL_MEMORY_CONSTRAINT.
+	* gensupport.c (process_rtx): Process
+	DEFINE_SPECIAL_MEMORY_CONSTRAINT.
+	* ira-costs.c (record_reg_classes): Process CT_SPECIAL_MEMORY.
+	* ira-lives.c (single_reg_class): Use
+	insn_extra_special_memory_constraint.
+	* ira.c (ira_setup_alts): Process CT_SPECIAL_MEMORY.
+	* lra-constraints.c (process_alt_operands): Ditto.
+	(curr_insn_transform): Use insn_extra_special_memory_constraint.
+	* recog.c (asm_operand_ok, preprocess_constraints): Process
+	CT_SPECIAL_MEMORY.
+	* reload.c (find_reloads): Ditto.
+	* rtl.def (DEFINE_SPECIFAL_MEMORY_CONSTRAINT): New.
+	* stmt.c (parse_input_constraint): Use
+	insn_extra_special_memory_constraint.
+
+2016-01-29  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/69530
+	* lra-splill.c (lra_final_code_change): Revert r229087 by
+	removing all sub-registers.
+
+2016-01-29  Steve Ellcey  <sellcey@imgtec.com>
+
+	PR target/65604
+	* config/mips/mips.c (mips_output_division): Check flag_delayed_branch.
+
+2016-01-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69551
+	* config/i386/i386.c (ix86_expand_vector_set) <case V4SImode>: For
+	SSE1, copy target into the temporary reg first before recursing
+	on it.
+
+2016-01-29  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* config/i386/sse.md (sse2_cvtps2pd<mask_name>): Replace vBm
+	with vm.
+
+2016-01-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	* ginclude/stdarg.h: Test __cplusplus instead of
+	__GXX_EXPERIMENTAL_CXX0X__.
+
+2016-01-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69547
+	* tree-ssa-dce.c (mark_aliased_reaching_defs_necessary_1):
+	Do not mark clobbers necessary.
+	(mark_all_reaching_defs_necessary_1): Likewise.
+
+2016-01-29  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/s390-c.c (s390_resolve_overloaded_builtin): Format
+	declaration name with %qs and print it in both error messages.
+	Also fix indentation.
+
+2016-01-29  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	PR other/69006
+	* config/s390/s390-c.c (s390_resolve_overloaded_builtin): Remove
+	trailing blank line from error message.
+
+2016-01-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR c++/69462
+	* ginclude/float.h: Also provide FLT_EVAL_METHOD and DECIMAL_DIG
+	for C++-11.
+
+2016-01-29  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69537
+	* match.pd: Allow all integral types when simplifying a
+	widening or sign-changing conversion.
+
+2016-01-28  Sebastian Pop  <s.pop@samsung.com>
+
+	* graphite-isl-ast-to-gimple.c (get_rename_from_scev): Revert assert
+	back to setting codegen_error to fail codegen.
+
 2016-01-28  Uros Bizjak  <ubizjak@gmail.com>
 
 	PR target/69459

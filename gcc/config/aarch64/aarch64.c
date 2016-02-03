@@ -724,6 +724,37 @@ aarch64_err_no_fpadvsimd (machine_mode mode, const char *msg)
     error ("%qs feature modifier is incompatible with %s %s", "+nofp", mc, msg);
 }
 
+/* Implement TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS.
+   The register allocator chooses ALL_REGS if FP_REGS and GENERAL_REGS have
+   the same cost even if ALL_REGS has a much larger cost.  ALL_REGS is also
+   used if the cost of both FP_REGS and GENERAL_REGS is lower than the memory
+   cost (in this case the best class is the lowest cost one).  Using ALL_REGS
+   irrespectively of its cost results in bad allocations with many redundant
+   int<->FP moves which are expensive on various cores.
+   To avoid this we don't allow ALL_REGS as the allocno class, but force a
+   decision between FP_REGS and GENERAL_REGS.  We use the allocno class if it
+   isn't ALL_REGS.  Similarly, use the best class if it isn't ALL_REGS.
+   Otherwise set the allocno class depending on the mode.
+   The result of this is that it is no longer inefficient to have a higher
+   memory move cost than the register move cost.
+*/
+
+static reg_class_t
+aarch64_ira_change_pseudo_allocno_class (int regno, reg_class_t allocno_class,
+					 reg_class_t best_class)
+{
+  enum machine_mode mode;
+
+  if (allocno_class != ALL_REGS)
+    return allocno_class;
+
+  if (best_class != ALL_REGS)
+    return best_class;
+
+  mode = PSEUDO_REGNO_MODE (regno);
+  return FLOAT_MODE_P (mode) || VECTOR_MODE_P (mode) ? FP_REGS : GENERAL_REGS;
+}
+
 static unsigned int
 aarch64_min_divisions_for_recip_mul (enum machine_mode mode)
 {
@@ -14008,6 +14039,10 @@ aarch64_optab_supported_p (int op, machine_mode, machine_mode,
 
 #undef  TARGET_INIT_BUILTINS
 #define TARGET_INIT_BUILTINS  aarch64_init_builtins
+
+#undef TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS
+#define TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS \
+  aarch64_ira_change_pseudo_allocno_class
 
 #undef TARGET_LEGITIMATE_ADDRESS_P
 #define TARGET_LEGITIMATE_ADDRESS_P aarch64_legitimate_address_hook_p
