@@ -1,3 +1,40 @@
+2016-02-02  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/67032
+	* config/i386/i386.c (geode_cost): Increase cost of MMX and SSE moves.
+
+2016-02-02  Alan Modra  <amodra@gmail.com>
+
+	PR target/69548
+	* config/rs6000/predicates.md (quad_int_reg_operand): Don't
+	allow subregs.
+
+2016-01-29  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/69355
+	* tree-sra.c (analyze_access_subtree): Correct hole detection when
+	total_scalarization fails.
+
+2016-01-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2016-01-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69551
+	* config/i386/i386.c (ix86_expand_vector_set) <case V4SImode>: For
+	SSE1, copy target into the temporary reg first before recursing
+	on it.
+
+2016-01-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/69459
+	* config/i386/constraints.md (C): Only accept constant zero operand.
+	(BC): New constraint.
+	* config/i386/sse.md (*mov<mode>_internal): Use BC constraint
+	instead of C constraint.
+	* doc/md.texi (Machine Constraints): Update description
+	of C constraint.
+
 2016-01-26  Tom de Vries  <tom@codesourcery.com>
 
 	PR tree-optimization/69110
@@ -133,7 +170,7 @@
 2015-12-25  Andreas Tobler  <andreast@gcc.gnu.org>
 
 	Backport from mainline
-        2015-12-25  Andreas Tobler  <andreast@gcc.gnu.org>
+	2015-12-25  Andreas Tobler  <andreast@gcc.gnu.org>
 
 	* config/rs6000/freebsd64.h: Delete FREEBSD_DYNAMIC_LINKER32/64
 	defines. Use FBSD_DYNAMIC_LINKER instead.
@@ -368,8 +405,8 @@
 	* tree-sra.c (replace_removed_params_ssa_names): Do not distinguish
 	between types of statements but accept original definitions as a
 	parameter.
- 	(ipa_sra_modify_function_body): Use FOR_EACH_SSA_DEF_OPERAND to
- 	iterate over definitions.
+	(ipa_sra_modify_function_body): Use FOR_EACH_SSA_DEF_OPERAND to
+	iterate over definitions.
 
 2015-10-27  Caroline Tice  <cmtice@google.com>
 
@@ -781,7 +818,7 @@
 2015-07-01  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
 
 	Backport from mainline
-        2015-06-24  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+	2015-06-24  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
 
 	PR target/63408
 	* config/arm/arm.c (vfp3_const_double_for_fract_bits): Disable
@@ -845,8 +882,8 @@
 	Backport from mainline r212178.
 	2014-06-30  Joseph Myers  <joseph@codesourcery.com>
 
-        * var-tracking.c (add_stores): Return instead of asserting if old
-        and new values for conditional store are the same.
+	* var-tracking.c (add_stores): Return instead of asserting if old
+	and new values for conditional store are the same.
 
 2015-06-23  Ludovic Courtès  <ludo@gnu.org>
 

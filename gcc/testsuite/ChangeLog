@@ -1,3 +1,26 @@
+2016-02-02  Alan Modra  <amodra@gmail.com>
+
+	PR target/69548
+	* gcc.target/powerpc/pr69548.c: New test.
+
+2016-01-29  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/69355
+	* gcc.dg/tree-ssa/pr69355.c: New test.
+
+2016-01-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2016-01-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69551
+	* gcc.target/i386/pr69551.c: New test.
+
+2016-01-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/69459
+	* gcc.target/i386/pr69459.c: New test.
+
 2016-01-27  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
 
 	* gcc.dg/and-1.c: Remove nand test for powerpc*-*-*.
