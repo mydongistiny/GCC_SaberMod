@@ -1,3 +1,35 @@
+2016-02-09  Bernd Schmidt  <bernds@codesourcery.com>
+
+	PR middle-end/65702
+	* varasm.c (make_decl_rtl): Mark invalid register vars as
+	DECL_EXTERNAL.
+
+2016-02-04  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	Backport from mainline
+	2016-02-04  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR rtl-optimization/64682
+	PR rtl-optimization/69567
+	* combine.c (distribute_notes) <REG_DEAD>: Place the death note
+	before I2 only if the register is both used and set in I2.
+
+2016-02-04  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2016-02-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69644
+	* config/rs6000/rs6000.c (rs6000_expand_atomic_compare_and_swap):
+	Force oldval into register if it does not satisfy reg_or_short_operand
+	predicate.  Fix up formatting.
+
+2016-02-03  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	PR target/69118
+	* config/i386/sse.md (define_insn "avx512f_maskcmp<mode>3"):
+	Fix target.
+
 2016-02-02  Uros Bizjak  <ubizjak@gmail.com>
 
 	PR target/67032
