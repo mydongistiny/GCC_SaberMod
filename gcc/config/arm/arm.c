@@ -1982,7 +1982,7 @@ const struct tune_params arm_cortex_a53_tune =
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
-  FUSE_OPS (tune_params::FUSE_MOVW_MOVT),
+  FUSE_OPS (tune_params::FUSE_MOVW_MOVT | tune_params::FUSE_AES_AESMC),
   tune_params::SCHED_AUTOPREF_OFF
 };
 
@@ -2005,7 +2005,7 @@ const struct tune_params arm_cortex_a57_tune =
   tune_params::DISPARAGE_FLAGS_ALL,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
-  FUSE_OPS (tune_params::FUSE_MOVW_MOVT),
+  FUSE_OPS (tune_params::FUSE_MOVW_MOVT | tune_params::FUSE_AES_AESMC),
   tune_params::SCHED_AUTOPREF_FULL
 };
 
@@ -28934,7 +28934,7 @@ arm_emit_coreregs_64bit_shift (enum rtx_code code, rtx out, rtx in,
 	 shift-by-register would give.  This helps reduce execution
 	 differences between optimization levels, but it won't stop other
          parts of the compiler doing different things.  This is "undefined
-         behaviour, in any case.  */
+         behavior, in any case.  */
       if (INTVAL (amount) <= 0)
 	emit_insn (gen_movdi (out, in));
       else if (INTVAL (amount) >= 64)
@@ -29717,6 +29717,10 @@ aarch_macro_fusion_pair_p (rtx_insn* prev, rtx_insn* curr)
 
   if (!arm_macro_fusion_p ())
     return false;
+
+  if (current_tune->fusible_ops & tune_params::FUSE_AES_AESMC
+      && aarch_crypto_can_dual_issue (prev, curr))
+    return true;
 
   if (current_tune->fusible_ops & tune_params::FUSE_MOVW_MOVT)
     {

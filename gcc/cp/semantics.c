@@ -6656,6 +6656,14 @@ finish_omp_clauses (tree clauses, bool allow_fields, bool declare_simd)
 	      remove = true;
 	    }
 	  else if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_MAP
+		   && OMP_CLAUSE_MAP_KIND (c) == GOMP_MAP_FORCE_DEVICEPTR
+		   && !type_dependent_expression_p (t)
+		   && !POINTER_TYPE_P (TREE_TYPE (t)))
+	    {
+	      error ("%qD is not a pointer variable", t);
+	      remove = true;
+	    }
+	  else if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_MAP
 		   && OMP_CLAUSE_MAP_KIND (c) == GOMP_MAP_FIRSTPRIVATE_POINTER)
 	    {
 	      if (bitmap_bit_p (&generic_head, DECL_UID (t))
@@ -8699,7 +8707,7 @@ finish_decltype_type (tree expr, bool id_expression_or_member_access_p,
 
   /* The type denoted by decltype(e) is defined as follows:  */
 
-  expr = resolve_nondeduced_context (expr);
+  expr = resolve_nondeduced_context (expr, complain);
 
   if (invalid_nonstatic_memfn_p (input_location, expr, complain))
     return error_mark_node;
