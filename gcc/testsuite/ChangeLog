@@ -1,3 +1,136 @@
+2016-02-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69882
+	* gfortran.dg/vect/pr69882.f90: New testcase.
+
+2016-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69885
+	* gcc.dg/pr69885.c: New test.
+
+2016-02-22  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR target/69806
+	PR target/54089
+	* gcc.target/sh/pr54089-10.c: New.
+
+2016-02-20  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/69423
+	* gfortran.dg/deferred_character_15.f90 : New test.
+
+2016-02-20  Dominique d'Humieres  <dominiq@lps.ens.fr>
+
+	PR fortran/57365
+	gfortran.dg/allocate_with_source_18.f03: New test.
+
+2016-02-20  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/52531
+	gfortran.dg/gomp/pr52531.f90: New test.
+
+2016-02-19  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR c++/69865
+	* c-c++-common/Wshift-negative-value-6.c: Add -std=c++11 before
+	-std=c++03.
+
+2016-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/69826
+	* c-c++-common/cilk-plus/CK/pr69826-1.c: New test.
+	* c-c++-common/cilk-plus/CK/pr69826-2.c: New test.
+
+	PR c++/69850
+	* g++.dg/warn/Wnonnull-compare-4.C: New test.
+
+	PR c++/69851
+	* g++.dg/torture/pr69851.C: New test.
+
+2016-02-19  Martin Sebor  <msebor@redhat.com>
+
+	PR testsuite/69573
+	* gcc.dg/pr61053.c: Tweaked test to avoid bogus failures.
+
+2016-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/69850
+	* g++.dg/warn/Wnonnull-compare-2.C: New test.
+	* g++.dg/warn/Wnonnull-compare-3.C: New test.
+
+	PR c++/67767
+	* g++.dg/cpp0x/pr67767.C: New test.
+
+2016-02-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* lib/target-supports.exp: Define aarch64_asm_FUNC_ok checks
+	for fp, simd, crypto, crc, lse.
+	* doc/sourcebuild.texi (AArch64-specific attributes): Document the
+	above.
+	* gcc.target/aarch64/assembler_arch_1.c: Add aarch64_asm_lse_ok
+	effective target check.
+
+2016-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69820
+	* gcc.target/i386/pr69820.c: New test.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/vector/int128-1.c: New test.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/vector/vec-vcond-1.c: New test.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/md/movstr-1.c: Allow also the z13 strings
+	instruction pattern name to prevent the testcase from failing with
+	-march=z13.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/md/movstr-2.c: New test.
+
+2016-02-19  Marcin Kościelnicki  <koriakin@0x04.net>
+
+	* gcc.target/s390/morestack.c: New test.
+
+2016-02-19  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	PR target/69625
+	* gcc.target/s390/pr69625.c: Add test case.
+
+2016-02-18  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR testsuite/68580
+	* c-c++-common/tsan/pr65400-1.c (v, q, o): Make 8-byte aligned.
+
+2016-02-18  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/68404
+	* gcc.target/powerpc/fusion.c: Revert the 2016-02-09 change.
+	* gcc.target/powerpc/fusion3.c: Likewise.
+
+2016-02-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69553
+	* g++.dg/torture/pr69553.C: New testcase.
+
+2016-02-18  Nick Clifton  <nickc@redhat.com>
+
+	PR target/62254
+	PR target/69610
+	* gcc.target/arm/pr62554.c: New test.
+	* gcc.target/arm/pr69610-1.c: New test.
+	* gcc.target/arm/pr69610-2.c: New test.
+
+2016-02-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69854
+	* gcc.dg/torture/pr69854.c: New testcase.
+
 2016-02-17  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/69850
@@ -478,7 +611,7 @@
 	PR tree-optimization/68541
 	* gcc.dg/tree-ssa/split-path-2.c: Make char array explicitly signed.
 
-        PR tree-optimization/65917
+	PR tree-optimization/65917
 	* gcc.dg/tree-ssa/20030922-2.c: No longer xfailed.
 
 2016-02-07  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
@@ -488,7 +621,7 @@
 
 2016-02-05  Jeff Law  <law@redhat.com>
 
-        PR tree-optimization/68541
+	PR tree-optimization/68541
 	* gcc.dg/tree-ssa/split-path-2.c: New test.
 	* gcc.dg/tree-ssa/split-path-3.c: New test.
 	* gcc.dg/tree-ssa/split-path-4.c: New test.

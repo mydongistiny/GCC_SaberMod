@@ -1,3 +1,221 @@
+2016-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69894
+	PR target/69895
+	* config/m68k/t-opts (OPTIONS_H_EXTRA): Add m68k-microarchs.def
+	and m68k-devices.def.
+	* config/c6x/t-c6x (OPTIONS_H_EXTRA): Add c6x-isas.def.
+	* config/aarch64/t-aarch64 (OPTIONS_H_EXTRA): Add aarch64-arches.def.
+
+2016-02-22  Cesar Philippidis  <cesar@codesourcery.com>
+
+	* config/nvptx/nvptx.c (nvptx_gen_shuffle): Add support for QImode
+	and HImode registers.
+
+2016-02-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69882
+	* tree-vect-slp.c (vect_attempt_slp_rearrange_stmts): Properly
+	preserve permutations present because of gaps.
+	(vect_supported_load_permutation_p): Always continue checking
+	permutations after vect_attempt_slp_rearrange_stmts.
+
+2016-02-22  Bin Cheng  <bin.cheng@arm.com>
+
+	* tree-vect-loop.c (vect_estimate_min_profitable_iters): Dump
+	min_profitable_estimate, rather than min_profitable_iters.
+
+2016-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69885
+	* config/m68k/m68k.md (ashldi3, ashrdi3, lshrdi3): Use
+	SImode for last match_operand.
+
+2016-02-22  Martin Liska  <mliska@suse.cz>
+
+	* hsa-gen.c (gen_hsa_clrsb): In case of zero value,
+	return bitsize - 1 as the return value.
+
+2016-02-22  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR target/69806
+	PR target/54089
+	* config/sh/sh.c (sh_lshrsi_clobbers_t_reg_p, sh_dynamicalize_shift_p):
+	Handle negative shift counts.
+	* config/sh/sh.md (ashlsi3, lshrsi3_n, lshrsi3_n_clobbers_t): Don't use
+	force_reg on the shift constant.
+	(lshrsi3): Likewise.  Expand into lshrsi3_n* instead of lshrsi3_d.
+	(lshrsi3_d): Handle negative shift counts.
+
+2016-02-22  Richard Biener  <rguenther@suse.de>
+	    Tom de Vries  <tom@codesourcery.com>
+
+	* graph.c: Include dumpfile.h.
+	(print_graph_cfg): Split into three overloads.
+	* gdbhooks.py (class DotFn): Add and instantiate, adding command dot-fn.
+
+2016-02-22  Tom de Vries  <tom@codesourcery.com>
+
+	* gdbhooks.py (class DumpFn): Add and instantiate, adding command
+	dump-fn.
+
+2016-02-22  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/37448
+	* ipa-inline-transform.c (inline_call): When not updating
+	overall summaries adjust self size by the growth estimate.
+	* ipa-inline.c (inline_to_all_callers_1): Add to the callers
+	hash-set, do not update overall summaries here.  Renamed from ...
+	(inline_to_all_callers): ... this which is now wrapping the
+	above and performing delayed overall summary update.
+	(early_inline_small_functions): Delay updating of the overall
+	summary.
+
+2016-02-21  Markus Trippelsdorf  <markus@trippelsdorf.de>
+
+	* tree-chkp.c (chkp_mark_invalid_bounds_walker): Initialize
+	variable.
+
+2016-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR driver/69805
+	* gcc.c (LINK_COMMAND_SPEC, GOMP_SELF_SPECS): Use
+	:%* in %:gt() argument.
+	(greater_than_spec_func): Adjust for expecting only numbers,
+	if there are more than two numbers, compare the last two.
+
+2016-02-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/invoke.texi (C++ Dialect Options): Clarify interaction of
+	-Wnarrowing with -std.
+
+2016-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/69851
+	* expr.c (store_field): Don't use bit-field path if exp is
+	COMPONENT_REF with TREE_ADDRESSABLE type, where TYPE_SIZE is
+	different from bitsize, but DECL_SIZE of FIELD_DECL is bitsize
+	and the assignment can be performed by bitwise copy.  Formatting
+	fix.
+
+	PR middle-end/69838
+	* lra.c (lra_process_new_insns): If non-call exceptions are enabled,
+	call copy_reg_eh_region_note_forward on before and/or after sequences
+	and remove note from insn if it no longer can throw.
+
+	PR target/69820
+	* config/i386/sse.md (VI_512): Only include V64QImode and V32HImode
+	if TARGET_AVX512BW.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/vector.md: Add missing commutative operand markers
+	to the patterns which qualify for one.
+	* config/s390/vx-builtins.md: Likewise.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/vector.md (VI, VI_QHS): Add single element vector
+	types to mode iterators.
+	(vec_double): ... and mode attribute.
+	* config/s390/vx-builtins.md (non_vec_int): Likewise.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/vector.md ("<ti*>add<mode>3", "<ti*>sub<mode>3"):
+	Change the predicate of op2 from nonimmediate to general and let
+	reload fix it if necessary.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/vecintrin.h (vec_sub_u128): Define missing macro.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/s390.c (s390_expand_vcond): Use the compare operand
+	mode.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/s390-protos.h: Add s390_expand_vec_movstr prototype.
+	* config/s390/s390.c (s390_expand_vec_movstr): New function.
+	* config/s390/s390.md ("movstr<P:mode>"): Call
+	s390_expand_vec_movstr.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/s390.md: Add missing output modifier for operand 1
+	to print it as address properly.
+
+2016-02-19  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* config/s390/2827.md: Rename ooo_* insn attributes to zEC12_*.
+	* config/s390/2964.md: New file.
+	* config/s390/s390.c (s390_get_sched_attrmask): Use the right set
+	of insn grouping attributes depending on the CPU level.
+	(s390_get_unit_mask): New function.
+	(s390_sched_score): Remove the OOO from the scheduling macros.
+	Add loop to calculate a score for the instruction mix.
+	(s390_sched_reorder): Likewise plus improve debug output.
+	(s390_sched_variable_issue): Rename macros as above.  Calculate
+	the unit distances after actually scheduling an insn.  Improve
+	debug output.
+	(s390_sched_init): Clear last_scheduled_unit_distance array.
+	* config/s390/s390.md: Include 2964.md.
+
+2016-02-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69671
+	* config/i386/sse.md (*<floatsuffix>floatv2div2sf2_mask_1,
+	*avx512vl_<code>v2div2qi2_mask_1, *avx512vl_<code><mode>v4qi2_mask_1,
+	*avx512vl_<code><mode>v8qi2_mask_1, *avx512vl_<code><mode>v4hi2_mask_1,
+	*avx512vl_<code>v2div2hi2_mask_1, *avx512vl_<code>v2div2si2_mask_1,
+	*avx512f_<code>v8div16qi2_mask_1): New insns.
+
+2016-02-18  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/68404
+	* config/rs6000/predicates.md (fusion_gpr_addis): Revert
+	2016-02-09 change.
+
+	* config/rs6000/rs6000.md (fusion_gpr_load_<mode>): Remove
+	earlyclobber from target.  Use wF constraint for fused memory
+	address.
+	(fusion_gpr_<P:mode>_<GPR_FUSION:mode>_load): Likewise.
+
+2016-02-18  Jakub Jelinek  <jakub@redhat.com>
+	    Martin Liska  <mliska@suse.cz>
+
+	PR sanitizer/69863
+	* cfgexpand.c (asan_sanitize_stack_p): New function.
+	(partition_stack_vars): Use the function.
+	(expand_stack_vars): Likewise.
+	(defer_stack_allocation): Likewise.
+	(expand_used_vars): Likewise.
+
+2016-02-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69553
+	* fold-const.c (operand_equal_p): Properly compare offsets for
+	IMAGPART_EXPR and ARRAY_REF.
+
+2016-02-18  Nick Clifton  <nickc@redhat.com>
+
+	PR target/62254
+	PR target/69610
+	* config/arm/arm.c (arm_option_override_internal): Disable
+	interworking if the target does not support thumb instructions.
+	(arm_reload_in_hi): Handle the case where a register to register
+	move needs reloading because there is no simple pattern to handle
+	it.
+	(arm_reload_out_hi): Likewise.
+
+2016-02-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/69854
+	* match.pd: Don't use fold_binary or fold_unary for folding
+	constants.
+
 2016-02-17  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/69850
