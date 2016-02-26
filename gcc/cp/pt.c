@@ -9623,11 +9623,11 @@ instantiate_class_template_1 (tree type)
 		       template <class U> friend class T::C;
 
 		     otherwise.  */
+		  /* Bump processing_template_decl in case this is something like
+		     template <class T> friend struct A<T>::B.  */
+		  ++processing_template_decl;
 		  friend_type = tsubst (friend_type, args,
 					tf_warning_or_error, NULL_TREE);
-		  /* Bump processing_template_decl for correct
-		     dependent_type_p calculation.  */
-		  ++processing_template_decl;
 		  if (dependent_type_p (friend_type))
 		    adjust_processing_template_decl = true;
 		  --processing_template_decl;
@@ -17352,7 +17352,7 @@ resolve_overloaded_unification (tree tparms,
    lvalue for the function template specialization.  */
 
 tree
-resolve_nondeduced_context (tree orig_expr)
+resolve_nondeduced_context (tree orig_expr, tsubst_flags_t complain)
 {
   tree expr, offset, baselink;
   bool addr;
@@ -17435,16 +17435,16 @@ resolve_nondeduced_context (tree orig_expr)
 	    {
 	      tree base
 		= TYPE_MAIN_VARIANT (TREE_TYPE (TREE_OPERAND (offset, 0)));
-	      expr = build_offset_ref (base, expr, addr, tf_warning_or_error);
+	      expr = build_offset_ref (base, expr, addr, complain);
 	    }
 	  if (addr)
-	    expr = cp_build_addr_expr (expr, tf_warning_or_error);
+	    expr = cp_build_addr_expr (expr, complain);
 	  return expr;
 	}
-      else if (good == 0 && badargs)
+      else if (good == 0 && badargs && (complain & tf_error))
 	/* There were no good options and at least one bad one, so let the
 	   user know what the problem is.  */
-	instantiate_template (badfn, badargs, tf_warning_or_error);
+	instantiate_template (badfn, badargs, complain);
     }
   return orig_expr;
 }
@@ -19012,7 +19012,7 @@ more_specialized_fn (tree pat1, tree pat2, int len)
 
       if (TREE_CODE (arg1) == TYPE_PACK_EXPANSION)
         {
-          int i, len2 = list_length (args2);
+          int i, len2 = remaining_arguments (args2);
           tree parmvec = make_tree_vec (1);
           tree argvec = make_tree_vec (len2);
           tree ta = args2;
@@ -19036,7 +19036,7 @@ more_specialized_fn (tree pat1, tree pat2, int len)
         }
       else if (TREE_CODE (arg2) == TYPE_PACK_EXPANSION)
         {
-          int i, len1 = list_length (args1);
+          int i, len1 = remaining_arguments (args1);
           tree parmvec = make_tree_vec (1);
           tree argvec = make_tree_vec (len1);
           tree ta = args1;
@@ -22381,7 +22381,7 @@ do_auto_deduction (tree type, tree init, tree auto_node)
 	}
     }
 
-  init = resolve_nondeduced_context (init);
+  init = resolve_nondeduced_context (init, tf_warning_or_error);
 
   targs = make_tree_vec (1);
   if (AUTO_IS_DECLTYPE (auto_node))
