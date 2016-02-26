@@ -1,4 +1,246 @@
+2016-02-25  Martin Liska  <mliska@suse.cz>
+
+	PR middle-end/69919
+	* alloc-pool.c (after_memory_report): New variable.
+	* alloc-pool.h (base_pool_allocator ::release): Do not use
+	the infrastructure if after_memory_report.
+	* toplev.c (toplev::main): Mark after memory report.
+
+2016-02-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/48795
+	* tree-vrp.c (check_array_ref): Use array_at_struct_end_p.
+
+2016-02-25  Ilya Verbin  <ilya.verbin@intel.com>
+
+	PR driver/68463
+	* config/gnu-user.h (CRTOFFLOADBEGIN): Define.  Add crtoffloadbegin.o if
+	offloading is enabled and -fopenacc or -fopenmp is specified.
+	(CRTOFFLOADEND): Likewise.
+	(GNU_USER_TARGET_STARTFILE_SPEC): Add CRTOFFLOADBEGIN.
+	(GNU_USER_TARGET_ENDFILE_SPEC): Add CRTOFFLOADEND.
+	* lto-wrapper.c (offloadbegin, offloadend): Remove static vars.
+	(offload_objects_file_name): New static var.
+	(tool_cleanup): Remove offload_objects_file_name file.
+	(find_offloadbeginend): Replace with ...
+	(find_crtoffloadtable): ... this.
+	(run_gcc): Remove offload_argc and offload_argv.
+	Get offload_objects_file_name from -foffload-objects=... option.
+	Read names of object files with offload from this file, pass them to
+	compile_images_for_offload_targets.  Don't call find_offloadbeginend and
+	don't pass offloadbegin and offloadend to the linker.  Don't pass
+	offload non-LTO files to the linker, because now they're not claimed.
+
+2016-02-25  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/69630
+	* ipa-devirt.c (possible_polymorphic_call_targets): Do not ICE
+	on builtin_unreachable.
+
+2016-02-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/69896
+	* regcprop.c: Include cfgrtl.h.
+	(copyprop_hardreg_forward_1): If noop_p insn uses narrower
+	than remembered mode, either delete it (if noop_move_p), or
+	treat like copy_p but not noop_p instruction.
+
+2016-02-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/69705
+	* dwarf2out.c (gen_variable_die): Work around buggy LTO
+	- allow NULL decl for Fortran DW_TAG_common_block variables.
+
+2016-02-24  Jason Merrill  <jason@redhat.com>
+
+	* common.opt (flifetime-dse): Add -flifetime-dse=1.
+
+2016-02-24  Richard Biener  <rguenther@suse.de>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/69760
+	* tree-scalar-evolution.c (interpret_rhs_expr): Re-write
+	conditionally executed ops to well-defined overflow behavior.
+
+2016-02-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/69915
+	* tree.c (build_vector_from_ctor): Fix handling of VECTOR_CST
+	elements.
+
+2016-02-24  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR rtl-optimization/69886
+	* gcse.c (can_assign_to_reg_without_clobbers_p): Accept mode
+	argument.  Use it when checking validity of set instructions.
+	(want_to_gcse_p): Pass mode to can_assign_to_reg_without_clobbers_p.
+	(compute_ld_motion_mems): Update can_assign_to_reg_without_clobbers_p
+	callsite.
+	* rtl.h (can_assign_to_reg_without_clobbers_p): Update prototype.
+	* store-motion.c (find_moveable_store): Update
+	can_assign_to_reg_without_clobbers_p callsite.
+
+2016-02-24  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/68963
+	* tree-ssa-loop-niter.c (derive_constant_upper_bound_ops): Fix
+	bogus check.
+	(record_nonwrapping_iv): Do not fall back to the low/high bound
+	for non-constant IV bases if the stmt is not always executed.
+
+2016-02-24  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm-cores.def (cortex-a32): New entry.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm-tune.md: Regenerate.
+	* config/arm/bpabi.h (BE8_LINK_SPEC): Add mcpu=cortex-a32.
+	* config/arm/t-aprofile: Handle mcpu=cortex-a32.
+	* doc/invoke.texi (ARM Options): Document cortex-a32 as value
+	for -mcpu and -mtune.
+
+2016-02-24  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/69875
+	* config/arm/arm.h (TARGET_HAVE_LPAE): Define.
+	* config/arm/unspecs.md (VUNSPEC_LDRD_ATOMIC): New value.
+	* config/arm/sync.md (arm_atomic_loaddi2_ldrd): New pattern.
+	(atomic_loaddi_1): Delete.
+	(atomic_loaddi): Rewrite expander using the above changes.
+
+2016-02-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/69918
+	* params.def (PARAM_MAX_SSA_NAME_QUERY_DEPTH): Bump default from
+	2 to 3.
+
+2016-02-24  Jakub Jelinek  <jakub@redhat.com>
+	    Richard Biener  <rguenth@suse.de>
+
+	PR middle-end/69909
+	* expr.c (expand_expr_real_1) <normal_inner_ref>: Avoid
+	set_mem_attributes if tem is SSA_NAME which got expanded
+	as a MEM.
+
+2016-02-24  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69907
+	* tree-vect-stmts.c (vectorizable_load): Check for gaps at the
+	end of permutations for BB vectorization.
+
+2016-02-24  Christian Bruel  <christian.bruel@st.com>
+
+	* config/arm/arm-c.c (arm_option_override): Initialize
+	target_option_current_node.
+	* config/arm/arm.c (arm_pragma_target_parse): Replace
+	build_target_option_node call by target_option_current_node.
+	Set target_option_current_node.
+	Fix comments.
+
+2016-02-23  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR target/69810
+	* config/rs6000/rs6000.md (zero_extendqi<mode>2_dot): Convert from
+	define_insn_and_split to define_insn.
+	(zero_extendqi<mode>2_dot2): Same.
+	(extendqi<mode>2_dot): Same.
+	(extendqi<mode>2_dot2): Same.
+
+2016-02-23  Evandro Menezes  <e.menezes@samsung.com>
+
+	* config/arm/exynos-m1.md: Change cost of STP, fix bypass for stores
+	and add bypass for AES{D,E} and AESMC pairs.
+	* config/aarch64/aarch64.c (exynosm1_tunings): Enable fusion of AES{D,E}
+	and AESMC pairs.
+
+2016-02-23  Evandro Menezes  <e.menezes@samsung.com>
+
+        * config/aarch64/aarch64.c (exynosm1_tunings): Enable the Newton
+        series for reciprocal square root in Exynos M1.
+
+2016-02-23  Martin Sebor  <msebor@redhat.com>
+
+	PR c/69759
+	* doc/extend.texi (Other Builtins): Document __builtin_alloca and
+	__builtin_alloca_with_align.
+
+2016-02-23  Richard Henderson  <rth@redhat.com>
+
+	* config/i386/i386-c.c (ix86_target_macros): Remove __SEG_TLS.
+	(ix86_register_pragmas): Remove __seg_tls.
+	* config/i386/i386-protos.h (ADDR_SPACE_SEG_TLS): Remove.
+	* config/i386/i386.c (ix86_print_operand_address_as): Don't handle it.
+	(ix86_addr_space_subset_p, TARGET_ADDR_SPACE_SUBSET_P): Remove.
+	(ix86_addr_space_convert, TARGET_ADDR_SPACE_CONVERT): Remove.
+	(ix86_addr_space_debug, TARGET_ADDR_SPACE_DEBUG): Remove.
+	* doc/extend.texi (__seg_tls): Remove item.
+
+2016-02-23  Richard Biener  <rguenther@suse.de>
+
+	* alloc-pool.h (struct allocation_object): Make id member
+	conditional on CHECKING_P again.
+	(get_instance): Adjust.
+	(base_pool_allocator): Likewise.
+
+2016-02-23  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* tree-parloops.c (create_parallel_loop, gen_parallel_loop)
+	(parallelize_loops): In OpenACC kernels mode, set n_threads to
+	zero.
+	(pass_parallelize_loops::gate): In OpenACC kernels mode, gate on
+	flag_openacc.
+	* tree-ssa-loop.c (gate_oacc_kernels): Likewise.
+
+2016-02-23  Richard Biener  <rguenther@suse.de>
+
+	* mem-stats.h (struct mem_usage): Use PRIu64 for printing size_t.
+	* bitmap.h (struct bitmap_usage): Likewise.
+	(bitmap_move): Declare.
+	* bitmap.c (register_overhead): Take size_t argument.
+	(bitmap_move): New function.
+	* df-problems.c (df_rd_transfer_function): Use bitmap_move
+	to properly account overhead.
+	* tree.c (free_node): Use tree_size.
+
+2016-02-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/69902
+	* fold-const.c (fold_truth_not_expr): Propagate TREE_NO_WARNING
+	when inverting comparison.
+
+	PR c/69900
+	* common.opt (Wunreachable-code): Add Warning flag.
+
+2016-02-23  Mark Wielaard  <mjw@redhat.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/69911
+	* cgraphunit.c (check_global_declaration): Check main_input_filename
+	and DECL_SOURCE_FILE are not NULL.
+
+2016-02-23  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/69666
+	* tree-sra.c (sra_modify_assign): Do not attempt to create
+	default_def replacements for unscalarizable regions.
+
+2016-02-20  Mark Wielaard  <mjw@redhat.com>
+
+	PR c/28901
+	* cgraphunit.c (check_global_declaration): Check level of
+	warn_unused_const_variable and main_input_filename.
+	* doc/invoke.texi (Warning Options): Add -Wunused-const-variable=.
+	(-Wunused-variable): For C implies -Wunused-const-variable=1.
+	(-Wunused-const-variable): Explain levels 1 and 2.
+
 2016-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69888
+	* config/i386/i386.c (decide_alg): Ensure we don't recurse with
+	identical arguments.  Formatting and spelling fixes.
+
+	PR target/69885
+	* doc/md.texi (ashl@var{m}3): Document that mode of operand 2 must
+	be specified.
 
 	PR target/69894
 	PR target/69895
