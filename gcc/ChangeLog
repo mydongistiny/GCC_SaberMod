@@ -1,3 +1,176 @@
+2016-02-28  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/i386/cygming.h (STACK_REALIGN_DEFAULT): Define.
+
+2016-02-27  Jeff Law  <law@redhat.com>
+
+	Revert
+	2016-02-26  Richard Biener  <rguenther@suse.de>
+		    Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69740
+	* cfghooks.c (remove_edge): Request loop fixups if we delete
+	an edge that might turn an irreducible loop into a natural
+	loop.
+
+2016-02-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/69896
+	* tree-vect-generic.c (get_compute_type): Avoid single element
+	vector types.
+
+2016-02-26  Evandro Menezes  <e.menezes@samsung.com>
+
+	Rename the AArch64 tuning option and related functions to enable the
+	Newton series for the reciprocal square root to reflect its
+	approximative characteristic.
+
+	* config/aarch64/aarch64-protos.h (aarch64_emit_swrsqrt): Rename
+	function to "aarch64_emit_approx_rsqrt".
+	* config/aarch64/aarch64-tuning-flags.def: Rename tuning flag to
+	AARCH64_EXTRA_TUNE_APPROX_RSQRT.
+	* config/aarch64/aarch64.c (exynosm1_tunigs): Use new flag name.
+	(xgene1_tunings): Likewise.
+	(use_rsqrt_p): Likewise.
+	(aarch64_emit_swrsqrt): Use new function name.
+	* config/aarch64/aarch64-simd.md (aarch64_rsqrts_*): Likewise.
+	* config/aarch64/aarch64.opt (mlow-precision-recip-sqrt): Reword the
+	text explaining this option.
+	* doc/invoke.texi (-mlow-precision-recip-sqrt): Likewise.
+
+2016-02-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69969
+	* config/rs6000/rs6000.c (rs6000_option_override_internal): Don't
+	complain about -mallow-movmisalign without -mvsx if
+	TARGET_ALLOW_MOVMISALIGN was not set explicitly.
+
+2016-02-26  Joel Sherrill <joel@rtems.org>
+
+	* config.gcc: Add x86_64-*-rtems*.
+	* gcc/config/i386/rtems-64.h: New file.
+
+2016-02-26  Joel Sherrill <joel@rtems.org>
+
+	* config.gcc: Add aarch64-*-rtems*.
+	* gcc/config/aarch64/rtems.h: New file.
+
+2016-02-26  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/69946
+	* config/rs6000/rs6000.c (rs6000_insn_for_shift_mask): Print rlwinm
+	shift amount using %h.  Add comment.
+
+2016-02-26  Richard Biener  <rguenther@suse.de>
+	    Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69740
+	* cfghooks.c (remove_edge): Request loop fixups if we delete
+	an edge that might turn an irreducible loop into a natural
+	loop.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	PR middle-end/69920
+	* tree-sra.c (sra_modify_assign): Do not remove loads of
+	uninitialized aggregates to SSA_NAMEs.
+
+2016-02-26  Richard Henderson  <rth@redhat.com>
+
+	PR target/69709
+	* config/s390/s390.md (risbg and risbgn splitters): Allocate new
+	pseudo in case the target rtx matches the source of the left
+	shift.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	PR hsa/69568
+	* hsa.h (hsa_type_packed_p): Declare.
+	* hsa.c (hsa_type_packed_p): New function.
+	* hsa-gen.c (mem_type_for_type): Use unsigned type for packed
+	loads.
+	(gen_hsa_insns_for_store): Use hsa_type_packed_p.
+	* hsa-brig.c (emit_basic_insn): Likewise.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	pr hsa/69674
+	* hsa-gen.c (gen_hsa_phi_from_gimple_phi): Use proper hsa type for
+	pointers.
+	(gen_hsa_addr): Allow integer constants in TMR_INDEX2.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	* hsa.h (is_a_helper): New overload for hsa_op_immed for
+	hsa_op_with_type operands.
+	(hsa_unsigned_type_for_type): Declare.
+	* hsa.c (hsa_unsigned_type_for_type): New function.
+	* hsa-gen.c (gen_hsa_binary_operation): Use hsa_unsigned_type_for_type.
+	(gen_hsa_insns_for_operation_assignment): Satisfy constrains of
+	the finalizer.  Do not emit extra move.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	* hsa-gen.c (gen_hsa_ternary_atomic_for_builtin): Fail in presence of
+	atomic operations in private segment.
+
+2016-02-26  Martin Jambor  <mjambor@suse.cz>
+
+	* omp-low.c (grid_find_ungridifiable_statement): Store problematic
+	statements to wi->info.  Also disallow omp simd constructs.
+	(grid_target_follows_gridifiable_pattern): Use wi.info to dump reason
+	for not gridifying.  Dump special string for omp_for.
+
+2016-02-26  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/69245
+	* config/aarch64/aarch64.c (aarch64_set_current_function):
+	Save/restore target globals when switching to
+	target_option_default_node.
+
+2016-02-26  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/69613
+	* config/aarch64/aarch64.c (aarch64_shift_truncation_mask):
+	Return 0 if !SHIFT_COUNT_TRUNCATED.
+
+2016-02-26  Jakub Jelinek  <jakub@redhat.com>
+	    Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR rtl-optimization/69891
+	* dse.c (scan_insn): If we can't figure out memset arguments
+	or they are non-constant, call clear_rhs_from_active_local_stores.
+
+2016-02-26  Martin Liska  <mliska@suse.cz>
+
+	* doc/extend.texi: Mention clog10, clog10f an clog10l
+	in Builtins section.
+
+2016-02-26  Martin Liska  <mliska@suse.cz>
+
+	* dwarf2out.c (new_loc_descr): Replace ENABLE_CHECKING with
+	CHECKING_P.
+	(resolve_args_picking_1): Likewise.
+	* dwarf2out.h (struct GTY): Likewise.
+
+2016-02-26  Martin Liska  <mliska@suse.cz>
+
+	* hsa-gen.c (generate_hsa): Replace ENABLE_CHECKING macro
+	with flag_checking.
+	* hsa-regalloc.c (linear_scan_regalloc): Likewise.
+
+2016-02-26  Markus Trippelsdorf  <markus@trippelsdorf.de>
+	    Martin Liska  <mliska@suse.cz>
+
+	* doc/install.texi: Mention --enable-valgrind-annotations.
+
+2016-02-26  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69551
+	* tree-ssa-structalias.c (get_constraint_for_ssa_var): When
+	looking through aliases adjust DECL_PT_UID to refer to the
+	ultimate alias target.
+
 2016-02-25  Martin Liska  <mliska@suse.cz>
 
 	PR middle-end/69919
