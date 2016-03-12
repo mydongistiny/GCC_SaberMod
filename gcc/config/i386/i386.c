@@ -2662,9 +2662,9 @@ static const struct ptt processor_target_table[PROCESSOR_max] =
   {"bdver2", &bdver2_cost, 16, 10, 16, 7, 11},
   {"bdver3", &bdver3_cost, 16, 10, 16, 7, 11},
   {"bdver4", &bdver4_cost, 16, 10, 16, 7, 11},
-  {"znver1", &znver1_cost, 16, 10, 16, 7, 11},
   {"btver1", &btver1_cost, 16, 10, 16, 7, 11},
-  {"btver2", &btver2_cost, 16, 10, 16, 7, 11}
+  {"btver2", &btver2_cost, 16, 10, 16, 7, 11},
+  {"znver1", &znver1_cost, 16, 10, 16, 7, 11}
 };
 
 static unsigned int
@@ -3372,8 +3372,11 @@ scalar_chain::convert_reg (unsigned regno)
 	    bitmap_clear_bit (conv, DF_REF_INSN_UID (ref));
 	  }
       }
-    else if (NONDEBUG_INSN_P (DF_REF_INSN (ref)))
+    /* Skip debug insns and uninitialized uses.  */
+    else if (DF_REF_CHAIN (ref)
+	     && NONDEBUG_INSN_P (DF_REF_INSN (ref)))
       {
+	gcc_assert (scopy);
 	replace_rtx (DF_REF_INSN (ref), reg, scopy);
 	df_insn_rescan (DF_REF_INSN (ref));
       }
