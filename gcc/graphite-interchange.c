@@ -23,7 +23,8 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 
-#ifdef HAVE_isl
+#ifdef HAVE_cloog
+#include <isl/constraint.h>
 #include <isl/aff.h>
 #include <isl/union_map.h>
 #include <isl/ilp.h>

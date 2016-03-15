@@ -34,7 +34,10 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 
-#ifdef HAVE_isl
+#ifdef HAVE_cloog
+#include <isl/constraint.h>
+#include <isl/set.h>
+#include <isl/map.h>
 #include <isl/options.h>
 #include <isl/union_map.h>
 #ifdef HAVE_cloog
