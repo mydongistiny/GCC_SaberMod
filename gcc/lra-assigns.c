@@ -1,5 +1,5 @@
 /* Assign reload pseudos.
-   Copyright (C) 2010-2015 Free Software Foundation, Inc.
+   Copyright (C) 2010-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -78,34 +78,20 @@ along with GCC; see the file COPYING3.	If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
-#include "rtl.h"
-#include "df.h"
-#include "rtl-error.h"
-#include "tm_p.h"
 #include "target.h"
+#include "rtl.h"
+#include "tree.h"
+#include "predict.h"
+#include "df.h"
+#include "tm_p.h"
 #include "insn-config.h"
-#include "recog.h"
-#include "output.h"
 #include "regs.h"
-#include "flags.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "except.h"
 #include "ira.h"
+#include "recog.h"
+#include "rtl-error.h"
 #include "sparseset.h"
 #include "params.h"
 #include "lra.h"
-#include "insn-attr.h"
-#include "insn-codes.h"
 #include "lra-int.h"
 
 /* Current iteration number of the pass and current iteration number
@@ -1591,15 +1577,13 @@ lra_assign (void)
   bitmap_initialize (&all_spilled_pseudos, &reg_obstack);
   create_live_range_start_chains ();
   setup_live_pseudos_and_spill_after_risky_transforms (&all_spilled_pseudos);
-#ifdef ENABLE_CHECKING
-  if (!flag_ipa_ra)
+  if (flag_checking && !flag_ipa_ra)
     for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
       if (lra_reg_info[i].nrefs != 0 && reg_renumber[i] >= 0
 	  && lra_reg_info[i].call_p
 	  && overlaps_hard_reg_set_p (call_used_reg_set,
 				      PSEUDO_REGNO_MODE (i), reg_renumber[i]))
 	gcc_unreachable ();
-#endif
   /* Setup insns to process on the next constraint pass.  */
   bitmap_initialize (&changed_pseudo_bitmap, &reg_obstack);
   init_live_reload_and_inheritance_pseudos ();
@@ -1636,7 +1620,12 @@ lra_assign (void)
   timevar_pop (TV_LRA_ASSIGN);
   if (former_reload_pseudo_spill_p)
     lra_assignment_iter_after_spill++;
-  if (lra_assignment_iter_after_spill > LRA_MAX_ASSIGNMENT_ITERATION_NUMBER)
+  /* This is conditional on flag_checking because valid code can take
+     more than this maximum number of iteration, but at the same time
+     the test can uncover errors in machine descriptions.  */
+  if (flag_checking
+      && (lra_assignment_iter_after_spill
+	  > LRA_MAX_ASSIGNMENT_ITERATION_NUMBER))
     internal_error
       ("Maximum number of LRA assignment passes is achieved (%d)\n",
        LRA_MAX_ASSIGNMENT_ITERATION_NUMBER);

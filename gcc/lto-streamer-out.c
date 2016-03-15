@@ -1,6 +1,6 @@
 /* Write the GIMPLE representation to a file stream.
 
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
    Re-implemented by Diego Novillo <dnovillo@google.com>
 
@@ -24,33 +24,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "stor-layout.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "params.h"
-#include "internal-fn.h"
-#include "gimple-iterator.h"
 #include "tree-pass.h"
-#include "diagnostic-core.h"
+#include "ssa.h"
+#include "gimple-streamer.h"
+#include "alias.h"
+#include "stor-layout.h"
+#include "gimple-iterator.h"
 #include "except.h"
 #include "lto-symtab.h"
 #include "cgraph.h"
-#include "target.h"
-#include "gimple-streamer.h"
 #include "cfgloop.h"
 #include "builtins.h"
 #include "gomp-constants.h"
@@ -323,6 +309,41 @@ lto_is_streamable (tree expr)
 	     || TREE_CODE_CLASS (code) != tcc_statement);
 }
 
+/* Very rough estimate of streaming size of the initializer.  If we ignored
+   presence of strings, we could simply just count number of non-indexable
+   tree nodes and number of references to indexable nodes.  Strings however
+   may be very large and we do not want to dump them int othe global stream.
+
+   Count the size of initializer until the size in DATA is positive.  */
+
+static tree
+subtract_estimated_size (tree *tp, int *ws, void *data)
+{
+  long *sum = (long *)data;
+  if (tree_is_indexable (*tp))
+    {
+      /* Indexable tree is one reference to global stream.
+	 Guess it may be about 4 bytes.  */
+      *sum -= 4;
+      *ws = 0;
+    }
+  /* String table entry + base of tree node needs to be streamed.  */
+  if (TREE_CODE (*tp) == STRING_CST)
+    *sum -= TREE_STRING_LENGTH (*tp) + 8;
+  else
+    {
+      /* Identifiers are also variable length but should not appear
+	 naked in constructor.  */
+      gcc_checking_assert (TREE_CODE (*tp) != IDENTIFIER_NODE);
+      /* We do not really make attempt to work out size of pickled tree, as
+	 it is very variable. Make it bigger than the reference.  */
+      *sum -= 16;
+    }
+  if (*sum < 0)
+    return *tp;
+  return NULL_TREE;
+}
+
 
 /* For EXPR lookup and return what we want to stream to OB as DECL_INITIAL.  */
 
@@ -343,10 +364,16 @@ get_symbol_initial_value (lto_symtab_encoder_t encoder, tree expr)
       varpool_node *vnode;
       /* Extra section needs about 30 bytes; do not produce it for simple
 	 scalar values.  */
-      if (TREE_CODE (DECL_INITIAL (expr)) == CONSTRUCTOR
-	  || !(vnode = varpool_node::get (expr))
+      if (!(vnode = varpool_node::get (expr))
 	  || !lto_symtab_encoder_encode_initializer_p (encoder, vnode))
         initial = error_mark_node;
+      if (initial != error_mark_node)
+	{
+	  long max_size = 30;
+	  if (walk_tree (&initial, subtract_estimated_size, (void *)&max_size,
+			 NULL))
+	    initial = error_mark_node;
+	}
     }
 
   return initial;
@@ -607,17 +634,12 @@ DFS::DFS (struct output_block *ob, tree expr, bool ref_p, bool this_ref_p,
 		std::swap (sccstack[first + i],
 			   sccstack[first + entry_start + i]);
 
-	      if (scc_entry_len == 1)
-		; /* We already sorted SCC deterministically in hash_scc.  */
-	      else
-		/* Check that we have only one SCC.
-		   Naturally we may have conflicts if hash function is not
- 		   strong enough.  Lets see how far this gets.  */
-		{
-#ifdef ENABLE_CHECKING
-		  gcc_unreachable ();
-#endif
-		}
+	      /* We already sorted SCC deterministically in hash_scc.  */
+
+	      /* Check that we have only one SCC.
+		 Naturally we may have conflicts if hash function is not
+		 strong enough.  Lets see how far this gets.  */
+	      gcc_checking_assert (scc_entry_len == 1);
 	    }
 
 	  /* Write LTO_tree_scc.  */
@@ -750,7 +772,11 @@ DFS::DFS_write_tree_body (struct output_block *ob,
 
       /* Do not follow DECL_ABSTRACT_ORIGIN.  We cannot handle debug information
 	 for early inlining so drop it on the floor instead of ICEing in
-	 dwarf2out.c.  */
+	 dwarf2out.c.
+	 We however use DECL_ABSTRACT_ORIGIN == error_mark_node to mark
+	 declarations which should be eliminated by decl merging. Be sure none
+	 leaks to this point.  */
+      gcc_assert (DECL_ABSTRACT_ORIGIN (expr) != error_mark_node);
 
       if ((TREE_CODE (expr) == VAR_DECL
 	   || TREE_CODE (expr) == PARM_DECL)
@@ -977,7 +1003,8 @@ hash_tree (struct streamer_tree_cache_d *cache, hash_map<tree, hashval_t> *map, 
     hstate.add_flag (TREE_PRIVATE (t));
   if (TYPE_P (t))
     {
-      hstate.add_flag (TYPE_SATURATING (t));
+      hstate.add_flag (AGGREGATE_TYPE_P (t)
+		       ? TYPE_REVERSE_STORAGE_ORDER (t) : TYPE_SATURATING (t));
       hstate.add_flag (TYPE_ADDR_SPACE (t));
     }
   else if (code == SSA_NAME)
@@ -1127,10 +1154,6 @@ hash_tree (struct streamer_tree_cache_d *cache, hash_map<tree, hashval_t> *map, 
       hstate.commit_flag ();
       hstate.add_int (TYPE_PRECISION (t));
       hstate.add_int (TYPE_ALIGN (t));
-      hstate.add_int ((TYPE_ALIAS_SET (t) == 0
-					 || (!in_lto_p
-					     && get_alias_set (t) == 0))
-					? 0 : -1);
     }
 
   if (CODE_CONTAINS_STRUCT (code, TS_TRANSLATION_UNIT_DECL))
@@ -2209,22 +2232,23 @@ copy_function_or_variable (struct symtab_node *node)
   struct lto_in_decl_state *in_state;
   struct lto_out_decl_state *out_state = lto_get_out_decl_state ();
 
-  lto_begin_section (section_name, !flag_wpa);
+  lto_begin_section (section_name, false);
   free (section_name);
 
   /* We may have renamed the declaration, e.g., a static function.  */
   name = lto_get_decl_name_mapping (file_data, name);
 
-  data = lto_get_section_data (file_data, LTO_section_function_body,
-                               name, &len);
+  data = lto_get_raw_section_data (file_data, LTO_section_function_body,
+                                   name, &len);
   gcc_assert (data);
 
   /* Do a bit copy of the function body.  */
-  lto_write_data (data, len);
+  lto_write_raw_data (data, len);
 
   /* Copy decls. */
   in_state =
     lto_get_function_in_decl_state (node->lto_file_data, function);
+  out_state->compressed = in_state->compressed;
   gcc_assert (in_state);
 
   for (i = 0; i < LTO_N_DECL_STREAMS; i++)
@@ -2242,8 +2266,8 @@ copy_function_or_variable (struct symtab_node *node)
 	encoder->trees.safe_push ((*trees)[j]);
     }
 
-  lto_free_section_data (file_data, LTO_section_function_body, name,
-			 data, len);
+  lto_free_raw_section_data (file_data, LTO_section_function_body, name,
+			     data, len);
   lto_end_section ();
 }
 
@@ -2254,7 +2278,8 @@ wrap_refs (tree *tp, int *ws, void *)
 {
   tree t = *tp;
   if (handled_component_p (t)
-      && TREE_CODE (TREE_OPERAND (t, 0)) == VAR_DECL)
+      && TREE_CODE (TREE_OPERAND (t, 0)) == VAR_DECL
+      && TREE_PUBLIC (TREE_OPERAND (t, 0)))
     {
       tree decl = TREE_OPERAND (t, 0);
       tree ptrtype = build_pointer_type (TREE_TYPE (decl));
@@ -2277,11 +2302,12 @@ void
 lto_output (void)
 {
   struct lto_out_decl_state *decl_state;
-#ifdef ENABLE_CHECKING
-  bitmap output = lto_bitmap_alloc ();
-#endif
+  bitmap output = NULL;
   int i, n_nodes;
   lto_symtab_encoder_t encoder = lto_get_out_decl_state ()->symtab_node_encoder;
+
+  if (flag_checking)
+    output = lto_bitmap_alloc ();
 
   /* Initialize the streamer.  */
   lto_streamer_init ();
@@ -2294,12 +2320,14 @@ lto_output (void)
       if (cgraph_node *node = dyn_cast <cgraph_node *> (snode))
 	{
 	  if (lto_symtab_encoder_encode_body_p (encoder, node)
-	      && !node->alias)
+	      && !node->alias
+	      && (!node->thunk.thunk_p || !node->thunk.add_pointer_bounds_args))
 	    {
-#ifdef ENABLE_CHECKING
-	      gcc_assert (!bitmap_bit_p (output, DECL_UID (node->decl)));
-	      bitmap_set_bit (output, DECL_UID (node->decl));
-#endif
+	      if (flag_checking)
+		{
+		  gcc_assert (!bitmap_bit_p (output, DECL_UID (node->decl)));
+		  bitmap_set_bit (output, DECL_UID (node->decl));
+		}
 	      decl_state = lto_new_out_decl_state ();
 	      lto_push_out_decl_state (decl_state);
 	      if (gimple_has_body_p (node->decl) || !flag_wpa
@@ -2326,10 +2354,11 @@ lto_output (void)
 	      && !node->alias)
 	    {
 	      timevar_push (TV_IPA_LTO_CTORS_OUT);
-#ifdef ENABLE_CHECKING
-	      gcc_assert (!bitmap_bit_p (output, DECL_UID (node->decl)));
-	      bitmap_set_bit (output, DECL_UID (node->decl));
-#endif
+	      if (flag_checking)
+		{
+		  gcc_assert (!bitmap_bit_p (output, DECL_UID (node->decl)));
+		  bitmap_set_bit (output, DECL_UID (node->decl));
+		}
 	      decl_state = lto_new_out_decl_state ();
 	      lto_push_out_decl_state (decl_state);
 	      if (DECL_INITIAL (node->decl) != error_mark_node
@@ -2353,7 +2382,7 @@ lto_output (void)
 
   output_offload_tables ();
 
-#ifdef ENABLE_CHECKING
+#if CHECKING_P
   lto_bitmap_free (output);
 #endif
 }
@@ -2402,7 +2431,7 @@ write_global_references (struct output_block *ob,
 
   for (index = 0; index < size; index++)
     {
-      uint32_t slot_num;
+      unsigned slot_num;
 
       t = lto_tree_ref_encoder_get_tree (encoder, index);
       streamer_tree_cache_lookup (ob->writer_cache, t, &slot_num);
@@ -2437,7 +2466,7 @@ lto_output_decl_state_refs (struct output_block *ob,
 			    struct lto_out_decl_state *state)
 {
   unsigned i;
-  uint32_t ref;
+  unsigned ref;
   tree decl;
 
   /* Write reference to FUNCTION_DECL.  If there is not function,
@@ -2445,6 +2474,7 @@ lto_output_decl_state_refs (struct output_block *ob,
   decl = (state->fn_decl) ? state->fn_decl : void_type_node;
   streamer_tree_cache_lookup (ob->writer_cache, decl, &ref);
   gcc_assert (ref != (unsigned)-1);
+  ref = ref * 2 + (state->compressed ? 1 : 0);
   lto_write_data (&ref, sizeof (uint32_t));
 
   for (i = 0;  i < LTO_N_DECL_STREAMS; i++)

@@ -1,5 +1,5 @@
 /* LRA (local register allocator) driver and LRA utilities.
-   Copyright (C) 2010-2015 Free Software Foundation, Inc.
+   Copyright (C) 2010-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -104,38 +104,20 @@ along with GCC; see the file COPYING3.	If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
 #include "tm_p.h"
-#include "regs.h"
-#include "insn-config.h"
-#include "insn-codes.h"
-#include "recog.h"
-#include "output.h"
-#include "addresses.h"
-#include "flags.h"
 #include "optabs.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
+#include "regs.h"
+#include "ira.h"
+#include "recog.h"
 #include "expr.h"
 #include "cfgrtl.h"
 #include "cfgbuild.h"
-#include "except.h"
-#include "tree-pass.h"
-#include "timevar.h"
-#include "target.h"
-#include "ira.h"
-#include "alloc-pool.h"
 #include "lra.h"
-#include "insn-attr.h"
 #include "lra-int.h"
 #include "print-rtl.h"
 
@@ -400,7 +382,7 @@ lra_emit_add (rtx x, rtx y, rtx z)
 	  base = a1;
 	  index = a2;
 	}
-      if (! (REG_P (base) || GET_CODE (base) == SUBREG)
+      if ((base != NULL_RTX && ! (REG_P (base) || GET_CODE (base) == SUBREG))
 	  || (index != NULL_RTX
 	      && ! (REG_P (index) || GET_CODE (index) == SUBREG))
 	  || (disp != NULL_RTX && ! CONSTANT_P (disp))
@@ -460,18 +442,28 @@ lra_emit_add (rtx x, rtx y, rtx z)
 		  rtx_insn *insn = emit_add2_insn (x, disp);
 		  if (insn != NULL_RTX)
 		    {
-		      insn = emit_add2_insn (x, base);
-		      if (insn != NULL_RTX)
+		      if (base == NULL_RTX)
 			ok_p = true;
+		      else
+			{
+			  insn = emit_add2_insn (x, base);
+			  if (insn != NULL_RTX)
+			    ok_p = true;
+			}
 		    }
 		}
 	      if (! ok_p)
 		{
+		  rtx_insn *insn;
+		  
 		  delete_insns_since (last);
 		  /* Generate x = disp; x = x + base; x = x + index_scale.  */
 		  emit_move_insn (x, disp);
-		  rtx_insn *insn = emit_add2_insn (x, base);
-		  lra_assert (insn != NULL_RTX);
+		  if (base != NULL_RTX)
+		    {
+		      insn = emit_add2_insn (x, base);
+		      lra_assert (insn != NULL_RTX);
+		    }
 		  insn = emit_add2_insn (x, index_scale);
 		  lra_assert (insn != NULL_RTX);
 		}
@@ -1199,30 +1191,22 @@ lra_update_insn_recog_data (rtx_insn *insn)
 	  decode_asm_operands (PATTERN (insn), NULL,
 			       data->operand_loc,
 			       constraints, operand_mode, NULL);
-#ifdef ENABLE_CHECKING
-	  {
-	    int i;
 
-	    for (i = 0; i < nop; i++)
+	  if (flag_checking)
+	    for (int i = 0; i < nop; i++)
 	      lra_assert
 		(insn_static_data->operand[i].mode == operand_mode[i]
 		 && insn_static_data->operand[i].constraint == constraints[i]
 		 && ! insn_static_data->operand[i].is_operator);
-	  }
-#endif
 	}
-#ifdef ENABLE_CHECKING
-      {
-	int i;
 
-	for (i = 0; i < insn_static_data->n_operands; i++)
+      if (flag_checking)
+	for (int i = 0; i < insn_static_data->n_operands; i++)
 	  lra_assert
 	    (insn_static_data->operand[i].type
 	     == (insn_static_data->operand[i].constraint[0] == '=' ? OP_OUT
 		 : insn_static_data->operand[i].constraint[0] == '+' ? OP_INOUT
 		 : OP_IN));
-      }
-#endif
     }
   else
     {
@@ -1319,7 +1303,7 @@ init_reg_info (void)
   lra_reg_info = XNEWVEC (struct lra_reg, reg_info_size);
   for (i = 0; i < reg_info_size; i++)
     initialize_lra_reg_info_element (i);
-  copy_vec.create (100);
+  copy_vec.truncate (0);
 }
 
 
@@ -1758,20 +1742,29 @@ lra_process_new_insns (rtx_insn *insn, rtx_insn *before, rtx_insn *after,
     }
   if (before != NULL_RTX)
     {
+      if (cfun->can_throw_non_call_exceptions)
+	copy_reg_eh_region_note_forward (insn, before, NULL);
       emit_insn_before (before, insn);
       push_insns (PREV_INSN (insn), PREV_INSN (before));
       setup_sp_offset (before, PREV_INSN (insn));
     }
   if (after != NULL_RTX)
     {
+      if (cfun->can_throw_non_call_exceptions)
+	copy_reg_eh_region_note_forward (insn, after, NULL);
       for (last = after; NEXT_INSN (last) != NULL_RTX; last = NEXT_INSN (last))
 	;
       emit_insn_after (after, insn);
       push_insns (last, insn);
       setup_sp_offset (after, last);
     }
+  if (cfun->can_throw_non_call_exceptions)
+    {
+      rtx note = find_reg_note (insn, REG_EH_REGION, NULL_RTX);
+      if (note && !insn_could_throw_p (insn))
+	remove_note (insn, note);
+    }
 }
-
 
 
 /* Replace all references to register OLD_REGNO in *LOC with pseudo
@@ -2004,8 +1997,6 @@ restore_scratches (void)
 
 
 
-#ifdef ENABLE_CHECKING
-
 /* Function checks RTL for correctness.	 If FINAL_P is true, it is
    done at the end of LRA and the check is more rigorous.  */
 static void
@@ -2024,9 +2015,7 @@ check_rtl (bool final_p)
       {
 	if (final_p)
 	  {
-#ifdef ENABLED_CHECKING
 	    extract_constrain_insn (insn);
-#endif
 	    continue;
 	  }
 	/* LRA code is based on assumption that all addresses can be
@@ -2039,7 +2028,6 @@ check_rtl (bool final_p)
 	  fatal_insn_not_found (insn);
       }
 }
-#endif /* #ifdef ENABLE_CHECKING */
 
 /* Determine if the current function has an exception receiver block
    that reaches the exit block via non-exceptional edges  */
@@ -2233,10 +2221,9 @@ lra (FILE *f)
 
   init_insn_recog_data ();
 
-#ifdef ENABLE_CHECKING
   /* Some quick check on RTL generated by previous passes.  */
-  check_rtl (false);
-#endif
+  if (flag_checking)
+    check_rtl (false);
 
   lra_in_progress = 1;
 
@@ -2437,9 +2424,8 @@ lra (FILE *f)
      by this, so unshare everything here.  */
   unshare_all_rtl_again (get_insns ());
 
-#ifdef ENABLE_CHECKING
-  check_rtl (true);
-#endif
+  if (flag_checking)
+    check_rtl (true);
 
   timevar_pop (TV_LRA);
 }

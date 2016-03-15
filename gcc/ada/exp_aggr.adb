@@ -1936,8 +1936,7 @@ package body Exp_Aggr is
                --  constraint associated with the type entity (which is
                --  preferable, but it's not always present ???)
 
-               if Is_Empty_Elmt_List (
-                 Discriminant_Constraint (Current_Typ))
+               if Is_Empty_Elmt_List (Discriminant_Constraint (Current_Typ))
                then
                   Assoc := Get_Constraint_Association (Current_Typ);
                   Assoc_Elmt := No_Elmt;
@@ -2125,11 +2124,51 @@ package body Exp_Aggr is
       -------------------------------
 
       procedure Init_Hidden_Discriminants (Typ : Entity_Id; List : List_Id) is
-         Btype        : Entity_Id;
-         Parent_Type  : Entity_Id;
-         Disc         : Entity_Id;
-         Discr_Val    : Elmt_Id;
+         function Is_Completely_Hidden_Discriminant
+           (Discr : Entity_Id) return Boolean;
+         --  Determine whether Discr is a completely hidden discriminant of
+         --  type Typ.
+
+         ---------------------------------------
+         -- Is_Completely_Hidden_Discriminant --
+         ---------------------------------------
+
+         function Is_Completely_Hidden_Discriminant
+           (Discr : Entity_Id) return Boolean
+         is
+            Item : Entity_Id;
+
+         begin
+            --  Use First/Next_Entity as First/Next_Discriminant do not yield
+            --  completely hidden discriminants.
+
+            Item := First_Entity (Typ);
+            while Present (Item) loop
+               if Ekind (Item) = E_Discriminant
+                 and then Is_Completely_Hidden (Item)
+                 and then Chars (Original_Record_Component (Item)) =
+                          Chars (Discr)
+               then
+                  return True;
+               end if;
+
+               Next_Entity (Item);
+            end loop;
+
+            return False;
+         end Is_Completely_Hidden_Discriminant;
+
+         --  Local variables
+
+         Base_Typ     : Entity_Id;
+         Discr        : Entity_Id;
+         Discr_Constr : Elmt_Id;
+         Discr_Init   : Node_Id;
+         Discr_Val    : Node_Id;
          In_Aggr_Type : Boolean;
+         Par_Typ      : Entity_Id;
+
+      --  Start of processing for Init_Hidden_Discriminants
 
       begin
          --  The constraints on the hidden discriminants, if present, are kept
@@ -2140,67 +2179,84 @@ package body Exp_Aggr is
 
          In_Aggr_Type := True;
 
-         Btype := Base_Type (Typ);
-         while Is_Derived_Type (Btype)
+         Base_Typ := Base_Type (Typ);
+         while Is_Derived_Type (Base_Typ)
            and then
-             (Present (Stored_Constraint (Btype))
+             (Present (Stored_Constraint (Base_Typ))
                or else
                  (In_Aggr_Type and then Present (Stored_Constraint (Typ))))
          loop
-            Parent_Type := Etype (Btype);
+            Par_Typ := Etype (Base_Typ);
 
-            if not Has_Discriminants (Parent_Type) then
+            if not Has_Discriminants (Par_Typ) then
                return;
             end if;
 
-            Disc := First_Discriminant (Parent_Type);
+            Discr := First_Discriminant (Par_Typ);
 
             --  We know that one of the stored-constraint lists is present
 
-            if Present (Stored_Constraint (Btype)) then
-               Discr_Val := First_Elmt (Stored_Constraint (Btype));
+            if Present (Stored_Constraint (Base_Typ)) then
+               Discr_Constr := First_Elmt (Stored_Constraint (Base_Typ));
 
             --  For private extension, stored constraint may be on full view
 
-            elsif Is_Private_Type (Btype)
-              and then Present (Full_View (Btype))
-              and then Present (Stored_Constraint (Full_View (Btype)))
+            elsif Is_Private_Type (Base_Typ)
+              and then Present (Full_View (Base_Typ))
+              and then Present (Stored_Constraint (Full_View (Base_Typ)))
             then
-               Discr_Val := First_Elmt (Stored_Constraint (Full_View (Btype)));
+               Discr_Constr :=
+                 First_Elmt (Stored_Constraint (Full_View (Base_Typ)));
 
             else
-               Discr_Val := First_Elmt (Stored_Constraint (Typ));
+               Discr_Constr := First_Elmt (Stored_Constraint (Typ));
             end if;
 
-            while Present (Discr_Val) and then Present (Disc) loop
+            while Present (Discr) and then Present (Discr_Constr) loop
+               Discr_Val := Node (Discr_Constr);
 
-               --  Only those discriminants of the parent that are not
-               --  renamed by discriminants of the derived type need to
-               --  be added explicitly.
+               --  The parent discriminant is renamed in the derived type,
+               --  nothing to initialize.
 
-               if not Is_Entity_Name (Node (Discr_Val))
-                 or else Ekind (Entity (Node (Discr_Val))) /= E_Discriminant
+               --    type Deriv_Typ (Discr : ...)
+               --      is new Parent_Typ (Discr => Discr);
+
+               if Is_Entity_Name (Discr_Val)
+                 and then Ekind (Entity (Discr_Val)) = E_Discriminant
                then
-                  Comp_Expr :=
-                    Make_Selected_Component (Loc,
-                      Prefix        => New_Copy_Tree (Target),
-                      Selector_Name => New_Occurrence_Of (Disc, Loc));
+                  null;
 
-                  Instr :=
+               --  When the parent discriminant is constrained at the type
+               --  extension level, it does not appear in the derived type.
+
+               --    type Deriv_Typ (Discr : ...)
+               --      is new Parent_Typ (Discr        => Discr,
+               --                         Hidden_Discr => Expression);
+
+               elsif Is_Completely_Hidden_Discriminant (Discr) then
+                  null;
+
+               --  Otherwise initialize the discriminant
+
+               else
+                  Discr_Init :=
                     Make_OK_Assignment_Statement (Loc,
-                      Name       => Comp_Expr,
-                      Expression => New_Copy_Tree (Node (Discr_Val)));
+                      Name       =>
+                        Make_Selected_Component (Loc,
+                          Prefix        => New_Copy_Tree (Target),
+                          Selector_Name => New_Occurrence_Of (Discr, Loc)),
+                      Expression => New_Copy_Tree (Discr_Val));
 
-                  Set_No_Ctrl_Actions (Instr);
-                  Append_To (List, Instr);
+                  Set_No_Ctrl_Actions (Discr_Init);
+                  Append_To (List, Discr_Init);
                end if;
 
-               Next_Discriminant (Disc);
-               Next_Elmt (Discr_Val);
+               Next_Elmt (Discr_Constr);
+               Next_Discriminant (Discr);
             end loop;
 
             In_Aggr_Type := False;
-            Btype := Base_Type (Parent_Type);
+            Base_Typ := Base_Type (Par_Typ);
          end loop;
       end Init_Hidden_Discriminants;
 
@@ -2477,7 +2533,7 @@ package body Exp_Aggr is
             then
                Ancestor_Is_Expression := True;
 
-               --  Set up  finalization data for enclosing record, because
+               --  Set up finalization data for enclosing record, because
                --  controlled subcomponents of the ancestor part will be
                --  attached to it.
 
@@ -2924,13 +2980,33 @@ package body Exp_Aggr is
                   end if;
                end if;
 
-               Instr :=
-                 Make_OK_Assignment_Statement (Loc,
-                   Name       => Comp_Expr,
-                   Expression => Expr_Q);
+               if Generate_C_Code
+                 and then Nkind (Expr_Q) = N_Aggregate
+                 and then Is_Array_Type (Etype (Expr_Q))
+                 and then Present (First_Index (Etype (Expr_Q)))
+               then
+                  declare
+                     Expr_Q_Type : constant Node_Id := Etype (Expr_Q);
+                  begin
+                     Append_List_To (L,
+                       Build_Array_Aggr_Code
+                         (N           => Expr_Q,
+                          Ctype       => Component_Type (Expr_Q_Type),
+                          Index       => First_Index (Expr_Q_Type),
+                          Into        => Comp_Expr,
+                          Scalar_Comp => Is_Scalar_Type
+                                           (Component_Type (Expr_Q_Type))));
+                  end;
 
-               Set_No_Ctrl_Actions (Instr);
-               Append_To (L, Instr);
+               else
+                  Instr :=
+                    Make_OK_Assignment_Statement (Loc,
+                      Name       => Comp_Expr,
+                      Expression => Expr_Q);
+
+                  Set_No_Ctrl_Actions (Instr);
+                  Append_To (L, Instr);
+               end if;
 
                --  Adjust the tag if tagged (because of possible view
                --  conversions), unless compiling for a VM where tags are
@@ -3559,7 +3635,7 @@ package body Exp_Aggr is
          end if;
 
          if Nkind (N) = N_Aggregate
-           and then  Present (Component_Associations (N))
+           and then Present (Component_Associations (N))
          then
             Expr := First (Component_Associations (N));
             while Present (Expr) loop
@@ -3936,7 +4012,7 @@ package body Exp_Aggr is
       --  If the size is known, or all the components are static, try to
       --  build a fully positional aggregate.
 
-      --  The size of the type  may not be known for an aggregate with
+      --  The size of the type may not be known for an aggregate with
       --  discriminated array components, but if the components are static
       --  it is still possible to verify statically that the length is
       --  compatible with the upper bound of the type, and therefore it is
@@ -3980,7 +4056,7 @@ package body Exp_Aggr is
 
                   else
                      Error_Msg_N
-                       ("non-static object  requires elaboration code??", N);
+                       ("non-static object requires elaboration code??", N);
                      exit;
                   end if;
 
@@ -5470,7 +5546,8 @@ package body Exp_Aggr is
 
          if (In_Place_Assign_OK_For_Declaration or else Maybe_In_Place_OK)
            and then not AAMP_On_Target
-           and then not Generate_SCIL
+           and then not CodePeer_Mode
+           and then not Generate_C_Code
            and then not Possible_Bit_Aligned_Component (Target)
            and then not Is_Possibly_Unaligned_Slice (Target)
            and then Aggr_Assignment_OK_For_Backend (N)

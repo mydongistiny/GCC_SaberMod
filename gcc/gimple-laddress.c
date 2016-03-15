@@ -1,5 +1,5 @@
 /* Lower and optimize address expressions.
-   Copyright (C) 2015 Free Software Foundation, Inc.
+   Copyright (C) 2015-2016 Free Software Foundation, Inc.
    Contributed by Marek Polacek <polacek@redhat.com>
 
 This file is part of GCC.
@@ -102,10 +102,10 @@ pass_laddress::execute (function *fun)
 	  HOST_WIDE_INT bitsize, bitpos;
 	  tree base, offset;
 	  machine_mode mode;
-	  int volatilep = 0, unsignedp = 0;
+	  int volatilep = 0, reversep, unsignedp = 0;
 	  base = get_inner_reference (TREE_OPERAND (expr, 0), &bitsize,
 				      &bitpos, &offset, &mode, &unsignedp,
-				      &volatilep, false);
+				      &reversep, &volatilep, false);
 	  gcc_assert (base != NULL_TREE && (bitpos % BITS_PER_UNIT) == 0);
 	  if (offset != NULL_TREE)
 	    {

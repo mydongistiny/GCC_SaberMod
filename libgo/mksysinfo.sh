@@ -183,6 +183,12 @@ enum {
 #ifdef TIOCSCTTY
   TIOCSCTTY_val = TIOCSCTTY,
 #endif
+#ifdef TIOCGPGRP
+  TIOCGPGRP_val = TIOCGPGRP,
+#endif
+#ifdef TIOCSPGRP
+  TIOCSPGRP_val = TIOCSPGRP,
+#endif
 #ifdef TIOCGPTN
   TIOCGPTN_val = TIOCGPTN,
 #endif
@@ -260,6 +266,9 @@ enum {
 #endif
 #ifdef TUNGETFILTER
   TUNGETFILTER_val = TUNGETFILTER,
+#endif
+#ifdef NLA_HDRLEN
+  NLA_HDRLEN_val = NLA_HDRLEN,
 #endif
 
 };
@@ -861,6 +870,14 @@ if ! grep 'type ICMPv6Filter ' ${OUT} > /dev/null 2>&1; then
   echo 'type ICMPv6Filter struct { Data [8]uint32 }' >> ${OUT}
 fi
 
+# The ip6_mtuinfo struct.
+grep '^type _ip6_mtuinfo ' gen-sysinfo.go | \
+    sed -e 's/_ip6_mtuinfo/IPv6MTUInfo/' \
+      -e 's/ip6m_addr/Addr/' \
+      -e 's/_sockaddr_in6/RawSockaddrInet6/' \
+      -e 's/ip6m_mtu/Mtu/' \
+    >> ${OUT}
+
 # Try to guess the type to use for fd_set.
 fd_set=`grep '^type _fd_set ' gen-sysinfo.go || true`
 fds_bits_type="_C_long"
@@ -875,11 +892,13 @@ grep '^type _addrinfo ' gen-sysinfo.go | \
       -e 's/ ai_/ Ai_/g' \
     >> ${OUT}
 
-# The addrinfo flags and errors.
+# The addrinfo and nameinfo flags and errors.
 grep '^const _AI_' gen-sysinfo.go | \
   sed -e 's/^\(const \)_\(AI_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
 grep '^const _EAI_' gen-sysinfo.go | \
   sed -e 's/^\(const \)_\(EAI_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
+grep '^const _NI_' gen-sysinfo.go | \
+  sed -e 's/^\(const \)_\(NI_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
 
 # The passwd struct.
 grep '^type _passwd ' gen-sysinfo.go | \
@@ -913,6 +932,16 @@ fi
 if ! grep '^const TIOCSCTTY' ${OUT} >/dev/null 2>&1; then
   if grep '^const _TIOCSCTTY_val' ${OUT} >/dev/null 2>&1; then
     echo 'const TIOCSCTTY = _TIOCSCTTY_val' >> ${OUT}
+  fi
+fi
+if ! grep '^const TIOCGPGRP' ${OUT} >/dev/null 2>&1; then
+  if grep '^const _TIOCGPGRP_val' ${OUT} >/dev/null 2>&1; then
+    echo 'const TIOCGPGRP = _TIOCGPGRP_val' >> ${OUT}
+  fi
+fi
+if ! grep '^const TIOCSPGRP' ${OUT} >/dev/null 2>&1; then
+  if grep '^const _TIOCSPGRP_val' ${OUT} >/dev/null 2>&1; then
+    echo 'const TIOCSPGRP = _TIOCSPGRP_val' >> ${OUT}
   fi
 fi
 if ! grep '^const TIOCGPTN' ${OUT} >/dev/null 2>&1; then
@@ -1056,8 +1085,6 @@ if ! grep '^const TUNGETFILTER' ${OUT} >/dev/null 2>&1; then
     echo 'const TUNGETFILTER = _TUNGETFILTER_val' >> ${OUT}
   fi
 fi
-
-
 
 # The ioctl flags for terminal control
 grep '^const _TC[GS]ET' gen-sysinfo.go | grep -v _val | \
@@ -1404,8 +1431,14 @@ grep '^type _rtnexthop ' gen-sysinfo.go | \
 # The GNU/Linux netlink flags.
 grep '^const _NETLINK_' gen-sysinfo.go | \
   sed -e 's/^\(const \)_\(NETLINK_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
-grep '^const _NLA_' gen-sysinfo.go | \
+grep '^const _NLA_' gen-sysinfo.go | grep -v '_val =' | \
   sed -e 's/^\(const \)_\(NLA_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
+
+if ! grep '^const NLA_HDRLEN' ${OUT} >/dev/null 2>&1; then
+  if grep '^const _NLA_HDRLEN_val' ${OUT} >/dev/null 2>&1; then
+    echo 'const NLA_HDRLEN = _NLA_HDRLEN_val' >> ${OUT}
+  fi
+fi
 
 # The GNU/Linux packet socket flags.
 grep '^const _PACKET_' gen-sysinfo.go | \
@@ -1426,6 +1459,11 @@ grep '^type _inotify_event ' gen-sysinfo.go | \
 # The GNU/Linux CLONE flags.
 grep '^const _CLONE_' gen-sysinfo.go | \
   sed -e 's/^\(const \)_\(CLONE_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
+# We need some CLONE constants that are not defined in older versions
+# of glibc.
+if ! grep '^const CLONE_NEWUSER ' ${OUT} > /dev/null 2>&1; then
+  echo "const CLONE_NEWUSER = 0x10000000" >> ${OUT}
+fi
 
 # Struct sizes.
 set cmsghdr Cmsghdr ip_mreq IPMreq ip_mreqn IPMreqn ipv6_mreq IPv6Mreq \
@@ -1434,7 +1472,7 @@ set cmsghdr Cmsghdr ip_mreq IPMreq ip_mreqn IPMreqn ipv6_mreq IPv6Mreq \
     msghdr Msghdr nlattr NlAttr nlmsgerr NlMsgerr nlmsghdr NlMsghdr \
     rtattr RtAttr rtgenmsg RtGenmsg rtmsg RtMsg rtnexthop RtNexthop \
     sock_filter SockFilter sock_fprog SockFprog ucred Ucred \
-    icmp6_filter ICMPv6Filter
+    icmp6_filter ICMPv6Filter ip6_mtuinfo IPv6MTUInfo
 while test $# != 0; do
     nc=$1
     ngo=$2
@@ -1463,6 +1501,26 @@ fi
 # The Solaris 11 Update 1 _zone_net_addr_t struct.
 grep '^type _zone_net_addr_t ' gen-sysinfo.go | \
     sed -e 's/_in6_addr/[16]byte/' \
+    >> ${OUT}
+
+# The Solaris 12 _flow_arp_desc_t struct.
+grep '^type _flow_arp_desc_t ' gen-sysinfo.go | \
+    sed -e 's/_in6_addr_t/[16]byte/g' \
+    >> ${OUT}
+
+# The Solaris 12 _flow_l3_desc_t struct.
+grep '^type _flow_l3_desc_t ' gen-sysinfo.go | \
+    sed -e 's/_in6_addr_t/[16]byte/g' \
+    >> ${OUT}
+
+# The Solaris 12 _mac_ipaddr_t struct.
+grep '^type _mac_ipaddr_t ' gen-sysinfo.go | \
+    sed -e 's/_in6_addr_t/[16]byte/g' \
+    >> ${OUT}
+
+# The Solaris 12 _mactun_info_t struct.
+grep '^type _mactun_info_t ' gen-sysinfo.go | \
+    sed -e 's/_in6_addr_t/[16]byte/g' \
     >> ${OUT}
 
 exit $?

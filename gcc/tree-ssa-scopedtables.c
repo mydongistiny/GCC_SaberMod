@@ -1,5 +1,5 @@
 /* Header file for SSA dominator optimizations.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,22 +20,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
+#include "function.h"
+#include "basic-block.h"
 #include "tree.h"
-#include "tree-pretty-print.h"
+#include "gimple.h"
 #include "tree-pass.h"
+#include "tree-pretty-print.h"
 #include "tree-ssa-scopedtables.h"
 #include "tree-ssa-threadedge.h"
-#include "tree-ssa-dom.h"
-#include "function.h"
 #include "stor-layout.h"
 #include "fold-const.h"
-#include "basic-block.h"
 #include "tree-eh.h"
 #include "internal-fn.h"
-#include "gimple.h"
-#include "dumpfile.h"
+#include "tree-dfa.h"
 
 static bool hashable_expr_equal_p (const struct hashable_expr *,
 				   const struct hashable_expr *);
@@ -213,9 +210,76 @@ avail_expr_hash (class expr_hash_elt *p)
   const struct hashable_expr *expr = p->expr ();
   inchash::hash hstate;
 
+  if (expr->kind == EXPR_SINGLE)
+    {
+      /* T could potentially be a switch index or a goto dest.  */
+      tree t = expr->ops.single.rhs;
+      if (TREE_CODE (t) == MEM_REF || handled_component_p (t))
+	{
+	  /* Make equivalent statements of both these kinds hash together.
+	     Dealing with both MEM_REF and ARRAY_REF allows us not to care
+	     about equivalence with other statements not considered here.  */
+	  bool reverse;
+	  HOST_WIDE_INT offset, size, max_size;
+	  tree base = get_ref_base_and_extent (t, &offset, &size, &max_size,
+					       &reverse);
+	  /* Strictly, we could try to normalize variable-sized accesses too,
+	    but here we just deal with the common case.  */
+	  if (size != -1
+	      && size == max_size)
+	    {
+	      enum tree_code code = MEM_REF;
+	      hstate.add_object (code);
+	      inchash::add_expr (base, hstate);
+	      hstate.add_object (offset);
+	      hstate.add_object (size);
+	      return hstate.end ();
+	    }
+	}
+    }
+
   inchash::add_hashable_expr (expr, hstate);
 
   return hstate.end ();
+}
+
+/* Compares trees T0 and T1 to see if they are MEM_REF or ARRAY_REFs equivalent
+   to each other.  (That is, they return the value of the same bit of memory.)
+
+   Return TRUE if the two are so equivalent; FALSE if not (which could still
+   mean the two are equivalent by other means).  */
+
+static bool
+equal_mem_array_ref_p (tree t0, tree t1)
+{
+  if (TREE_CODE (t0) != MEM_REF && ! handled_component_p (t0))
+    return false;
+  if (TREE_CODE (t1) != MEM_REF && ! handled_component_p (t1))
+    return false;
+
+  if (!types_compatible_p (TREE_TYPE (t0), TREE_TYPE (t1)))
+    return false;
+  bool rev0;
+  HOST_WIDE_INT off0, sz0, max0;
+  tree base0 = get_ref_base_and_extent (t0, &off0, &sz0, &max0, &rev0);
+  if (sz0 == -1
+      || sz0 != max0)
+    return false;
+
+  bool rev1;
+  HOST_WIDE_INT off1, sz1, max1;
+  tree base1 = get_ref_base_and_extent (t1, &off1, &sz1, &max1, &rev1);
+  if (sz1 == -1
+      || sz1 != max1)
+    return false;
+
+  if (rev0 != rev1)
+    return false;
+
+  /* Types were compatible, so this is a sanity check.  */
+  gcc_assert (sz0 == sz1);
+
+  return (off0 == off1) && operand_equal_p (base0, base1, 0);
 }
 
 /* Compare two hashable_expr structures for equivalence.  They are
@@ -250,9 +314,10 @@ hashable_expr_equal_p (const struct hashable_expr *expr0,
   switch (expr0->kind)
     {
     case EXPR_SINGLE:
-      return operand_equal_p (expr0->ops.single.rhs,
-                              expr1->ops.single.rhs, 0);
-
+      return equal_mem_array_ref_p (expr0->ops.single.rhs,
+				    expr1->ops.single.rhs)
+	     || operand_equal_p (expr0->ops.single.rhs,
+				 expr1->ops.single.rhs, 0);
     case EXPR_UNARY:
       if (expr0->ops.unary.op != expr1->ops.unary.op)
         return false;
@@ -635,26 +700,13 @@ const_and_copies::pop_to_marker (void)
     }
 }
 
-/* Record that X has the value Y.  */
+/* Record that X has the value Y and that X's previous value is PREV_X. 
+
+   This variant does not follow the value chain for Y.  */
 
 void
-const_and_copies::record_const_or_copy (tree x, tree y)
+const_and_copies::record_const_or_copy_raw (tree x, tree y, tree prev_x)
 {
-  record_const_or_copy (x, y, SSA_NAME_VALUE (x));
-}
-
-/* Record that X has the value Y and that X's previous value is PREV_X.  */
-
-void
-const_and_copies::record_const_or_copy (tree x, tree y, tree prev_x)
-{
-  /* Y may be NULL if we are invalidating entries in the table.  */
-  if (y && TREE_CODE (y) == SSA_NAME)
-    {
-      tree tmp = SSA_NAME_VALUE (y);
-      y = tmp ? tmp : y;
-    }
-
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
       fprintf (dump_file, "0>>> COPY ");
@@ -670,43 +722,29 @@ const_and_copies::record_const_or_copy (tree x, tree y, tree prev_x)
   m_stack.quick_push (x);
 }
 
-/* A new value has been assigned to LHS.  If necessary, invalidate any
-   equivalences that are no longer valid.   This includes invaliding
-   LHS and any objects that are currently equivalent to LHS.
+/* Record that X has the value Y.  */
 
-   Finding the objects that are currently marked as equivalent to LHS
-   is a bit tricky.  We could walk the ssa names and see if any have
-   SSA_NAME_VALUE that is the same as LHS.  That's expensive.
-
-   However, it's far more efficient to look at the unwinding stack as
-   that will have all context sensitive equivalences which are the only
-   ones that we really have to worry about here.   */
 void
-const_and_copies::invalidate (tree lhs)
+const_and_copies::record_const_or_copy (tree x, tree y)
 {
+  record_const_or_copy (x, y, SSA_NAME_VALUE (x));
+}
 
-  /* The stack is an unwinding stack.  If the current element is NULL
-     then it's a "stop unwinding" marker.  Else the current marker is
-     the SSA_NAME with an equivalence and the prior entry in the stack
-     is what the current element is equivalent to.  */
-  for (int i = m_stack.length() - 1; i >= 0; i--)
+/* Record that X has the value Y and that X's previous value is PREV_X. 
+
+   This variant follow's Y value chain.  */
+
+void
+const_and_copies::record_const_or_copy (tree x, tree y, tree prev_x)
+{
+  /* Y may be NULL if we are invalidating entries in the table.  */
+  if (y && TREE_CODE (y) == SSA_NAME)
     {
-      /* Ignore the stop unwinding markers.  */
-      if ((m_stack)[i] == NULL)
-	continue;
-
-      /* We want to check the current value of stack[i] to see if
-	 it matches LHS.  If so, then invalidate.  */
-      if (SSA_NAME_VALUE ((m_stack)[i]) == lhs)
-	record_const_or_copy ((m_stack)[i], NULL_TREE);
-
-      /* Remember, we're dealing with two elements in this case.  */
-      i--;
+      tree tmp = SSA_NAME_VALUE (y);
+      y = tmp ? tmp : y;
     }
 
-  /* And invalidate any known value for LHS itself.  */
-  if (SSA_NAME_VALUE (lhs))
-    record_const_or_copy (lhs, NULL_TREE);
+  record_const_or_copy_raw (x, y, prev_x);
 }
 
 bool

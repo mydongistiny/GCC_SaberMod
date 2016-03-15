@@ -1,5 +1,5 @@
 /* A pass for lowering trees to RTL.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,59 +21,54 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
+#include "tm_p.h"
 #include "ssa.h"
-#include "alias.h"
+#include "optabs.h"
+#include "regs.h" /* For reg_renumber.  */
+#include "emit-rtl.h"
+#include "recog.h"
+#include "cgraph.h"
+#include "diagnostic.h"
 #include "fold-const.h"
 #include "varasm.h"
 #include "stor-layout.h"
 #include "stmt.h"
 #include "print-tree.h"
-#include "tm_p.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
 #include "expr.h"
-#include "langhooks.h"
 #include "internal-fn.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
+#include "gimple-expr.h"
 #include "gimple-walk.h"
-#include "cgraph.h"
 #include "tree-cfg.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
-#include "tree-pass.h"
 #include "except.h"
-#include "diagnostic.h"
 #include "gimple-pretty-print.h"
 #include "toplev.h"
 #include "debug.h"
 #include "params.h"
 #include "tree-inline.h"
 #include "value-prof.h"
-#include "target.h"
 #include "tree-ssa-live.h"
 #include "tree-outof-ssa.h"
 #include "cfgloop.h"
-#include "regs.h" /* For reg_renumber.  */
 #include "insn-attr.h" /* For INSN_SCHEDULING.  */
 #include "asan.h"
 #include "tree-ssa-address.h"
-#include "recog.h"
 #include "output.h"
 #include "builtins.h"
 #include "tree-chkp.h"
@@ -189,10 +184,15 @@ set_rtl (tree t, rtx x)
 				      || SUBREG_P (XEXP (x, 0)))
 				  && (REG_P (XEXP (x, 1))
 				      || SUBREG_P (XEXP (x, 1))))
+			      /* We need to accept PARALLELs for RESUT_DECLs
+				 because of vector types with BLKmode returned
+				 in multiple registers, but they are supposed
+				 to be uncoalesced.  */
 			      || (GET_CODE (x) == PARALLEL
 				  && SSAVAR (t)
 				  && TREE_CODE (SSAVAR (t)) == RESULT_DECL
-				  && !flag_tree_coalesce_vars))
+				  && (GET_MODE (x) == BLKmode
+				      || !flag_tree_coalesce_vars)))
 			   : (MEM_P (x) || x == pc_rtx
 			      || (GET_CODE (x) == CONCAT
 				  && MEM_P (XEXP (x, 0))
@@ -203,11 +203,14 @@ set_rtl (tree t, rtx x)
      PARM_DECLs and RESULT_DECLs, we'll have been called by
      set_parm_rtl, which will give us the default def, so we don't
      have to compute it ourselves.  For RESULT_DECLs, we accept mode
-     mismatches too, as long as we're not coalescing across variables,
-     so that we don't reject BLKmode PARALLELs or unpromoted REGs.  */
+     mismatches too, as long as we have BLKmode or are not coalescing
+     across variables, so that we don't reject BLKmode PARALLELs or
+     unpromoted REGs.  */
   gcc_checking_assert (!x || x == pc_rtx || TREE_CODE (t) != SSA_NAME
-		       || (SSAVAR (t) && TREE_CODE (SSAVAR (t)) == RESULT_DECL
-			   && !flag_tree_coalesce_vars)
+		       || (SSAVAR (t)
+			   && TREE_CODE (SSAVAR (t)) == RESULT_DECL
+			   && (promote_ssa_mode (t, NULL) == BLKmode
+			       || !flag_tree_coalesce_vars))
 		       || !use_register_for_decl (t)
 		       || GET_MODE (x) == promote_ssa_mode (t, NULL));
 
@@ -865,6 +868,18 @@ union_stack_vars (size_t a, size_t b)
     }
 }
 
+/* Return true if the current function should have its stack frame
+   protected by address sanitizer.  */
+
+static inline bool
+asan_sanitize_stack_p (void)
+{
+  return ((flag_sanitize & SANITIZE_ADDRESS)
+	  && ASAN_STACK
+	  && !lookup_attribute ("no_sanitize_address",
+				DECL_ATTRIBUTES (current_function_decl)));
+}
+
 /* A subroutine of expand_used_vars.  Binpack the variables into
    partitions constrained by the interference graph.  The overall
    algorithm used is as follows:
@@ -926,7 +941,7 @@ partition_stack_vars (void)
 	     sizes, as the shorter vars wouldn't be adequately protected.
 	     Don't do that for "large" (unsupported) alignment objects,
 	     those aren't protected anyway.  */
-	  if ((flag_sanitize & SANITIZE_ADDRESS) && ASAN_STACK && isize != jsize
+	  if (asan_sanitize_stack_p () && isize != jsize
 	      && ialign * BITS_PER_UNIT <= MAX_SUPPORTED_STACK_ALIGNMENT)
 	    break;
 
@@ -1117,7 +1132,7 @@ expand_stack_vars (bool (*pred) (size_t), struct stack_vars_data *data)
       if (alignb * BITS_PER_UNIT <= MAX_SUPPORTED_STACK_ALIGNMENT)
 	{
 	  base = virtual_stack_vars_rtx;
-	  if ((flag_sanitize & SANITIZE_ADDRESS) && ASAN_STACK && pred)
+	  if (asan_sanitize_stack_p () && pred)
 	    {
 	      HOST_WIDE_INT prev_offset
 		= align_base (frame_offset,
@@ -1488,7 +1503,7 @@ defer_stack_allocation (tree var, bool toplevel)
   /* If stack protection is enabled, *all* stack variables must be deferred,
      so that we can re-order the strings to the top of the frame.
      Similarly for Address Sanitizer.  */
-  if (flag_stack_protect || ((flag_sanitize & SANITIZE_ADDRESS) && ASAN_STACK))
+  if (flag_stack_protect || asan_sanitize_stack_p ())
     return true;
 
   unsigned int align = TREE_CODE (var) == SSA_NAME
@@ -1547,6 +1562,9 @@ expand_one_var (tree var, bool toplevel, bool really_expand)
 
   if (TREE_TYPE (var) != error_mark_node && TREE_CODE (var) == VAR_DECL)
     {
+      if (is_global_var (var))
+	return 0;
+
       /* Because we don't know if VAR will be in register or on stack,
 	 we conservatively assume it will be on stack even if VAR is
 	 eventually put into register after RA pass.  For non-automatic
@@ -2185,7 +2203,7 @@ expand_used_vars (void)
 	    expand_stack_vars (stack_protect_decl_phase_2, &data);
 	}
 
-      if ((flag_sanitize & SANITIZE_ADDRESS) && ASAN_STACK)
+      if (asan_sanitize_stack_p ())
 	/* Phase 3, any partitions that need asan protection
 	   in addition to phase 1 and 2.  */
 	expand_stack_vars (asan_decl_phase_3, &data);
@@ -2556,10 +2574,25 @@ expand_call_stmt (gcall *stmt)
       return;
     }
 
+  /* If this is a call to a built-in function and it has no effect other
+     than setting the lhs, try to implement it using an internal function
+     instead.  */
+  decl = gimple_call_fndecl (stmt);
+  if (gimple_call_lhs (stmt)
+      && !gimple_has_side_effects (stmt)
+      && (optimize || (decl && called_as_built_in (decl))))
+    {
+      internal_fn ifn = replacement_internal_fn (stmt);
+      if (ifn != IFN_LAST)
+	{
+	  expand_internal_call (ifn, stmt);
+	  return;
+	}
+    }
+
   exp = build_vl_exp (CALL_EXPR, gimple_call_num_args (stmt) + 3);
 
   CALL_EXPR_FN (exp) = gimple_call_fn (stmt);
-  decl = gimple_call_fndecl (stmt);
   builtin_p = decl && DECL_BUILT_IN (decl);
 
   /* If this is not a builtin function, the function type through which the
@@ -3269,12 +3302,13 @@ expand_computed_goto (tree exp)
 static void
 expand_goto (tree label)
 {
-#ifdef ENABLE_CHECKING
-  /* Check for a nonlocal goto to a containing function.  Should have
-     gotten translated to __builtin_nonlocal_goto.  */
-  tree context = decl_function_context (label);
-  gcc_assert (!context || context == current_function_decl);
-#endif
+  if (flag_checking)
+    {
+      /* Check for a nonlocal goto to a containing function.  Should have
+	 gotten translated to __builtin_nonlocal_goto.  */
+      tree context = decl_function_context (label);
+      gcc_assert (!context || context == current_function_decl);
+    }
 
   emit_jump (jump_target_rtx (label));
 }
@@ -3523,6 +3557,12 @@ expand_gimple_stmt_1 (gimple *stmt)
 	  {
 	    tree result = DECL_RESULT (current_function_decl);
 
+	    /* Mark we have return statement with missing bounds.  */
+	    if (!bnd
+		&& chkp_function_instrumented_p (cfun->decl)
+		&& !DECL_P (op0))
+	      bnd = error_mark_node;
+
 	    /* If we are not returning the current function's RESULT_DECL,
 	       build an assignment to it.  */
 	    if (op0 != result)
@@ -3539,9 +3579,6 @@ expand_gimple_stmt_1 (gimple *stmt)
 		op0 = build2 (MODIFY_EXPR, TREE_TYPE (result),
 			      result, op0);
 	      }
-	    /* Mark we have return statement with missing bounds.  */
-	    if (!bnd && chkp_function_instrumented_p (cfun->decl))
-	      bnd = error_mark_node;
 	  }
 
 	if (!op0)
@@ -4378,9 +4415,10 @@ expand_debug_expr (tree exp)
 	machine_mode mode1;
 	HOST_WIDE_INT bitsize, bitpos;
 	tree offset;
-	int volatilep = 0;
-	tree tem = get_inner_reference (exp, &bitsize, &bitpos, &offset,
-					&mode1, &unsignedp, &volatilep, false);
+	int reversep, volatilep = 0;
+	tree tem
+	  = get_inner_reference (exp, &bitsize, &bitpos, &offset, &mode1,
+				 &unsignedp, &reversep, &volatilep, false);
 	rtx orig_op0;
 
 	if (bitsize == 0)
@@ -4803,9 +4841,10 @@ expand_debug_expr (tree exp)
 	  if (handled_component_p (TREE_OPERAND (exp, 0)))
 	    {
 	      HOST_WIDE_INT bitoffset, bitsize, maxsize;
+	      bool reverse;
 	      tree decl
-		= get_ref_base_and_extent (TREE_OPERAND (exp, 0),
-					   &bitoffset, &bitsize, &maxsize);
+		= get_ref_base_and_extent (TREE_OPERAND (exp, 0), &bitoffset,
+					   &bitsize, &maxsize, &reverse);
 	      if ((TREE_CODE (decl) == VAR_DECL
 		   || TREE_CODE (decl) == PARM_DECL
 		   || TREE_CODE (decl) == RESULT_DECL)
@@ -5056,12 +5095,12 @@ expand_debug_expr (tree exp)
 
     default:
     flag_unsupported:
-#ifdef ENABLE_CHECKING
-      debug_tree (exp);
-      gcc_unreachable ();
-#else
+      if (flag_checking)
+	{
+	  debug_tree (exp);
+	  gcc_unreachable ();
+	}
       return NULL;
-#endif
     }
 }
 
@@ -6277,6 +6316,9 @@ pass_expand::execute (function *fun)
 
   expand_phi_nodes (&SA);
 
+  /* Release any stale SSA redirection data.  */
+  redirect_edge_var_map_empty ();
+
   /* Register rtl specific functions for cfg.  */
   rtl_register_cfg_hooks ();
 
@@ -6304,7 +6346,7 @@ pass_expand::execute (function *fun)
   /* Free stuff we no longer need after GIMPLE optimizations.  */
   free_dominance_info (CDI_DOMINATORS);
   free_dominance_info (CDI_POST_DOMINATORS);
-  delete_tree_cfg_annotations ();
+  delete_tree_cfg_annotations (fun);
 
   timevar_push (TV_OUT_OF_SSA);
   finish_out_of_ssa (&SA);
@@ -6318,7 +6360,7 @@ pass_expand::execute (function *fun)
   /* Expansion is used by optimization passes too, set maybe_hot_insn_p
      conservatively to true until they are all profile aware.  */
   delete lab_rtx_for_bb;
-  free_histograms ();
+  free_histograms (fun);
 
   construct_exit_block ();
   insn_locations_finalize ();
@@ -6373,6 +6415,8 @@ pass_expand::execute (function *fun)
   /* We're done expanding trees to RTL.  */
   currently_expanding_to_rtl = 0;
 
+  flush_mark_addressable_queue ();
+
   FOR_BB_BETWEEN (bb, ENTRY_BLOCK_PTR_FOR_FN (fun)->next_bb,
 		  EXIT_BLOCK_PTR_FOR_FN (fun), next_bb)
     {
@@ -6422,9 +6466,7 @@ pass_expand::execute (function *fun)
      gcc.c-torture/execute/ipa-sra-2.c execution, -Os -m32 fails otherwise.  */
   cleanup_cfg (CLEANUP_NO_INSN_DEL);
 
-#ifdef ENABLE_CHECKING
-  verify_flow_info ();
-#endif
+  checking_verify_flow_info ();
 
   /* Initialize pseudos allocated for hard registers.  */
   emit_initial_value_sets ();

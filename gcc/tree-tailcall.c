@@ -1,5 +1,5 @@
 /* Tail call optimization on trees.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,40 +21,25 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "cgraph.h"
+#include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "tm_p.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
-#include "gimple-pretty-print.h"
 #include "except.h"
-#include "tree-pass.h"
-#include "langhooks.h"
 #include "dbgcnt.h"
-#include "target.h"
 #include "cfgloop.h"
 #include "common/common-target.h"
-#include "cgraph.h"
 #include "ipa-utils.h"
 
 /* The file implements the tail recursion elimination.  It is also used to
@@ -427,9 +412,10 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
     {
       stmt = gsi_stmt (gsi);
 
-      /* Ignore labels, returns, clobbers and debug stmts.  */
+      /* Ignore labels, returns, nops, clobbers and debug stmts.  */
       if (gimple_code (stmt) == GIMPLE_LABEL
 	  || gimple_code (stmt) == GIMPLE_RETURN
+	  || gimple_code (stmt) == GIMPLE_NOP
 	  || gimple_clobber_p (stmt)
 	  || is_gimple_debug (stmt))
 	continue;
@@ -547,7 +533,8 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
 
       stmt = gsi_stmt (agsi);
 
-      if (gimple_code (stmt) == GIMPLE_LABEL)
+      if (gimple_code (stmt) == GIMPLE_LABEL
+	  || gimple_code (stmt) == GIMPLE_NOP)
 	continue;
 
       if (gimple_code (stmt) == GIMPLE_RETURN)

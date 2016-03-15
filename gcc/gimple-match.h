@@ -1,6 +1,6 @@
 /* Gimple simplify definitions.
 
-   Copyright (C) 2011-2015 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Richard Guenther <rguenther@suse.de>
 
 This file is part of GCC.
@@ -30,9 +30,9 @@ class code_helper
 public:
   code_helper () {}
   code_helper (tree_code code) : rep ((int) code) {}
-  code_helper (built_in_function fn) : rep (-(int) fn) {}
+  code_helper (combined_fn fn) : rep (-(int) fn) {}
   operator tree_code () const { return (tree_code) rep; }
-  operator built_in_function () const { return (built_in_function) -rep; }
+  operator combined_fn () const { return (combined_fn) -rep; }
   bool is_tree_code () const { return rep > 0; }
   bool is_fn_code () const { return rep < 0; }
   int get_rep () const { return rep; }

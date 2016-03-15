@@ -1,5 +1,5 @@
 /* Interprocedural analyses.
-   Copyright (C) 2005-2015 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,48 +20,33 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "alloc-pool.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "options.h"
+#include "tree-streamer.h"
+#include "cgraph.h"
+#include "diagnostic.h"
 #include "fold-const.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "stor-layout.h"
 #include "print-tree.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
 #include "gimple-walk.h"
-#include "langhooks.h"
-#include "target.h"
-#include "cgraph.h"
-#include "alloc-pool.h"
 #include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "tree-cfg.h"
-#include "tree-into-ssa.h"
 #include "tree-dfa.h"
-#include "tree-pass.h"
 #include "tree-inline.h"
 #include "ipa-inline.h"
-#include "diagnostic.h"
 #include "gimple-pretty-print.h"
-#include "tree-streamer.h"
 #include "params.h"
 #include "ipa-utils.h"
 #include "dbgcnt.h"
@@ -417,9 +402,6 @@ static void
 ipa_set_jf_constant (struct ipa_jump_func *jfunc, tree constant,
 		     struct cgraph_edge *cs)
 {
-  constant = unshare_expr (constant);
-  if (constant && EXPR_P (constant))
-    SET_EXPR_LOCATION (constant, UNKNOWN_LOCATION);
   jfunc->type = IPA_JF_CONST;
   jfunc->value.constant.value = unshare_expr_without_location (constant);
 
@@ -967,7 +949,9 @@ ipa_load_from_parm_agg (struct ipa_func_body_info *fbi,
 {
   int index;
   HOST_WIDE_INT size, max_size;
-  tree base = get_ref_base_and_extent (op, offset_p, &size, &max_size);
+  bool reverse;
+  tree base
+    = get_ref_base_and_extent (op, offset_p, &size, &max_size, &reverse);
 
   if (max_size == -1 || max_size != size || *offset_p < 0)
     return false;
@@ -1092,6 +1076,7 @@ compute_complex_assign_jump_func (struct ipa_func_body_info *fbi,
 {
   HOST_WIDE_INT offset, size, max_size;
   tree op1, tc_ssa, base, ssa;
+  bool reverse;
   int index;
 
   op1 = gimple_assign_rhs1 (stmt);
@@ -1139,7 +1124,7 @@ compute_complex_assign_jump_func (struct ipa_func_body_info *fbi,
   op1 = TREE_OPERAND (op1, 0);
   if (TREE_CODE (TREE_TYPE (op1)) != RECORD_TYPE)
     return;
-  base = get_ref_base_and_extent (op1, &offset, &size, &max_size);
+  base = get_ref_base_and_extent (op1, &offset, &size, &max_size, &reverse);
   if (TREE_CODE (base) != MEM_REF
       /* If this is a varying address, punt.  */
       || max_size == -1
@@ -1175,6 +1160,7 @@ get_ancestor_addr_info (gimple *assign, tree *obj_p, HOST_WIDE_INT *offset)
 {
   HOST_WIDE_INT size, max_size;
   tree expr, parm, obj;
+  bool reverse;
 
   if (!gimple_assign_single_p (assign))
     return NULL_TREE;
@@ -1184,7 +1170,7 @@ get_ancestor_addr_info (gimple *assign, tree *obj_p, HOST_WIDE_INT *offset)
     return NULL_TREE;
   expr = TREE_OPERAND (expr, 0);
   obj = expr;
-  expr = get_ref_base_and_extent (expr, offset, &size, &max_size);
+  expr = get_ref_base_and_extent (expr, offset, &size, &max_size, &reverse);
 
   if (TREE_CODE (expr) != MEM_REF
       /* If this is a varying address, punt.  */
@@ -1450,10 +1436,11 @@ determine_locally_known_aggregate_parts (gcall *call, tree arg,
       else if (TREE_CODE (arg) == ADDR_EXPR)
 	{
 	  HOST_WIDE_INT arg_max_size;
+	  bool reverse;
 
 	  arg = TREE_OPERAND (arg, 0);
 	  arg_base = get_ref_base_and_extent (arg, &arg_offset, &arg_size,
-					  &arg_max_size);
+					      &arg_max_size, &reverse);
 	  if (arg_max_size == -1
 	      || arg_max_size != arg_size
 	      || arg_offset < 0)
@@ -1472,13 +1459,14 @@ determine_locally_known_aggregate_parts (gcall *call, tree arg,
   else
     {
       HOST_WIDE_INT arg_max_size;
+      bool reverse;
 
       gcc_checking_assert (AGGREGATE_TYPE_P (TREE_TYPE (arg)));
 
       by_ref = false;
       check_ref = false;
       arg_base = get_ref_base_and_extent (arg, &arg_offset, &arg_size,
-					  &arg_max_size);
+					  &arg_max_size, &reverse);
       if (arg_max_size == -1
 	  || arg_max_size != arg_size
 	  || arg_offset < 0)
@@ -1499,6 +1487,7 @@ determine_locally_known_aggregate_parts (gcall *call, tree arg,
       gimple *stmt = gsi_stmt (gsi);
       HOST_WIDE_INT lhs_offset, lhs_size, lhs_max_size;
       tree lhs, rhs, lhs_base;
+      bool reverse;
 
       if (!stmt_may_clobber_ref_p_1 (stmt, &r))
 	continue;
@@ -1513,7 +1502,7 @@ determine_locally_known_aggregate_parts (gcall *call, tree arg,
 	break;
 
       lhs_base = get_ref_base_and_extent (lhs, &lhs_offset, &lhs_size,
-					  &lhs_max_size);
+					  &lhs_max_size, &reverse);
       if (lhs_max_size == -1
 	  || lhs_max_size != lhs_size)
 	break;
@@ -1654,6 +1643,7 @@ ipa_compute_jump_functions_for_edge (struct ipa_func_body_info *fbi,
 	      && align % BITS_PER_UNIT == 0
 	      && hwi_bitpos % BITS_PER_UNIT == 0)
 	    {
+	      gcc_checking_assert (align != 0);
 	      jfunc->alignment.known = true;
 	      jfunc->alignment.align = align / BITS_PER_UNIT;
 	      jfunc->alignment.misalign = hwi_bitpos / BITS_PER_UNIT;
@@ -2253,17 +2243,31 @@ public:
   analysis_dom_walker (struct ipa_func_body_info *fbi)
     : dom_walker (CDI_DOMINATORS), m_fbi (fbi) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
 
 private:
   struct ipa_func_body_info *m_fbi;
 };
 
-void
+edge
 analysis_dom_walker::before_dom_children (basic_block bb)
 {
   ipa_analyze_params_uses_in_bb (m_fbi, bb);
   ipa_compute_jump_functions_for_bb (m_fbi, bb);
+  return NULL;
+}
+
+/* Release body info FBI.  */
+
+void
+ipa_release_body_info (struct ipa_func_body_info *fbi)
+{
+  int i;
+  struct ipa_bb_info *bi;
+
+  FOR_EACH_VEC_ELT (fbi->bb_infos, i, bi)
+    free_ipa_bb_info (bi);
+  fbi->bb_infos.release ();
 }
 
 /* Initialize the array describing properties of formal parameters
@@ -2321,11 +2325,7 @@ ipa_analyze_node (struct cgraph_node *node)
 
   analysis_dom_walker (&fbi).walk (ENTRY_BLOCK_PTR_FOR_FN (cfun));
 
-  int i;
-  struct ipa_bb_info *bi;
-  FOR_EACH_VEC_ELT (fbi.bb_infos, i, bi)
-    free_ipa_bb_info (bi);
-  fbi.bb_infos.release ();
+  ipa_release_body_info (&fbi);
   free_dominance_info (CDI_DOMINATORS);
   pop_cfun ();
 }
@@ -2895,18 +2895,22 @@ try_make_edge_direct_virtual_call (struct cgraph_edge *ie,
 					   true);
       if (t && vtable_pointer_value_to_vtable (t, &vtable, &offset))
 	{
+	  bool can_refer;
 	  t = gimple_get_virt_method_for_vtable (ie->indirect_info->otr_token,
-						      vtable, offset);
-	  if (t)
+						 vtable, offset, &can_refer);
+	  if (can_refer)
 	    {
-	      if ((TREE_CODE (TREE_TYPE (t)) == FUNCTION_TYPE
-		   && DECL_FUNCTION_CODE (t) == BUILT_IN_UNREACHABLE)
+	      if (!t
+		  || (TREE_CODE (TREE_TYPE (t)) == FUNCTION_TYPE
+		      && DECL_FUNCTION_CODE (t) == BUILT_IN_UNREACHABLE)
 		  || !possible_polymorphic_call_target_p
 		       (ie, cgraph_node::get (t)))
 		{
 		  /* Do not speculate builtin_unreachable, it is stupid!  */
 		  if (!ie->indirect_info->vptr_changed)
 		    target = ipa_impossible_devirt_target (ie, target);
+		  else
+		    target = NULL;
 		}
 	      else
 		{
@@ -3314,6 +3318,7 @@ ipa_node_params::~ipa_node_params ()
   free (lattices);
   /* Lattice values and their sources are deallocated with their alocation
      pool.  */
+  known_csts.release ();
   known_contexts.release ();
 
   lattices = NULL;
@@ -3983,6 +3988,7 @@ ipa_modify_call_arguments (struct cgraph_edge *cs, gcall *stmt,
 	      base = force_gimple_operand_gsi (&gsi, base,
 					       true, NULL, true, GSI_SAME_STMT);
 	      expr = fold_build2_loc (loc, MEM_REF, type, base, off);
+	      REF_REVERSE_STORAGE_ORDER (expr) = adj->reverse;
 	      /* If expr is not a valid gimple call argument emit
 	         a load into a temporary.  */
 	      if (is_gimple_reg_type (TREE_TYPE (expr)))
@@ -4002,6 +4008,7 @@ ipa_modify_call_arguments (struct cgraph_edge *cs, gcall *stmt,
 	  else
 	    {
 	      expr = fold_build2_loc (loc, MEM_REF, adj->type, base, off);
+	      REF_REVERSE_STORAGE_ORDER (expr) = adj->reverse;
 	      expr = build_fold_addr_expr (expr);
 	      expr = force_gimple_operand_gsi (&gsi, expr,
 					       true, NULL, true, GSI_SAME_STMT);
@@ -4106,7 +4113,10 @@ ipa_modify_expr (tree *expr, bool convert,
 
   tree src;
   if (cand->by_ref)
-    src = build_simple_mem_ref (cand->new_decl);
+    {
+      src = build_simple_mem_ref (cand->new_decl);
+      REF_REVERSE_STORAGE_ORDER (src) = cand->reverse;
+    }
   else
     src = cand->new_decl;
 
@@ -4173,7 +4183,9 @@ ipa_get_adjustment_candidate (tree **expr, bool *convert,
     }
 
   HOST_WIDE_INT offset, size, max_size;
-  tree base = get_ref_base_and_extent (**expr, &offset, &size, &max_size);
+  bool reverse;
+  tree base
+    = get_ref_base_and_extent (**expr, &offset, &size, &max_size, &reverse);
   if (!base || size == -1 || max_size == -1)
     return NULL;
 
@@ -5089,7 +5101,7 @@ public:
     : dom_walker (CDI_DOMINATORS), m_fbi (fbi), m_descriptors (descs),
       m_aggval (av), m_something_changed (sc), m_cfg_changed (cc) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
 
 private:
   struct ipa_func_body_info *m_fbi;
@@ -5098,7 +5110,7 @@ private:
   bool *m_something_changed, *m_cfg_changed;
 };
 
-void
+edge
 ipcp_modif_dom_walker::before_dom_children (basic_block bb)
 {
   gimple_stmt_iterator gsi;
@@ -5189,7 +5201,7 @@ ipcp_modif_dom_walker::before_dom_children (basic_block bb)
 	  && gimple_purge_dead_eh_edges (gimple_bb (stmt)))
 	*m_cfg_changed = true;
     }
-
+  return NULL;
 }
 
 /* Update alignment of formal parameters as described in

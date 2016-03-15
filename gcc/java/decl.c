@@ -1,6 +1,6 @@
 /* Process declarations and variables for the GNU compiler for the
    Java(TM) language.
-   Copyright (C) 1996-2015 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,24 +27,18 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
+#include "target.h"
+#include "function.h"
 #include "tree.h"
-#include "options.h"
-#include "stor-layout.h"
 #include "stringpool.h"
-#include "varasm.h"
+#include "cgraph.h"
 #include "diagnostic-core.h"
+#include "stor-layout.h"
+#include "varasm.h"
 #include "toplev.h"
-#include "flags.h"
 #include "java-tree.h"
 #include "jcf.h"
 #include "java-except.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
-#include "tree-inline.h"
-#include "target.h"
 #include "version.h"
 #include "tree-iterator.h"
 #include "langhooks.h"
@@ -571,7 +565,7 @@ java_init_decl_processing (void)
   global_binding_level = current_binding_level;
 
   /* Build common tree nodes, Java has an unsigned char.  */
-  build_common_tree_nodes (false, false);
+  build_common_tree_nodes (false);
 
   /* ???  Now we continue and override some of the built types again
      with Java specific types.  As the above generated types are

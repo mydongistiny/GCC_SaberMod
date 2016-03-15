@@ -1,5 +1,5 @@
 /* Functions to support general ended bitmaps.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,7 +20,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "obstack.h"
 #include "bitmap.h"
 
 /* Memory allocation statistics purpose instance.  */
@@ -36,7 +35,7 @@ bitmap_register (bitmap b MEM_STAT_DECL)
 
 /* Account the overhead.  */
 static void
-register_overhead (bitmap b, int amount)
+register_overhead (bitmap b, size_t amount)
 {
   if (bitmap_mem_desc.contains_descriptor_for_instance (b))
     bitmap_mem_desc.register_instance_overhead (amount, b);
@@ -469,6 +468,27 @@ bitmap_copy (bitmap to, const_bitmap from)
       to_ptr = to_elt;
     }
 }
+
+/* Move a bitmap to another bitmap.  */
+
+void
+bitmap_move (bitmap to, bitmap from)
+{
+  gcc_assert (to->obstack == from->obstack);
+
+  bitmap_clear (to);
+
+  *to = *from;
+
+  if (GATHER_STATISTICS)
+    {
+      size_t sz = 0;
+      for (bitmap_element *e = to->first; e; e = e->next)
+	sz += sizeof (bitmap_element);
+      register_overhead (to, sz);
+      register_overhead (from, -sz);
+    }
+}
 
 /* Find a bitmap element that would hold a bitmap's bit.
    Update the `current' field even if we can't find an element that
@@ -488,9 +508,11 @@ bitmap_find_bit (bitmap head, unsigned int bit)
       && head->first->next == NULL)
     return NULL;
 
-   /* Usage can be NULL due to allocated bitmaps for which we do not
-      call initialize function.  */
-   bitmap_usage *usage = bitmap_mem_desc.get_descriptor_for_instance (head);
+  /* Usage can be NULL due to allocated bitmaps for which we do not
+     call initialize function.  */
+  bitmap_usage *usage = NULL;
+  if (GATHER_STATISTICS)
+    usage = bitmap_mem_desc.get_descriptor_for_instance (head);
 
   /* This bitmap has more than one element, and we're going to look
      through the elements list.  Count that as a search.  */

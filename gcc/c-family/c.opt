@@ -1,5 +1,5 @@
 ; Options for the C, ObjC, C++ and ObjC++ front ends.
-; Copyright (C) 2003-2015 Free Software Foundation, Inc.
+; Copyright (C) 2003-2016 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -435,7 +435,7 @@ C ObjC RejectNegative Warning Alias(Werror=, implicit-function-declaration)
 This switch is deprecated; use -Werror=implicit-function-declaration instead.
 
 Wfloat-conversion
-C ObjC C++ ObjC++ Var(warn_float_conversion) LangEnabledBy(C ObjC C++ ObjC++,Wconversion)
+C ObjC C++ ObjC++ Var(warn_float_conversion) Warning LangEnabledBy(C ObjC C++ ObjC++,Wconversion)
 Warn for implicit type conversions that cause loss of floating point precision.
 
 Wfloat-equal
@@ -562,7 +562,7 @@ C ObjC C++ ObjC++ Var(warn_memset_transposed_args) Warning LangEnabledBy(C ObjC 
 Warn about suspicious calls to memset where the third argument is constant literal zero and the second is not.
 
 Wmisleading-indentation
-C C++ Common Var(warn_misleading_indentation) Warning
+C C++ Common Var(warn_misleading_indentation) Warning LangEnabledBy(C C++,Wall)
 Warn when the indentation of the code does not reflect the block structure.
 
 Wmissing-braces
@@ -627,7 +627,7 @@ C++ ObjC++ Var(warn_templates) Warning
 Warn on primary template declaration.
 
 Wmissing-format-attribute
-C ObjC C++ ObjC++ Alias(Wsuggest-attribute=format)
+C ObjC C++ ObjC++ Warning Alias(Wsuggest-attribute=format)
 ;
 
 Wmissing-include-dirs
@@ -677,8 +677,12 @@ Wnonnull
 C ObjC C++ ObjC++ LangEnabledBy(C ObjC C++ ObjC++,Wall)
 ;
 
+Wnonnull-compare
+C ObjC C++ ObjC++ LangEnabledBy(C ObjC C++ ObjC++,Wall)
+;
+
 Wnormalized
-C ObjC C++ ObjC++ Alias(Wnormalized=,nfc,none)
+C ObjC C++ ObjC++ Warning Alias(Wnormalized=,nfc,none)
 ;
 
 Wnormalized=
@@ -776,6 +780,14 @@ Wprotocol
 ObjC ObjC++ Var(warn_protocol) Init(1) Warning
 Warn if inherited methods are unimplemented.
 
+Wplacement-new
+C++ Warning Alias(Wplacement-new=, 1, 0)
+Warn for placement new expressions with undefined behavior.
+
+Wplacement-new=
+C++ Joined RejectNegative UInteger Var(warn_placement_new) Init(-1) Warning
+Warn for placement new expressions with undefined behavior.
+
 Wredundant-decls
 C ObjC C++ ObjC++ Var(warn_redundant_decls) Warning
 Warn about multiple declarations of the same object.
@@ -787,6 +799,10 @@ Warn when the compiler reorders code.
 Wreturn-type
 C ObjC C++ ObjC++ Var(warn_return_type) Warning LangEnabledBy(C ObjC C++ ObjC++,Wall)
 Warn whenever a function's return type defaults to \"int\" (C), or about inconsistent return types (C++).
+
+Wscalar-storage-order
+C ObjC C++ ObjC++ Init(1) Warning
+Warn on suspicious constructs involving reverse scalar storage order.
 
 Wselector
 ObjC ObjC++ Var(warn_selector) Warning
@@ -829,7 +845,7 @@ C ObjC C++ ObjC++ EnabledBy(Wextra)
 ;
 
 Wsign-conversion
-C ObjC C++ ObjC++ Var(warn_sign_conversion) LangEnabledBy(C ObjC,Wconversion)
+C ObjC C++ ObjC++ Var(warn_sign_conversion) Warning LangEnabledBy(C ObjC,Wconversion)
 Warn for implicit type conversions between signed and unsigned integers.
 
 Wsign-promo
@@ -933,7 +949,11 @@ C ObjC C++ ObjC++ LangEnabledBy(C ObjC C++ ObjC++,Wunused)
 ; documented in common.opt
 
 Wunused-const-variable
-C ObjC C++ ObjC++ Var(warn_unused_const_variable) Warning LangEnabledBy(C ObjC,Wunused-variable)
+C ObjC C++ ObjC++ Warning Alias(Wunused-const-variable=, 2, 0)
+Warn when a const variable is unused.
+
+Wunused-const-variable=
+C ObjC C++ ObjC++ Joined RejectNegative UInteger Var(warn_unused_const_variable) Warning LangEnabledBy(C ObjC,Wunused-variable, 1, 0)
 Warn when a const variable is unused.
 
 Wvariadic-macros
@@ -1364,6 +1384,10 @@ fopenacc
 C ObjC C++ ObjC++ LTO Var(flag_openacc)
 Enable OpenACC.
 
+fopenacc-dim=
+C ObjC C++ ObjC++ LTO Joined Var(flag_openacc_dims)
+Specify default OpenACC compute dimensions.
+
 fopenmp
 C ObjC C++ ObjC++ LTO Var(flag_openmp)
 Enable OpenMP (implies -frecursive in Fortran).
@@ -1423,10 +1447,6 @@ frtti
 C++ ObjC++ Optimization Var(flag_rtti) Init(1)
 Generate run time type descriptor information.
 
-fshort-double
-C ObjC C++ ObjC++ LTO Optimization Var(flag_short_double)
-Use the same size for double as for float.
-
 fshort-enums
 C ObjC C++ ObjC++ LTO Optimization Var(flag_short_enums)
 Use the narrowest integer type possible for enumeration types.
@@ -1449,6 +1469,19 @@ Enable C++14 sized deallocation support.
 
 fsquangle
 C++ ObjC++ Ignore Warn(switch %qs is no longer supported)
+
+fsso-struct=
+C ObjC Joined Enum(sso_struct) Var(default_sso) Init(SSO_NATIVE)
+-fsso-struct=[big-endian|little-endian]	Set the default scalar storage order.
+
+Enum
+Name(sso_struct) Type(enum scalar_storage_order_kind) UnknownError(unrecognized scalar storage order value %qs)
+
+EnumValue
+Enum(sso_struct) String(big-endian) Value(SSO_BIG_ENDIAN)
+
+EnumValue
+Enum(sso_struct) String(little-endian) Value(SSO_LITTLE_ENDIAN)
 
 fstats
 C++ ObjC++ Var(flag_detailed_statistics)

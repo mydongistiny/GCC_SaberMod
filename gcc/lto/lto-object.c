@@ -1,5 +1,5 @@
 /* LTO routines to use object files.
-   Copyright (C) 2010-2015 Free Software Foundation, Inc.
+   Copyright (C) 2010-2016 Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Google.
 
 This file is part of GCC.
@@ -21,20 +21,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "tm.h"
-#include "function.h"
-#include "predict.h"
-#include "basic-block.h"
-#include "tree.h"
-#include "gimple.h"
-#include "hard-reg-set.h"
-#include "options.h"
-#include "fold-const.h"
-#include "internal-fn.h"
 #include "diagnostic-core.h"
 #include "lto.h"
-#include "cgraph.h"
 #include "lto-section-names.h"
 #include "simple-object.h"
 

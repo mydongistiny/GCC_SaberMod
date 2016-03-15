@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler,
    for IBM RS/6000 POWER running AIX.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -101,8 +101,6 @@
     {						\
       builtin_define ("_IBMR2");		\
       builtin_define ("_POWER");		\
-      builtin_define ("__powerpc__");           \
-      builtin_define ("__PPC__");               \
       builtin_define ("__unix__");              \
       builtin_define ("_AIX");			\
       builtin_define ("_AIX32");		\
@@ -112,6 +110,22 @@
         builtin_define ("__LONGDOUBLE128");	\
       builtin_assert ("system=unix");		\
       builtin_assert ("system=aix");		\
+      if (TARGET_64BIT)				\
+	{					\
+	  builtin_define ("__PPC__");		\
+	  builtin_define ("__PPC64__");		\
+	  builtin_define ("__powerpc__");	\
+	  builtin_define ("__powerpc64__");	\
+	  builtin_assert ("cpu=powerpc64");	\
+	  builtin_assert ("machine=powerpc64");	\
+	}					\
+      else					\
+	{					\
+	  builtin_define ("__PPC__");		\
+	  builtin_define ("__powerpc__");	\
+	  builtin_assert ("cpu=powerpc");	\
+	  builtin_assert ("machine=powerpc");	\
+	}					\
     }						\
   while (0)
 

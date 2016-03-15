@@ -1,5 +1,5 @@
 /* Main parser.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -20,13 +20,12 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
-#include <setjmp.h>
 #include "coretypes.h"
 #include "options.h"
 #include "gfortran.h"
+#include <setjmp.h>
 #include "match.h"
 #include "parse.h"
-#include "debug.h"
 
 /* Current statement label.  Zero means no statement label.  Because new_st
    can get wiped during statement matching, we have to keep it separate.  */
@@ -478,6 +477,8 @@ decode_statement (void)
       match ("entry% ", gfc_match_entry, ST_ENTRY);
       match ("equivalence", gfc_match_equivalence, ST_EQUIVALENCE);
       match ("external", gfc_match_external, ST_ATTR_DECL);
+      match ("event post", gfc_match_event_post, ST_EVENT_POST);
+      match ("event wait", gfc_match_event_wait, ST_EVENT_WAIT);
       break;
 
     case 'f':
@@ -637,6 +638,9 @@ decode_oacc_directive (void)
 
   switch (c)
     {
+    case 'a':
+      match ("atomic", gfc_match_oacc_atomic, ST_OACC_ATOMIC);
+      break;
     case 'c':
       match ("cache", gfc_match_oacc_cache, ST_OACC_CACHE);
       break;
@@ -645,6 +649,7 @@ decode_oacc_directive (void)
       match ("declare", gfc_match_oacc_declare, ST_OACC_DECLARE);
       break;
     case 'e':
+      match ("end atomic", gfc_match_omp_eos, ST_OACC_END_ATOMIC);
       match ("end data", gfc_match_omp_eos, ST_OACC_END_DATA);
       match ("end host_data", gfc_match_omp_eos, ST_OACC_END_HOST_DATA);
       match ("end kernels loop", gfc_match_omp_eos, ST_OACC_END_KERNELS_LOOP);
@@ -1345,6 +1350,7 @@ next_statement (void)
   case ST_OMP_CANCEL: case ST_OMP_CANCELLATION_POINT: \
   case ST_OMP_TARGET_UPDATE: case ST_ERROR_STOP: case ST_SYNC_ALL: \
   case ST_SYNC_IMAGES: case ST_SYNC_MEMORY: case ST_LOCK: case ST_UNLOCK: \
+  case ST_EVENT_POST: case ST_EVENT_WAIT: \
   case ST_OACC_UPDATE: case ST_OACC_WAIT: case ST_OACC_CACHE: \
   case ST_OACC_ENTER_DATA: case ST_OACC_EXIT_DATA
 
@@ -1373,7 +1379,8 @@ next_statement (void)
   case ST_OMP_DISTRIBUTE_PARALLEL_DO_SIMD: \
   case ST_CRITICAL: \
   case ST_OACC_PARALLEL_LOOP: case ST_OACC_PARALLEL: case ST_OACC_KERNELS: \
-  case ST_OACC_DATA: case ST_OACC_HOST_DATA: case ST_OACC_LOOP: case ST_OACC_KERNELS_LOOP
+  case ST_OACC_DATA: case ST_OACC_HOST_DATA: case ST_OACC_LOOP: \
+  case ST_OACC_KERNELS_LOOP: case ST_OACC_ATOMIC
 
 /* Declaration statements */
 
@@ -1381,7 +1388,7 @@ next_statement (void)
   case ST_EQUIVALENCE: case ST_NAMELIST: case ST_STATEMENT_FUNCTION: \
   case ST_TYPE: case ST_INTERFACE: case ST_OMP_THREADPRIVATE: \
   case ST_PROCEDURE: case ST_OMP_DECLARE_SIMD: case ST_OMP_DECLARE_REDUCTION: \
-  case ST_OMP_DECLARE_TARGET: case ST_OACC_ROUTINE
+  case ST_OMP_DECLARE_TARGET: case ST_OACC_ROUTINE: case ST_OACC_DECLARE
 
 /* Block end statements.  Errors associated with interchanging these
    are detected in gfc_match_end().  */
@@ -1649,6 +1656,12 @@ gfc_ascii_statement (gfc_statement st)
       break;
     case ST_ELSEWHERE:
       p = "ELSEWHERE";
+      break;
+    case ST_EVENT_POST:
+      p = "EVENT POST";
+      break;
+    case ST_EVENT_WAIT:
+      p = "EVENT WAIT";
       break;
     case ST_END_ASSOCIATE:
       p = "END ASSOCIATE";
@@ -1936,6 +1949,12 @@ gfc_ascii_statement (gfc_statement st)
       break;
     case ST_OACC_ROUTINE:
       p = "!$ACC ROUTINE";
+      break;
+    case ST_OACC_ATOMIC:
+      p = "!ACC ATOMIC";
+      break;
+    case ST_OACC_END_ATOMIC:
+      p = "!ACC END ATOMIC";
       break;
     case ST_OMP_ATOMIC:
       p = "!$OMP ATOMIC";
@@ -2439,7 +2458,6 @@ verify_st_order (st_state *p, gfc_statement st, bool silent)
     case ST_PUBLIC:
     case ST_PRIVATE:
     case ST_DERIVED_DECL:
-    case ST_OACC_DECLARE:
     case_decl:
       if (p->state >= ORDER_EXEC)
 	goto order;
@@ -2637,7 +2655,7 @@ parse_derived (void)
   gfc_statement st;
   gfc_state_data s;
   gfc_symbol *sym;
-  gfc_component *c, *lock_comp = NULL;
+  gfc_component *c, *lock_comp = NULL, *event_comp = NULL;
 
   accept_statement (ST_DERIVED_DECL);
   push_state (&s, COMP_DERIVED, gfc_new_block);
@@ -2745,8 +2763,8 @@ endType:
   sym = gfc_current_block ();
   for (c = sym->components; c; c = c->next)
     {
-      bool coarray, lock_type, allocatable, pointer;
-      coarray = lock_type = allocatable = pointer = false;
+      bool coarray, lock_type, event_type, allocatable, pointer;
+      coarray = lock_type = event_type = allocatable = pointer = false;
 
       /* Look for allocatable components.  */
       if (c->attr.allocatable
@@ -2808,6 +2826,23 @@ endType:
 	  sym->attr.lock_comp = 1;
 	}
 
+      /* Looking for event_type components.  */
+      if ((c->ts.type == BT_DERIVED
+	      && c->ts.u.derived->from_intmod == INTMOD_ISO_FORTRAN_ENV
+	      && c->ts.u.derived->intmod_sym_id == ISOFORTRAN_EVENT_TYPE)
+	  || (c->ts.type == BT_CLASS && c->attr.class_ok
+	      && CLASS_DATA (c)->ts.u.derived->from_intmod
+		 == INTMOD_ISO_FORTRAN_ENV
+	      && CLASS_DATA (c)->ts.u.derived->intmod_sym_id
+		 == ISOFORTRAN_EVENT_TYPE)
+	  || (c->ts.type == BT_DERIVED && c->ts.u.derived->attr.event_comp
+	      && !allocatable && !pointer))
+	{
+	  event_type = 1;
+	  event_comp = c;
+	  sym->attr.event_comp = 1;
+	}
+
       /* Check for F2008, C1302 - and recall that pointers may not be coarrays
 	 (5.3.14) and that subobjects of coarray are coarray themselves (2.4.7),
 	 unless there are nondirect [allocatable or pointer] components
@@ -2846,6 +2881,43 @@ endType:
 		   "be a subcomponent of a coarray. (Variables of type %s may "
 		   "not have a codimension as %s at %L has a codimension or a "
 		   "coarray subcomponent)", lock_comp->name, &lock_comp->loc,
+		   sym->name, c->name, &c->loc);
+
+      /* Similarly for EVENT TYPE.  */
+
+      if (pointer && !coarray && event_type)
+	gfc_error ("Component %s at %L of type EVENT_TYPE must have a "
+		   "codimension or be a subcomponent of a coarray, "
+		   "which is not possible as the component has the "
+		   "pointer attribute", c->name, &c->loc);
+      else if (pointer && !coarray && c->ts.type == BT_DERIVED
+	       && c->ts.u.derived->attr.event_comp)
+	gfc_error ("Pointer component %s at %L has a noncoarray subcomponent "
+		   "of type EVENT_TYPE, which must have a codimension or be a "
+		   "subcomponent of a coarray", c->name, &c->loc);
+
+      if (event_type && allocatable && !coarray)
+	gfc_error ("Allocatable component %s at %L of type EVENT_TYPE must have "
+		   "a codimension", c->name, &c->loc);
+      else if (event_type && allocatable && c->ts.type == BT_DERIVED
+	       && c->ts.u.derived->attr.event_comp)
+	gfc_error ("Allocatable component %s at %L must have a codimension as "
+		   "it has a noncoarray subcomponent of type EVENT_TYPE",
+		   c->name, &c->loc);
+
+      if (sym->attr.coarray_comp && !coarray && event_type)
+	gfc_error ("Noncoarray component %s at %L of type EVENT_TYPE or with "
+		   "subcomponent of type EVENT_TYPE must have a codimension or "
+		   "be a subcomponent of a coarray. (Variables of type %s may "
+		   "not have a codimension as already a coarray "
+		   "subcomponent exists)", c->name, &c->loc, sym->name);
+
+      if (sym->attr.event_comp && coarray && !event_type)
+	gfc_error ("Noncoarray component %s at %L of type EVENT_TYPE or with "
+		   "subcomponent of type EVENT_TYPE must have a codimension or "
+		   "be a subcomponent of a coarray. (Variables of type %s may "
+		   "not have a codimension as %s at %L has a codimension or a "
+		   "coarray subcomponent)", event_comp->name, &event_comp->loc,
 		   sym->name, c->name, &c->loc);
 
       /* Look for private components.  */
@@ -3348,19 +3420,6 @@ declSt:
       if (match_deferred_characteristics (ts) != MATCH_YES)
 	bad_characteristic = true;
 
-      st = next_statement ();
-      goto loop;
-
-    case ST_OACC_DECLARE:
-      if (!verify_st_order(&ss, st, false))
-	{
-	  reject_statement ();
-	  st = next_statement ();
-	  goto loop;
-	}
-      if (gfc_state_stack->ext.oacc_declare_clauses == NULL)
-	gfc_state_stack->ext.oacc_declare_clauses = new_st.ext.omp_clauses;
-      accept_statement (st);
       st = next_statement ();
       goto loop;
 
@@ -4039,6 +4098,7 @@ parse_associate (void)
 	  int dim, rank = 0;
 	  if (array_ref)
 	    {
+	      a->rankguessed = 1;
 	      /* Count the dimension, that have a non-scalar extend.  */
 	      for (dim = 0; dim < array_ref->dimen; ++dim)
 		if (array_ref->dimen_type[dim] != DIMEN_ELEMENT
@@ -4316,14 +4376,24 @@ parse_omp_do (gfc_statement omp_st)
 /* Parse the statements of OpenMP atomic directive.  */
 
 static gfc_statement
-parse_omp_atomic (void)
+parse_omp_oacc_atomic (bool omp_p)
 {
-  gfc_statement st;
+  gfc_statement st, st_atomic, st_end_atomic;
   gfc_code *cp, *np;
   gfc_state_data s;
   int count;
 
-  accept_statement (ST_OMP_ATOMIC);
+  if (omp_p)
+    {
+      st_atomic = ST_OMP_ATOMIC;
+      st_end_atomic = ST_OMP_END_ATOMIC;
+    }
+  else
+    {
+      st_atomic = ST_OACC_ATOMIC;
+      st_end_atomic = ST_OACC_END_ATOMIC;
+    }
+  accept_statement (st_atomic);
 
   cp = gfc_state_stack->tail;
   push_state (&s, COMP_OMP_STRUCTURED_BLOCK, NULL);
@@ -4350,7 +4420,7 @@ parse_omp_atomic (void)
   pop_state ();
 
   st = next_statement ();
-  if (st == ST_OMP_END_ATOMIC)
+  if (st == st_end_atomic)
     {
       gfc_clear_new_st ();
       gfc_commit_symbols ();
@@ -4646,7 +4716,7 @@ parse_omp_structured_block (gfc_statement omp_st, bool workshare_stmts_only)
 		  continue;
 
 		case ST_OMP_ATOMIC:
-		  st = parse_omp_atomic ();
+		  st = parse_omp_oacc_atomic (true);
 		  continue;
 
 		default:
@@ -4865,8 +4935,12 @@ parse_executable (gfc_statement st)
 	    return st;
 	  continue;
 
+	case ST_OACC_ATOMIC:
+	  st = parse_omp_oacc_atomic (false);
+	  continue;
+
 	case ST_OMP_ATOMIC:
-	  st = parse_omp_atomic ();
+	  st = parse_omp_oacc_atomic (true);
 	  continue;
 
 	default:
@@ -5189,13 +5263,6 @@ contains:
 
 done:
   gfc_current_ns->code = gfc_state_stack->head;
-  if (gfc_state_stack->state == COMP_PROGRAM
-      || gfc_state_stack->state == COMP_MODULE
-      || gfc_state_stack->state == COMP_SUBROUTINE
-      || gfc_state_stack->state == COMP_FUNCTION
-      || gfc_state_stack->state == COMP_BLOCK)
-    gfc_current_ns->oacc_declare_clauses
-      = gfc_state_stack->ext.oacc_declare_clauses;
 }
 
 
@@ -5782,6 +5849,8 @@ is_oacc (gfc_state_data *sd)
     case EXEC_OACC_CACHE:
     case EXEC_OACC_ENTER_DATA:
     case EXEC_OACC_EXIT_DATA:
+    case EXEC_OACC_ATOMIC:
+    case EXEC_OACC_ROUTINE:
       return true;
 
     default:

@@ -1,6 +1,6 @@
 /* ET-trees data structure implementation.
    Contributed by Pavel Nejedly
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
 This file is part of the libiberty library.
 Libiberty is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@ License along with libiberty; see the file COPYING3.  If not see
 #include "alloc-pool.h"
 #include "et-forest.h"
 
-/* We do not enable this with ENABLE_CHECKING, since it is awfully slow.  */
+/* We do not enable this with CHECKING_P, since it is awfully slow.  */
 #undef DEBUG_ET
 
 #ifdef DEBUG_ET

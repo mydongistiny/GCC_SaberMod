@@ -1,5 +1,5 @@
 /* Utility routines for finding and reading Java(TM) .class files.
-   Copyright (C) 1996-2015 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -28,10 +28,6 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "coretypes.h"
 
 #include "jcf.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
-#include "java-tree.h"
 #include <dirent.h>
 
 #include "zlib.h"

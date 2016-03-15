@@ -1,5 +1,5 @@
 /* Support routines shared by all runtimes.
-   Copyright (C) 2011-2015 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Iain Sandoe (partially split from objc-act.c)
 
 This file is part of GCC.
@@ -22,9 +22,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
 #include "stringpool.h"
 
 #ifdef OBJCPLUS
@@ -33,7 +30,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "c/c-tree.h"
 #include "c/c-lang.h"
 #endif
-#include "langhooks.h"
 #include "c-family/c-objc.h"
 #include "objc-act.h"
 

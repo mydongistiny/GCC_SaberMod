@@ -1,5 +1,5 @@
 /* Data references and dependences detectors.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -76,25 +76,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "options.h"
-#include "fold-const.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "gimple-pretty-print.h"
-#include "internal-fn.h"
+#include "alias.h"
+#include "fold-const.h"
+#include "expr.h"
 #include "gimple-iterator.h"
 #include "tree-ssa-loop-niter.h"
 #include "tree-ssa-loop.h"
@@ -103,7 +92,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-data-ref.h"
 #include "tree-scalar-evolution.h"
 #include "dumpfile.h"
-#include "langhooks.h"
 #include "tree-affine.h"
 #include "params.h"
 
@@ -625,11 +613,12 @@ split_constant_offset_1 (tree type, tree op0, enum tree_code code, tree op1,
 	tree base, poffset;
 	HOST_WIDE_INT pbitsize, pbitpos;
 	machine_mode pmode;
-	int punsignedp, pvolatilep;
+	int punsignedp, preversep, pvolatilep;
 
 	op0 = TREE_OPERAND (op0, 0);
-	base = get_inner_reference (op0, &pbitsize, &pbitpos, &poffset,
-				    &pmode, &punsignedp, &pvolatilep, false);
+	base
+	  = get_inner_reference (op0, &pbitsize, &pbitpos, &poffset, &pmode,
+				 &punsignedp, &preversep, &pvolatilep, false);
 
 	if (pbitpos % BITS_PER_UNIT != 0)
 	  return false;
@@ -773,7 +762,7 @@ dr_analyze_innermost (struct data_reference *dr, struct loop *nest)
   HOST_WIDE_INT pbitsize, pbitpos;
   tree base, poffset;
   machine_mode pmode;
-  int punsignedp, pvolatilep;
+  int punsignedp, preversep, pvolatilep;
   affine_iv base_iv, offset_iv;
   tree init, dinit, step;
   bool in_loop = (loop && loop->num);
@@ -781,14 +770,21 @@ dr_analyze_innermost (struct data_reference *dr, struct loop *nest)
   if (dump_file && (dump_flags & TDF_DETAILS))
     fprintf (dump_file, "analyze_innermost: ");
 
-  base = get_inner_reference (ref, &pbitsize, &pbitpos, &poffset,
-			      &pmode, &punsignedp, &pvolatilep, false);
+  base = get_inner_reference (ref, &pbitsize, &pbitpos, &poffset, &pmode,
+			      &punsignedp, &preversep, &pvolatilep, false);
   gcc_assert (base != NULL_TREE);
 
   if (pbitpos % BITS_PER_UNIT != 0)
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, "failed: bit offset alignment.\n");
+      return false;
+    }
+
+  if (preversep)
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	fprintf (dump_file, "failed: reverse storage order.\n");
       return false;
     }
 
@@ -1513,13 +1509,14 @@ initialize_data_dependence_relation (struct data_reference *a,
   /* The case where the references are exactly the same.  */
   if (operand_equal_p (DR_REF (a), DR_REF (b), 0))
     {
-     if (loop_nest.exists ()
-        && !object_address_invariant_in_loop_p (loop_nest[0],
-       					        DR_BASE_OBJECT (a)))
-      {
-        DDR_ARE_DEPENDENT (res) = chrec_dont_know;
-        return res;
-      }
+      if ((loop_nest.exists ()
+	   && !object_address_invariant_in_loop_p (loop_nest[0],
+						   DR_BASE_OBJECT (a)))
+	  || DR_NUM_DIMENSIONS (a) == 0)
+	{
+	  DDR_ARE_DEPENDENT (res) = chrec_dont_know;
+	  return res;
+	}
       DDR_AFFINE_P (res) = true;
       DDR_ARE_DEPENDENT (res) = NULL_TREE;
       DDR_SUBSCRIPTS (res).create (DR_NUM_DIMENSIONS (a));
@@ -1551,9 +1548,9 @@ initialize_data_dependence_relation (struct data_reference *a,
   /* If the base of the object is not invariant in the loop nest, we cannot
      analyze it.  TODO -- in fact, it would suffice to record that there may
      be arbitrary dependences in the loops where the base object varies.  */
-  if (loop_nest.exists ()
-      && !object_address_invariant_in_loop_p (loop_nest[0],
-     					      DR_BASE_OBJECT (a)))
+  if ((loop_nest.exists ()
+       && !object_address_invariant_in_loop_p (loop_nest[0], DR_BASE_OBJECT (a)))
+      || DR_NUM_DIMENSIONS (a) == 0)
     {
       DDR_ARE_DEPENDENT (res) = chrec_dont_know;
       return res;
@@ -3876,6 +3873,8 @@ get_references_in_stmt (gimple *stmt, vec<data_ref_loc, va_heap> *references)
   else if (stmt_code == GIMPLE_CALL)
     {
       unsigned i, n;
+      tree ptr, type;
+      unsigned int align;
 
       ref.is_read = false;
       if (gimple_call_internal_p (stmt))
@@ -3886,12 +3885,16 @@ get_references_in_stmt (gimple *stmt, vec<data_ref_loc, va_heap> *references)
 	      break;
 	    ref.is_read = true;
 	  case IFN_MASK_STORE:
-	    ref.ref = fold_build2 (MEM_REF,
-				   ref.is_read
-				   ? TREE_TYPE (gimple_call_lhs (stmt))
-				   : TREE_TYPE (gimple_call_arg (stmt, 3)),
-				   gimple_call_arg (stmt, 0),
-				   gimple_call_arg (stmt, 1));
+	    ptr = build_int_cst (TREE_TYPE (gimple_call_arg (stmt, 1)), 0);
+	    align = tree_to_shwi (gimple_call_arg (stmt, 1));
+	    if (ref.is_read)
+	      type = TREE_TYPE (gimple_call_lhs (stmt));
+	    else
+	      type = TREE_TYPE (gimple_call_arg (stmt, 3));
+	    if (TYPE_ALIGN (type) != align)
+	      type = build_aligned_type (type, align);
+	    ref.ref = fold_build2 (MEM_REF, type, gimple_call_arg (stmt, 0),
+				   ptr);
 	    references->safe_push (ref);
 	    return false;
 	  default:

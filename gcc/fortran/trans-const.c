@@ -1,5 +1,5 @@
 /* Translation of constants
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of GCC.
@@ -23,15 +23,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "gfortran.h"
-#include "alias.h"
 #include "tree.h"
-#include "options.h"
+#include "gfortran.h"
+#include "trans.h"
+#include "diagnostic-core.h"	/* For fatal_error.  */
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "realmpfr.h"
-#include "diagnostic-core.h"	/* For fatal_error.  */
-#include "trans.h"
 #include "trans-const.h"
 #include "trans-types.h"
 #include "target-memory.h"

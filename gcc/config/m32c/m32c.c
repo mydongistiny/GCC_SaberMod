@@ -1,5 +1,5 @@
 /* Target Code for R8C/M16C/M32C
-   Copyright (C) 2005-2015 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -2795,7 +2795,7 @@ m32c_print_operand_punct_valid_p (unsigned char c)
 #define TARGET_PRINT_OPERAND_ADDRESS m32c_print_operand_address
 
 static void
-m32c_print_operand_address (FILE * stream, rtx address)
+m32c_print_operand_address (FILE * stream, machine_mode /*mode*/, rtx address)
 {
   if (GET_CODE (address) == MEM)
     address = XEXP (address, 0);

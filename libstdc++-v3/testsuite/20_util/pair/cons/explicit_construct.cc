@@ -1,7 +1,7 @@
 // { dg-do compile }
 // { dg-options "-std=gnu++11" }
 
-// Copyright (C) 2015 Free Software Foundation, Inc.
+// Copyright (C) 2015-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -24,6 +24,16 @@ struct Explicit
 {
   Explicit() = default;
   explicit Explicit(int) {}
+};
+
+struct ExplicitDefault
+{
+  explicit ExplicitDefault() {}
+};
+
+struct ExplicitDefaultDefault
+{
+  explicit ExplicitDefaultDefault() = default;
 };
 
 std::pair<int, int> f1() {return {1,2};}
@@ -72,6 +82,20 @@ void f6(std::pair<Explicit, Explicit>) {}
 
 void f7(std::pair<long, long>) {}
 
+std::pair<ExplicitDefault, int> f8()
+{
+  return {}; // { dg-error "explicit" }
+}
+
+std::pair<ExplicitDefaultDefault, int> f9()
+{
+  return {}; // { dg-error "explicit" }
+}
+
+void f10(std::pair<ExplicitDefault, int>) {}
+
+void f11(std::pair<ExplicitDefaultDefault, int>) {}
+
 void test_arg_passing()
 {
   f6(v0); // { dg-error "could not convert" }
@@ -84,6 +108,10 @@ void test_arg_passing()
   f7({1,2});
   f7(std::pair<int, int>{});
   f7(std::pair<long, long>{});
+  f10({}); // { dg-error "explicit" }
+  f11({}); // { dg-error "explicit" }
+  f10(std::pair<ExplicitDefault, int>{});
+  f11(std::pair<ExplicitDefaultDefault, int>{});
 }
 
 struct MoveOnly

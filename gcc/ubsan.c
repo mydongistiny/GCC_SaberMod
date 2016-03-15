@@ -1,5 +1,5 @@
 /* UndefinedBehaviorSanitizer, undefined behavior detector.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by Marek Polacek <polacek@redhat.com>
 
 This file is part of GCC.
@@ -21,47 +21,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
-#include "gimple.h"
 #include "rtl.h"
+#include "c-family/c-common.h"
+#include "gimple.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
+#include "tm_p.h"
 #include "ssa.h"
-#include "options.h"
-#include "fold-const.h"
+#include "cgraph.h"
+#include "tree-pretty-print.h"
 #include "stor-layout.h"
 #include "cfganal.h"
-#include "cgraph.h"
-#include "tree-pass.h"
-#include "tree-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
-#include "gimple-walk.h"
 #include "output.h"
-#include "tm_p.h"
-#include "toplev.h"
 #include "cfgloop.h"
 #include "ubsan.h"
-#include "c-family/c-common.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
 #include "asan.h"
 #include "gimplify-me.h"
-#include "intl.h"
-#include "realmpfr.h"
 #include "dfp.h"
 #include "builtins.h"
 #include "tree-object-size.h"
-#include "tree-eh.h"
 #include "tree-cfg.h"
 
 /* Map from a tree to a VAR_DECL tree.  */
@@ -1378,9 +1359,9 @@ instrument_bool_enum_load (gimple_stmt_iterator *gsi)
   HOST_WIDE_INT bitsize, bitpos;
   tree offset;
   machine_mode mode;
-  int volatilep = 0, unsignedp = 0;
+  int volatilep = 0, reversep, unsignedp = 0;
   tree base = get_inner_reference (rhs, &bitsize, &bitpos, &offset, &mode,
-				   &unsignedp, &volatilep, false);
+				   &unsignedp, &reversep, &volatilep, false);
   tree utype = build_nonstandard_integer_type (modebitsize, 1);
 
   if ((TREE_CODE (base) == VAR_DECL && DECL_HARD_REGISTER (base))
@@ -1497,18 +1478,18 @@ ubsan_use_new_style_p (location_t loc)
 }
 
 /* Instrument float point-to-integer conversion.  TYPE is an integer type of
-   destination, EXPR is floating-point expression.  ARG is what to pass
-   the libubsan call as value, often EXPR itself.  */
+   destination, EXPR is floating-point expression.  */
 
 tree
-ubsan_instrument_float_cast (location_t loc, tree type, tree expr, tree arg)
+ubsan_instrument_float_cast (location_t loc, tree type, tree expr)
 {
   tree expr_type = TREE_TYPE (expr);
   tree t, tt, fn, min, max;
   machine_mode mode = TYPE_MODE (expr_type);
   int prec = TYPE_PRECISION (type);
   bool uns_p = TYPE_UNSIGNED (type);
-  if (!loc) loc = input_location;
+  if (loc == UNKNOWN_LOCATION)
+    loc = input_location;
 
   /* Float to integer conversion first truncates toward zero, so
      even signed char c = 127.875f; is not problematic.
@@ -1607,6 +1588,7 @@ ubsan_instrument_float_cast (location_t loc, tree type, tree expr, tree arg)
     {
       location_t *loc_ptr = NULL;
       unsigned num_locations = 0;
+      initialize_sanitizer_builtins ();
       /* Figure out if we can propagate location to ubsan_data and use new
          style handlers in libubsan.  */
       if (ubsan_use_new_style_p (loc))
@@ -1627,7 +1609,7 @@ ubsan_instrument_float_cast (location_t loc, tree type, tree expr, tree arg)
       fn = builtin_decl_explicit (bcode);
       fn = build_call_expr_loc (loc, fn, 2,
 				build_fold_addr_expr_loc (loc, data),
-				ubsan_encode_value (arg, false));
+				ubsan_encode_value (expr, false));
     }
 
   return fold_build3 (COND_EXPR, void_type_node, t, fn, integer_zero_node);
@@ -1798,9 +1780,9 @@ instrument_object_size (gimple_stmt_iterator *gsi, bool is_lhs)
   HOST_WIDE_INT bitsize, bitpos;
   tree offset;
   machine_mode mode;
-  int volatilep = 0, unsignedp = 0;
+  int volatilep = 0, reversep, unsignedp = 0;
   tree inner = get_inner_reference (t, &bitsize, &bitpos, &offset, &mode,
-				    &unsignedp, &volatilep, false);
+				    &unsignedp, &reversep, &volatilep, false);
 
   if (bitpos % BITS_PER_UNIT != 0
       || bitsize != size_in_bytes * BITS_PER_UNIT)

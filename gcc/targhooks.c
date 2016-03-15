@@ -1,5 +1,5 @@
 /* Default target hook functions.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -49,39 +49,31 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "target.h"
+#include "function.h"
 #include "rtl.h"
-#include "alias.h"
 #include "tree.h"
+#include "tree-ssa-alias.h"
+#include "gimple-expr.h"
+#include "tm_p.h"
+#include "stringpool.h"
+#include "tree-ssanames.h"
+#include "optabs.h"
+#include "regs.h"
+#include "recog.h"
+#include "diagnostic-core.h"
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "function.h"
 #include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
 #include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
 #include "expr.h"
 #include "output.h"
-#include "diagnostic-core.h"
-#include "target.h"
-#include "tm_p.h"
-#include "regs.h"
 #include "reload.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "recog.h"
 #include "intl.h"
 #include "opts.h"
-#include "tree-ssa-alias.h"
-#include "gimple-expr.h"
 #include "gimplify.h"
-#include "stringpool.h"
-#include "tree-ssanames.h"
 
 
 bool
@@ -353,6 +345,7 @@ default_print_operand (FILE *stream ATTRIBUTE_UNUSED, rtx x ATTRIBUTE_UNUSED,
 
 void
 default_print_operand_address (FILE *stream ATTRIBUTE_UNUSED,
+			       machine_mode /*mode*/,
 			       rtx x ATTRIBUTE_UNUSED)
 {
 #ifdef PRINT_OPERAND_ADDRESS
@@ -541,9 +534,15 @@ default_invalid_within_doloop (const rtx_insn *insn)
 /* Mapping of builtin functions to vectorized variants.  */
 
 tree
-default_builtin_vectorized_function (tree fndecl ATTRIBUTE_UNUSED,
-				     tree type_out ATTRIBUTE_UNUSED,
-				     tree type_in ATTRIBUTE_UNUSED)
+default_builtin_vectorized_function (unsigned int, tree, tree)
+{
+  return NULL_TREE;
+}
+
+/* Mapping of target builtin functions to vectorized variants.  */
+
+tree
+default_builtin_md_vectorized_function (tree, tree, tree)
 {
   return NULL_TREE;
 }
@@ -601,9 +600,7 @@ default_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 /* Reciprocal.  */
 
 tree
-default_builtin_reciprocal (unsigned int fn ATTRIBUTE_UNUSED,
-			    bool md_fn ATTRIBUTE_UNUSED,
-			    bool sqrt ATTRIBUTE_UNUSED)
+default_builtin_reciprocal (tree)
 {
   return NULL_TREE;
 }
@@ -902,7 +899,8 @@ default_branch_target_register_class (void)
 
 reg_class_t
 default_ira_change_pseudo_allocno_class (int regno ATTRIBUTE_UNUSED,
-					 reg_class_t cl)
+					 reg_class_t cl,
+					 reg_class_t best_cl ATTRIBUTE_UNUSED)
 {
   return cl;
 }
@@ -1033,7 +1031,10 @@ tree default_mangle_decl_assembler_name (tree decl ATTRIBUTE_UNUSED,
 HOST_WIDE_INT
 default_vector_alignment (const_tree type)
 {
-  return tree_to_shwi (TYPE_SIZE (type));
+  HOST_WIDE_INT align = tree_to_shwi (TYPE_SIZE (type));
+  if (align > MAX_OFILE_ALIGNMENT)
+    align = MAX_OFILE_ALIGNMENT;
+  return align;
 }
 
 bool
@@ -1095,10 +1096,16 @@ default_get_mask_mode (unsigned nunits, unsigned vector_size)
   unsigned elem_size = vector_size / nunits;
   machine_mode elem_mode
     = smallest_mode_for_size (elem_size * BITS_PER_UNIT, MODE_INT);
+  machine_mode vector_mode;
 
   gcc_assert (elem_size * nunits == vector_size);
 
-  return mode_for_vector (elem_mode, nunits);
+  vector_mode = mode_for_vector (elem_mode, nunits);
+  if (!VECTOR_MODE_P (vector_mode)
+      || !targetm.vector_mode_supported_p (vector_mode))
+    vector_mode = BLKmode;
+
+  return vector_mode;
 }
 
 /* By default, the cost model accumulates three separate costs (prologue,
@@ -1270,6 +1277,23 @@ default_addr_space_subset_p (addr_space_t subset, addr_space_t superset)
   return (subset == superset);
 }
 
+/* The default hook for determining if 0 within a named address
+   space is a valid address.  */
+
+bool
+default_addr_space_zero_address_valid (addr_space_t as ATTRIBUTE_UNUSED)
+{
+  return false;
+}
+
+/* The default hook for debugging the address space is to return the
+   address space number to indicate DW_AT_address_class.  */
+int
+default_addr_space_debug (addr_space_t as)
+{
+  return as;
+}
+
 /* The default hook for TARGET_ADDR_SPACE_CONVERT. This hook should never be
    called for targets with only a generic address space.  */
 
@@ -1425,7 +1449,7 @@ default_register_move_cost (machine_mode mode ATTRIBUTE_UNUSED,
 }
 
 /* For hooks which use the MOVE_RATIO macro, this gives the legacy default
-   behaviour.  SPEED_P is true if we are compiling for speed.  */
+   behavior.  SPEED_P is true if we are compiling for speed.  */
 
 unsigned int
 get_move_ratio (bool speed_p ATTRIBUTE_UNUSED)
@@ -1931,6 +1955,14 @@ can_use_doloop_if_innermost (const widest_int &, const widest_int &,
 			     unsigned int loop_depth, bool)
 {
   return loop_depth == 1;
+}
+
+/* Default implementation of TARGET_OPTAB_SUPPORTED_P.  */
+
+bool
+default_optab_supported_p (int, machine_mode, machine_mode, optimization_type)
+{
+  return true;
 }
 
 #include "gt-targhooks.h"

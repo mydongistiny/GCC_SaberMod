@@ -1,5 +1,5 @@
 /* Implement classes and message passing for Objective C.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Steve Naroff.
 
 This file is part of GCC.
@@ -22,10 +22,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "alias.h"
 #include "tree.h"
-#include "options.h"
-#include "fold-const.h"
 #include "stringpool.h"
 #include "stor-layout.h"
 #include "attribs.h"
@@ -37,31 +34,23 @@ along with GCC; see the file COPYING3.  If not see
 #include "c/c-lang.h"
 #endif
 
-#include "c-family/c-common.h"
 #include "c-family/c-objc.h"
-#include "c-family/c-pragma.h"
-#include "c-family/c-format.h"
-#include "flags.h"
 #include "langhooks.h"
 #include "objc-act.h"
 #include "objc-map.h"
-#include "hard-reg-set.h"
 #include "function.h"
 #include "toplev.h"
 #include "debug.h"
 #include "c-family/c-target.h"
-#include "diagnostic-core.h"
 #include "intl.h"
 #include "cgraph.h"
 #include "tree-iterator.h"
-#include "langhooks-def.h"
 /* Different initialization, code gen and meta data generation for each
    runtime.  */
 #include "objc-runtime-hooks.h"
 /* Routines used mainly by the runtimes.  */
 #include "objc-runtime-shared-support.h"
 /* For default_tree_printer ().  */
-#include "tree-pretty-print.h"
 
 /* For enum gimplify_status */
 #include "gimple-expr.h"
@@ -5179,7 +5168,7 @@ receiver_is_class_object (tree receiver, int self, int super)
      (due to the code below) and so will know that +alloc is called on
      the 'NSObject' class, and can perform the corresponding checks.
 
-     Programmers can disable this behaviour by casting the results of
+     Programmers can disable this behavior by casting the results of
      objc_getClass() to 'Class' (this may seem weird because
      objc_getClass() is already declared to return 'Class', but the
      compiler treats it as a special function).  This may be useful if
@@ -5891,7 +5880,7 @@ lookup_method (tree mchain, tree method)
    OBJC_LOOKUP_NO_SUPER is clear, and no suitable class method could
    be found in INTERFACE or any of its superclasses, look for an
    _instance_ method of the same name in the root class as a last
-   resort.  This behaviour can be turned off by using
+   resort.  This behavior can be turned off by using
    OBJC_LOOKUP_NO_INSTANCE_METHODS_OF_ROOT_CLASS.
 
    If a suitable method cannot be found, return NULL_TREE.  */

@@ -1,5 +1,5 @@
 /* Expands front end tree to back end RTL for GCC.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -35,38 +35,33 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "gimple-expr.h"
+#include "cfghooks.h"
 #include "df.h"
+#include "tm_p.h"
+#include "stringpool.h"
+#include "expmed.h"
+#include "optabs.h"
+#include "regs.h"
+#include "emit-rtl.h"
+#include "recog.h"
 #include "rtl-error.h"
 #include "alias.h"
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "stringpool.h"
-#include "flags.h"
 #include "except.h"
-#include "insn-config.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
 #include "expr.h"
-#include "insn-codes.h"
 #include "optabs-tree.h"
-#include "optabs.h"
-#include "libfuncs.h"
-#include "regs.h"
-#include "recog.h"
 #include "output.h"
-#include "tm_p.h"
 #include "langhooks.h"
-#include "target.h"
 #include "common/common-target.h"
-#include "gimple-expr.h"
 #include "gimplify.h"
 #include "tree-pass.h"
 #include "cfgrtl.h"
@@ -74,14 +69,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
 #include "cfgexpand.h"
-#include "params.h"
-#include "bb-reorder.h"
 #include "shrink-wrap.h"
 #include "toplev.h"
 #include "rtl-iter.h"
 #include "tree-chkp.h"
 #include "rtl-chkp.h"
 #include "tree-dfa.h"
+#include "tree-ssa.h"
 
 /* So we can assign to cfun in this file.  */
 #undef cfun
@@ -961,6 +955,10 @@ assign_temp (tree type_or_decl, int memory_required,
 #ifdef PROMOTE_MODE
   unsignedp = TYPE_UNSIGNED (type);
 #endif
+
+  /* Allocating temporaries of TREE_ADDRESSABLE type must be done in the front
+     end.  See also create_tmp_var for the gimplification-time check.  */
+  gcc_assert (!TREE_ADDRESSABLE (type) && COMPLETE_TYPE_P (type));
 
   if (mode == BLKmode || memory_required)
     {
@@ -2886,6 +2884,7 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
   rtx entry_parm = data->entry_parm;
   rtx stack_parm = data->stack_parm;
   rtx target_reg = NULL_RTX;
+  bool in_conversion_seq = false;
   HOST_WIDE_INT size;
   HOST_WIDE_INT size_stored;
 
@@ -2902,9 +2901,23 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
       if (GET_CODE (reg) != CONCAT)
 	stack_parm = reg;
       else
-	/* This will use or allocate a stack slot that we'd rather
-	   avoid.  FIXME: Could we avoid it in more cases?  */
-	target_reg = reg;
+	{
+	  target_reg = reg;
+	  /* Avoid allocating a stack slot, if there isn't one
+	     preallocated by the ABI.  It might seem like we should
+	     always prefer a pseudo, but converting between
+	     floating-point and integer modes goes through the stack
+	     on various machines, so it's better to use the reserved
+	     stack slot than to risk wasting it and allocating more
+	     for the conversion.  */
+	  if (stack_parm == NULL_RTX)
+	    {
+	      int save = generating_concat_p;
+	      generating_concat_p = 0;
+	      stack_parm = gen_reg_rtx (mode);
+	      generating_concat_p = save;
+	    }
+	}
       data->stack_parm = NULL;
     }
 
@@ -2945,7 +2958,9 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
       mem = validize_mem (copy_rtx (stack_parm));
 
       /* Handle values in multiple non-contiguous locations.  */
-      if (GET_CODE (entry_parm) == PARALLEL)
+      if (GET_CODE (entry_parm) == PARALLEL && !MEM_P (mem))
+	emit_group_store (mem, entry_parm, data->passed_type, size);
+      else if (GET_CODE (entry_parm) == PARALLEL)
 	{
 	  push_to_sequence2 (all->first_conversion_insn,
 			     all->last_conversion_insn);
@@ -2953,6 +2968,7 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
 	  all->first_conversion_insn = get_insns ();
 	  all->last_conversion_insn = get_last_insn ();
 	  end_sequence ();
+	  in_conversion_seq = true;
 	}
 
       else if (size == 0)
@@ -2991,6 +3007,38 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
 	      emit_move_insn (change_address (mem, mode, 0), reg);
 	    }
 
+#ifdef BLOCK_REG_PADDING
+	  /* Storing the register in memory as a full word, as
+	     move_block_from_reg below would do, and then using the
+	     MEM in a smaller mode, has the effect of shifting right
+	     if BYTES_BIG_ENDIAN.  If we're bypassing memory, the
+	     shifting must be explicit.  */
+	  else if (!MEM_P (mem))
+	    {
+	      rtx x;
+
+	      /* If the assert below fails, we should have taken the
+		 mode != BLKmode path above, unless we have downward
+		 padding of smaller-than-word arguments on a machine
+		 with little-endian bytes, which would likely require
+		 additional changes to work correctly.  */
+	      gcc_checking_assert (BYTES_BIG_ENDIAN
+				   && (BLOCK_REG_PADDING (mode,
+							  data->passed_type, 1)
+				       == upward));
+
+	      int by = (UNITS_PER_WORD - size) * BITS_PER_UNIT;
+
+	      x = gen_rtx_REG (word_mode, REGNO (entry_parm));
+	      x = expand_shift (RSHIFT_EXPR, word_mode, x, by,
+				NULL_RTX, 1);
+	      x = force_reg (word_mode, x);
+	      x = gen_lowpart_SUBREG (GET_MODE (mem), x);
+
+	      emit_move_insn (mem, x);
+	    }
+#endif
+
 	  /* Blocks smaller than a word on a BYTES_BIG_ENDIAN
 	     machine must be aligned to the left before storing
 	     to memory.  Note that the previous test doesn't
@@ -3012,14 +3060,20 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
 	      tem = change_address (mem, word_mode, 0);
 	      emit_move_insn (tem, x);
 	    }
-	  else if (!MEM_P (mem))
-	    emit_move_insn (mem, entry_parm);
 	  else
 	    move_block_from_reg (REGNO (entry_parm), mem,
 				 size_stored / UNITS_PER_WORD);
 	}
       else if (!MEM_P (mem))
-	emit_move_insn (mem, entry_parm);
+	{
+	  gcc_checking_assert (size > UNITS_PER_WORD);
+#ifdef BLOCK_REG_PADDING
+	  gcc_checking_assert (BLOCK_REG_PADDING (GET_MODE (mem),
+						  data->passed_type, 0)
+			       == upward);
+#endif
+	  emit_move_insn (mem, entry_parm);
+	}
       else
 	move_block_from_reg (REGNO (entry_parm), mem,
 			     size_stored / UNITS_PER_WORD);
@@ -3032,11 +3086,22 @@ assign_parm_setup_block (struct assign_parm_data_all *all,
       all->first_conversion_insn = get_insns ();
       all->last_conversion_insn = get_last_insn ();
       end_sequence ();
+      in_conversion_seq = true;
     }
 
   if (target_reg)
     {
-      emit_move_insn (target_reg, stack_parm);
+      if (!in_conversion_seq)
+	emit_move_insn (target_reg, stack_parm);
+      else
+	{
+	  push_to_sequence2 (all->first_conversion_insn,
+			     all->last_conversion_insn);
+	  emit_move_insn (target_reg, stack_parm);
+	  all->first_conversion_insn = get_insns ();
+	  all->last_conversion_insn = get_last_insn ();
+	  end_sequence ();
+	}
       stack_parm = target_reg;
     }
 
@@ -4120,14 +4185,14 @@ locate_and_pad_parm (machine_mode passed_mode, tree type, int in_regs,
 	locate->slot_offset.var = size_binop (MINUS_EXPR, ssize_int (0),
 					      initial_offset_ptr->var);
 
-	{
-	  tree s2 = sizetree;
-	  if (where_pad != none
-	      && (!tree_fits_uhwi_p (sizetree)
-		  || (tree_to_uhwi (sizetree) * BITS_PER_UNIT) % round_boundary))
-	    s2 = round_up (s2, round_boundary / BITS_PER_UNIT);
-	  SUB_PARM_SIZE (locate->slot_offset, s2);
-	}
+      {
+	tree s2 = sizetree;
+	if (where_pad != none
+	    && (!tree_fits_uhwi_p (sizetree)
+		|| (tree_to_uhwi (sizetree) * BITS_PER_UNIT) % round_boundary))
+	  s2 = round_up (s2, round_boundary / BITS_PER_UNIT);
+	SUB_PARM_SIZE (locate->slot_offset, s2);
+      }
 
       locate->slot_offset.constant += part_size_in_regs;
 
@@ -4649,7 +4714,7 @@ number_blocks (tree fn)
   /* For SDB and XCOFF debugging output, we start numbering the blocks
      from 1 within each function, rather than keeping a running
      count.  */
-#if defined (SDB_DEBUGGING_INFO) || defined (XCOFF_DEBUGGING_INFO)
+#if SDB_DEBUGGING_INFO || defined (XCOFF_DEBUGGING_INFO)
   if (write_symbols == SDB_DEBUG || write_symbols == XCOFF_DEBUG)
     next_block_index = 1;
 #endif
@@ -4738,6 +4803,7 @@ set_cfun (struct function *new_cfun)
     {
       cfun = new_cfun;
       invoke_set_current_function_hook (new_cfun ? new_cfun->decl : NULL_TREE);
+      redirect_edge_var_map_empty ();
     }
 }
 
@@ -4964,11 +5030,6 @@ init_dummy_function_start (void)
 void
 init_function_start (tree subr)
 {
-  if (subr && DECL_STRUCT_FUNCTION (subr))
-    set_cfun (DECL_STRUCT_FUNCTION (subr));
-  else
-    allocate_struct_function (subr, false);
-
   /* Initialize backend, if needed.  */
   initialize_rtl ();
 
@@ -5091,15 +5152,16 @@ expand_function_start (tree subr)
       /* Compute the return values into a pseudo reg, which we will copy
 	 into the true return register after the cleanups are done.  */
       tree return_type = TREE_TYPE (res);
-      /* If we may coalesce this result, make sure it has the expected
-	 mode.  */
-      if (flag_tree_coalesce_vars && is_gimple_reg (res))
-	{
-	  tree def = ssa_default_def (cfun, res);
-	  gcc_assert (def);
-	  machine_mode mode = promote_ssa_mode (def, NULL);
-	  set_parm_rtl (res, gen_reg_rtx (mode));
-	}
+
+      /* If we may coalesce this result, make sure it has the expected mode
+	 in case it was promoted.  But we need not bother about BLKmode.  */
+      machine_mode promoted_mode
+	= flag_tree_coalesce_vars && is_gimple_reg (res)
+	  ? promote_ssa_mode (ssa_default_def (cfun, res), NULL)
+	  : BLKmode;
+
+      if (promoted_mode != BLKmode)
+	set_parm_rtl (res, gen_reg_rtx (promoted_mode));
       else if (TYPE_MODE (return_type) != BLKmode
 	       && targetm.calls.return_in_msb (return_type))
 	/* expand_function_end will insert the appropriate padding in

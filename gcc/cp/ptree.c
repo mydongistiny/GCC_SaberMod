@@ -1,5 +1,5 @@
 /* Prints out trees in human readable form.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -22,11 +22,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "print-tree.h"
 #include "cp-tree.h"
+#include "print-tree.h"
 
 void
 cxx_print_decl (FILE *file, tree node, int indent)
@@ -289,4 +286,12 @@ cxx_print_xnode (FILE *file, tree node, int indent)
     default:
       break;
     }
+}
+
+/* Print the node NODE on standard error, for debugging.  */
+
+DEBUG_FUNCTION void
+debug_tree (cp_expr node)
+{
+  debug_tree (node.get_value());
 }

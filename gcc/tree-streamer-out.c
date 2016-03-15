@@ -1,6 +1,6 @@
 /* Routines for emitting trees to a file stream.
 
-   Copyright (C) 2011-2015 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@google.com>
 
 This file is part of GCC.
@@ -23,17 +23,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
-#include "diagnostic.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "stor-layout.h"
-#include "internal-fn.h"
-#include "cgraph.h"
-#include "target.h"
 #include "tree-streamer.h"
+#include "cgraph.h"
+#include "alias.h"
+#include "stor-layout.h"
 #include "gomp-constants.h"
 
 
@@ -91,7 +87,10 @@ pack_ts_base_value_fields (struct bitpack_d *bp, tree expr)
   bp_pack_value (bp, TREE_ADDRESSABLE (expr), 1);
   bp_pack_value (bp, TREE_THIS_VOLATILE (expr), 1);
   if (DECL_P (expr))
-    bp_pack_value (bp, DECL_UNSIGNED (expr), 1);
+    {
+      bp_pack_value (bp, DECL_UNSIGNED (expr), 1);
+      bp_pack_value (bp, DECL_NAMELESS (expr), 1);
+    }
   else if (TYPE_P (expr))
     bp_pack_value (bp, TYPE_UNSIGNED (expr), 1);
   else
@@ -114,8 +113,16 @@ pack_ts_base_value_fields (struct bitpack_d *bp, tree expr)
   bp_pack_value (bp, TREE_DEPRECATED (expr), 1);
   if (TYPE_P (expr))
     {
-      bp_pack_value (bp, TYPE_SATURATING (expr), 1);
+      if (AGGREGATE_TYPE_P (expr))
+	bp_pack_value (bp, TYPE_REVERSE_STORAGE_ORDER (expr), 1);
+      else
+	bp_pack_value (bp, TYPE_SATURATING (expr), 1);
       bp_pack_value (bp, TYPE_ADDR_SPACE (expr), 8);
+    }
+  else if (TREE_CODE (expr) == BIT_FIELD_REF || TREE_CODE (expr) == MEM_REF)
+    {
+      bp_pack_value (bp, REF_REVERSE_STORAGE_ORDER (expr), 1);
+      bp_pack_value (bp, 0, 8);
     }
   else if (TREE_CODE (expr) == SSA_NAME)
     {
@@ -304,11 +311,21 @@ pack_ts_function_decl_value_fields (struct bitpack_d *bp, tree expr)
 static void
 pack_ts_type_common_value_fields (struct bitpack_d *bp, tree expr)
 {
-  bp_pack_machine_mode (bp, TYPE_MODE (expr));
+  /* for VECTOR_TYPE, TYPE_MODE reevaluates the mode using target_flags
+     not necessary valid in a global context.
+     Use the raw value previously set by layout_type.  */
+  bp_pack_machine_mode (bp, TYPE_MODE_RAW (expr));
   bp_pack_value (bp, TYPE_STRING_FLAG (expr), 1);
   /* TYPE_NO_FORCE_BLK is private to stor-layout and need
      no streaming.  */
   bp_pack_value (bp, TYPE_NEEDS_CONSTRUCTING (expr), 1);
+  bp_pack_value (bp, TYPE_PACKED (expr), 1);
+  bp_pack_value (bp, TYPE_RESTRICT (expr), 1);
+  bp_pack_value (bp, TYPE_USER_ALIGN (expr), 1);
+  bp_pack_value (bp, TYPE_READONLY (expr), 1);
+  /* We used to stream TYPE_ALIAS_SET == 0 information to let frontends mark
+     types that are opaque for TBAA.  This however did not work as intended,
+     because TYPE_ALIAS_SET == 0 was regularly lost in type merging.  */
   if (RECORD_OR_UNION_TYPE_P (expr))
     {
       bp_pack_value (bp, TYPE_TRANSPARENT_AGGR (expr), 1);
@@ -316,17 +333,8 @@ pack_ts_type_common_value_fields (struct bitpack_d *bp, tree expr)
     }
   else if (TREE_CODE (expr) == ARRAY_TYPE)
     bp_pack_value (bp, TYPE_NONALIASED_COMPONENT (expr), 1);
-  bp_pack_value (bp, TYPE_PACKED (expr), 1);
-  bp_pack_value (bp, TYPE_RESTRICT (expr), 1);
-  bp_pack_value (bp, TYPE_USER_ALIGN (expr), 1);
-  bp_pack_value (bp, TYPE_READONLY (expr), 1);
   bp_pack_var_len_unsigned (bp, TYPE_PRECISION (expr));
   bp_pack_var_len_unsigned (bp, TYPE_ALIGN (expr));
-  /* Make sure to preserve the fact whether the frontend would assign
-     alias-set zero to this type.  */
-  bp_pack_var_len_int (bp, (TYPE_ALIAS_SET (expr) == 0
-			    || (!in_lto_p
-				&& get_alias_set (expr) == 0)) ? 0 : -1);
 }
 
 

@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
 
@@ -23,23 +23,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "target.h"
 #include "rtl.h"
+#include "cfghooks.h"
 #include "df.h"
-#include "diagnostic-core.h"
-#include "tm_p.h"
-#include "regs.h"
 #include "profile.h"
-#include "flags.h"
-#include "insn-config.h"
 #include "insn-attr.h"
-#include "except.h"
-#include "recog.h"
 #include "params.h"
 #include "cfgrtl.h"
 #include "cfgbuild.h"
 #include "sched-int.h"
-#include "target.h"
 
 
 #ifdef INSN_SCHEDULING
@@ -471,7 +464,7 @@ add_deps_for_risky_insns (rtx_insn *head, rtx_insn *tail)
 /* Schedule a single extended basic block, defined by the boundaries
    HEAD and TAIL.
 
-   We change our expectations about scheduler behaviour depending on
+   We change our expectations about scheduler behavior depending on
    whether MODULO_SCHEDULING is true.  If it is, we expect that the
    caller has already called set_modulo_params and created delay pairs
    as appropriate.  If the modulo schedule failed, we return

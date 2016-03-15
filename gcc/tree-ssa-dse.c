@@ -1,5 +1,5 @@
 /* Dead store elimination
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,31 +21,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "tm_p.h"
 #include "gimple-pretty-print.h"
-#include "internal-fn.h"
+#include "fold-const.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
-#include "tree-pass.h"
 #include "domwalk.h"
-#include "langhooks.h"
 #include "tree-cfgcleanup.h"
 
 /* This file implements dead store elimination.
@@ -330,10 +316,10 @@ class dse_dom_walker : public dom_walker
 public:
   dse_dom_walker (cdi_direction direction) : dom_walker (direction) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
 };
 
-void
+edge
 dse_dom_walker::before_dom_children (basic_block bb)
 {
   gimple_stmt_iterator gsi;
@@ -346,6 +332,7 @@ dse_dom_walker::before_dom_children (basic_block bb)
       else
 	gsi_prev (&gsi);
     }
+  return NULL;
 }
 
 namespace {

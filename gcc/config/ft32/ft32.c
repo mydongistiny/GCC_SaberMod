@@ -1,5 +1,5 @@
 /* Target Code for ft32
-   Copyright (C) 2015  Free Software Foundation
+   Copyright (C) 2015-2016 Free Software Foundation, Inc.
    Contributed by FTDI <support@ftdi.com>
 
    This file is part of GCC.
@@ -238,7 +238,7 @@ ft32_print_operand (FILE * file, rtx x, int code)
       return;
 
     case MEM:
-      output_address (XEXP (operand, 0));
+      output_address (GET_MODE (XEXP (operand, 0)), XEXP (operand, 0));
       return;
 
     default:

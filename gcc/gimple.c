@@ -1,6 +1,6 @@
 /* Gimple IR support functions.
 
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>
 
 This file is part of GCC.
@@ -25,26 +25,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
 #include "ssa.h"
-#include "target.h"
+#include "cgraph.h"
+#include "diagnostic.h"
 #include "alias.h"
 #include "fold-const.h"
 #include "calls.h"
-#include "stmt.h"
 #include "stor-layout.h"
 #include "internal-fn.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
 #include "gimplify.h"
-#include "diagnostic.h"
-#include "value-prof.h"
-#include "flags.h"
-#include "alias.h"
-#include "demangle.h"
-#include "langhooks.h"
-#include "cgraph.h"
+#include "target.h"
 
 
 /* All the tuples have their operand vector (if present) at the very bottom
@@ -394,7 +387,7 @@ gimple_build_assign (tree lhs, tree rhs MEM_STAT_DECL)
   enum tree_code subcode;
   tree op1, op2, op3;
 
-  extract_ops_from_tree_1 (rhs, &subcode, &op1, &op2, &op3);
+  extract_ops_from_tree (rhs, &subcode, &op1, &op2, &op3);
   return gimple_build_assign (lhs, subcode, op1, op2, op3 PASS_MEM_STAT);
 }
 
@@ -961,6 +954,19 @@ gimple_build_omp_master (gimple_seq body)
   return p;
 }
 
+/* Build a GIMPLE_OMP_GRID_BODY statement.
+
+   BODY is the sequence of statements to be executed by the kernel.  */
+
+gimple *
+gimple_build_omp_grid_body (gimple_seq body)
+{
+  gimple *p = gimple_alloc (GIMPLE_OMP_GRID_BODY, 0);
+  if (body)
+    gimple_omp_set_body (p, body);
+
+  return p;
+}
 
 /* Build a GIMPLE_OMP_TASKGROUP statement.
 
@@ -1138,12 +1144,14 @@ gimple_build_omp_atomic_store (tree val)
 /* Build a GIMPLE_TRANSACTION statement.  */
 
 gtransaction *
-gimple_build_transaction (gimple_seq body, tree label)
+gimple_build_transaction (gimple_seq body)
 {
   gtransaction *p
     = as_a <gtransaction *> (gimple_alloc (GIMPLE_TRANSACTION, 0));
   gimple_transaction_set_body (p, body);
-  gimple_transaction_set_label (p, label);
+  gimple_transaction_set_label_norm (p, 0);
+  gimple_transaction_set_label_uninst (p, 0);
+  gimple_transaction_set_label_over (p, 0);
   return p;
 }
 
@@ -1346,7 +1354,8 @@ gimple_call_same_target_p (const gimple *c1, const gimple *c2)
 {
   if (gimple_call_internal_p (c1))
     return (gimple_call_internal_p (c2)
-	    && gimple_call_internal_fn (c1) == gimple_call_internal_fn (c2));
+	    && gimple_call_internal_fn (c1) == gimple_call_internal_fn (c2)
+	    && !gimple_call_internal_unique_p (as_a <const gcall *> (c1)));
   else
     return (gimple_call_fn (c1) == gimple_call_fn (c2)
 	    || (gimple_call_fndecl (c1)
@@ -1569,7 +1578,7 @@ gimple_assign_set_rhs_from_tree (gimple_stmt_iterator *gsi, tree expr)
   enum tree_code subcode;
   tree op1, op2, op3;
 
-  extract_ops_from_tree_1 (expr, &subcode, &op1, &op2, &op3);
+  extract_ops_from_tree (expr, &subcode, &op1, &op2, &op3);
   gimple_assign_set_rhs_with_ops (gsi, subcode, op1, op2, op3);
 }
 
@@ -1811,6 +1820,7 @@ gimple_copy (gimple *stmt)
 	case GIMPLE_OMP_SECTION:
 	case GIMPLE_OMP_MASTER:
 	case GIMPLE_OMP_TASKGROUP:
+	case GIMPLE_OMP_GRID_BODY:
 	copy_omp_body:
 	  new_seq = gimple_seq_copy (gimple_omp_body (stmt));
 	  gimple_omp_set_body (copy, new_seq);
@@ -1934,6 +1944,11 @@ gimple_could_trap_p_1 (gimple *s, bool include_mem, bool include_stores)
 				      (INTEGRAL_TYPE_P (t)
 				       && TYPE_OVERFLOW_TRAPS (t)),
 				      div));
+
+    case GIMPLE_COND:
+      t = TREE_TYPE (gimple_cond_lhs (s));
+      return operation_could_trap_p (gimple_cond_code (s),
+				     FLOAT_TYPE_P (t), false, NULL_TREE);
 
     default:
       break;
@@ -2449,24 +2464,6 @@ gimple_ior_addresses_taken (bitmap addresses_taken, gimple *stmt)
 }
 
 
-/* Return true if TYPE1 and TYPE2 are compatible enough for builtin
-   processing.  */
-
-static bool
-validate_type (tree type1, tree type2)
-{
-  if (INTEGRAL_TYPE_P (type1)
-      && INTEGRAL_TYPE_P (type2))
-    ;
-  else if (POINTER_TYPE_P (type1)
-	   && POINTER_TYPE_P (type2))
-    ;
-  else if (TREE_CODE (type1)
-	   != TREE_CODE (type2))
-    return false;
-  return true;
-}
-
 /* Return true when STMTs arguments and return value match those of FNDECL,
    a decl of a builtin function.  */
 
@@ -2477,7 +2474,8 @@ gimple_builtin_call_types_compatible_p (const gimple *stmt, tree fndecl)
 
   tree ret = gimple_call_lhs (stmt);
   if (ret
-      && !validate_type (TREE_TYPE (ret), TREE_TYPE (TREE_TYPE (fndecl))))
+      && !useless_type_conversion_p (TREE_TYPE (ret),
+				     TREE_TYPE (TREE_TYPE (fndecl))))
     return false;
 
   tree targs = TYPE_ARG_TYPES (TREE_TYPE (fndecl));
@@ -2488,7 +2486,7 @@ gimple_builtin_call_types_compatible_p (const gimple *stmt, tree fndecl)
       if (!targs)
 	return true;
       tree arg = gimple_call_arg (stmt, i);
-      if (!validate_type (TREE_TYPE (arg), TREE_VALUE (targs)))
+      if (!useless_type_conversion_p (TREE_VALUE (targs), TREE_TYPE (arg)))
 	return false;
       targs = TREE_CHAIN (targs);
     }
@@ -2535,6 +2533,27 @@ gimple_call_builtin_p (const gimple *stmt, enum built_in_function code)
       && DECL_FUNCTION_CODE (fndecl) == code)
     return gimple_builtin_call_types_compatible_p (stmt, fndecl);
   return false;
+}
+
+/* If CALL is a call to a combined_fn (i.e. an internal function or
+   a normal built-in function), return its code, otherwise return
+   CFN_LAST.  */
+
+combined_fn
+gimple_call_combined_fn (const gimple *stmt)
+{
+  if (const gcall *call = dyn_cast <const gcall *> (stmt))
+    {
+      if (gimple_call_internal_p (call))
+	return as_combined_fn (gimple_call_internal_fn (call));
+
+      tree fndecl = gimple_call_fndecl (stmt);
+      if (fndecl
+	  && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL
+	  && gimple_builtin_call_types_compatible_p (stmt, fndecl))
+	return as_combined_fn (DECL_FUNCTION_CODE (fndecl));
+    }
+  return CFN_LAST;
 }
 
 /* Return true if STMT clobbers memory.  STMT is required to be a
@@ -2621,6 +2640,18 @@ nonfreeing_call_p (gimple *call)
   return n->nonfreeing_fn;
 }
 
+/* Return true when CALL is a call stmt that definitely need not
+   be considered to be a memory barrier.  */
+bool
+nonbarrier_call_p (gimple *call)
+{
+  if (gimple_call_flags (call) & (ECF_PURE | ECF_CONST))
+    return true;
+  /* Should extend this to have a nonbarrier_fn flag, just as above in
+     the nonfreeing case.  */
+  return false;
+}
+
 /* Callback for walk_stmt_load_store_ops.
  
    Return TRUE if OP will dereference the tree stored in DATA, FALSE
@@ -2631,9 +2662,15 @@ nonfreeing_call_p (gimple *call)
 static bool
 check_loadstore (gimple *, tree op, tree, void *data)
 {
-  if ((TREE_CODE (op) == MEM_REF || TREE_CODE (op) == TARGET_MEM_REF)
-      && operand_equal_p (TREE_OPERAND (op, 0), (tree)data, 0))
-    return true;
+  if (TREE_CODE (op) == MEM_REF || TREE_CODE (op) == TARGET_MEM_REF)
+    {
+      /* Some address spaces may legitimately dereference zero.  */
+      addr_space_t as = TYPE_ADDR_SPACE (TREE_TYPE (op));
+      if (targetm.addr_space.zero_address_valid (as))
+	return false;
+
+      return operand_equal_p (TREE_OPERAND (op, 0), (tree)data, 0);
+    }
   return false;
 }
 

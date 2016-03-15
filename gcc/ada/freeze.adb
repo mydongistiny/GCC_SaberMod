@@ -207,10 +207,7 @@ package body Freeze is
    --  this to have a Freeze_Node, so ensure it doesn't. Do the same for any
    --  Full_View or Corresponding_Record_Type.
 
-   procedure Warn_Overlay
-     (Expr : Node_Id;
-      Typ  : Entity_Id;
-      Nam  : Node_Id);
+   procedure Warn_Overlay (Expr : Node_Id; Typ : Entity_Id; Nam : Node_Id);
    --  Expr is the expression for an address clause for entity Nam whose type
    --  is Typ. If Typ has a default initialization, and there is no explicit
    --  initialization in the source declaration, check whether the address
@@ -598,16 +595,25 @@ package body Freeze is
    --------------------------
 
    procedure Check_Address_Clause (E : Entity_Id) is
-      Addr       : constant Node_Id    := Address_Clause (E);
+      Addr       : constant Node_Id   := Address_Clause (E);
+      Typ        : constant Entity_Id := Etype (E);
+      Decl       : Node_Id;
       Expr       : Node_Id;
-      Decl       : constant Node_Id    := Declaration_Node (E);
-      Loc        : constant Source_Ptr := Sloc (Decl);
-      Typ        : constant Entity_Id  := Etype (E);
+      Init       : Node_Id;
       Lhs        : Node_Id;
       Tag_Assign : Node_Id;
 
    begin
       if Present (Addr) then
+
+         --  For a deferred constant, the initialization value is on full view
+
+         if Ekind (E) = E_Constant and then Present (Full_View (E)) then
+            Decl := Declaration_Node (Full_View (E));
+         else
+            Decl := Declaration_Node (E);
+         end if;
+
          Expr := Expression (Addr);
 
          if Needs_Constant_Address (Decl, Typ) then
@@ -656,29 +662,73 @@ package body Freeze is
             Warn_Overlay (Expr, Typ, Name (Addr));
          end if;
 
-         if Present (Expression (Decl)) then
+         Init := Expression (Decl);
+
+         --  If a variable, or a non-imported constant, overlays a constant
+         --  object and has an initialization value, then the initialization
+         --  may end up writing into read-only memory. Detect the cases of
+         --  statically identical values and remove the initialization. In
+         --  the other cases, give a warning. We will give other warnings
+         --  later for the variable if it is assigned.
+
+         if (Ekind (E) = E_Variable
+              or else (Ekind (E) = E_Constant
+                        and then not Is_Imported (E)))
+           and then Overlays_Constant (E)
+           and then Present (Init)
+         then
+            declare
+               O_Ent : Entity_Id;
+               Off   : Boolean;
+
+            begin
+               Find_Overlaid_Entity (Addr, O_Ent, Off);
+
+               if Ekind (O_Ent) = E_Constant
+                 and then Etype (O_Ent) = Typ
+                 and then Present (Constant_Value (O_Ent))
+                 and then Compile_Time_Compare
+                            (Init,
+                             Constant_Value (O_Ent),
+                             Assume_Valid => True) = EQ
+               then
+                  Set_No_Initialization (Decl);
+                  return;
+
+               elsif Comes_From_Source (Init)
+                 and then Address_Clause_Overlay_Warnings
+               then
+                  Error_Msg_Sloc := Sloc (Addr);
+                  Error_Msg_NE
+                    ("??constant& may be modified via address clause#",
+                     Decl, O_Ent);
+               end if;
+            end;
+         end if;
+
+         if Present (Init) then
 
             --  Capture initialization value at point of declaration,
             --  and make explicit assignment legal, because object may
             --  be a constant.
 
-            Remove_Side_Effects (Expression (Decl));
-            Lhs := New_Occurrence_Of (E, Loc);
+            Remove_Side_Effects (Init);
+            Lhs := New_Occurrence_Of (E, Sloc (Decl));
             Set_Assignment_OK (Lhs);
 
-            --  Move initialization to freeze actions (once the object has
-            --  been frozen, and the address clause alignment check has been
+            --  Move initialization to freeze actions, once the object has
+            --  been frozen and the address clause alignment check has been
             --  performed.
 
             Append_Freeze_Action (E,
-              Make_Assignment_Statement (Loc,
+              Make_Assignment_Statement (Sloc (Decl),
                 Name       => Lhs,
                 Expression => Expression (Decl)));
 
             Set_No_Initialization (Decl);
 
             --  If the objet is tagged, check whether the tag must be
-            --  reassigned expliitly.
+            --  reassigned explicitly.
 
             Tag_Assign := Make_Tag_Assignment (Decl);
             if Present (Tag_Assign) then
@@ -1197,9 +1247,14 @@ package body Freeze is
                      Attribute_Scalar_Storage_Order);
       Comp_ADC_Present := Present (Comp_ADC);
 
-      --  Case of record or array component: check storage order compatibility
+      --  Case of record or array component: check storage order compatibility.
+      --  But, if the record has Complex_Representation, then it is treated as
+      --  a scalar in the back end so the storage order is irrelevant.
 
-      if Is_Record_Type (Comp_Type) or else Is_Array_Type (Comp_Type) then
+      if (Is_Record_Type (Comp_Type)
+            and then not Has_Complex_Representation (Comp_Type))
+        or else Is_Array_Type (Comp_Type)
+      then
          Comp_SSO_Differs :=
            Reverse_Storage_Order (Encl_Type)
              /=
@@ -1397,7 +1452,7 @@ package body Freeze is
          return;
       end if;
 
-      --  The situation that is non trivial is something like
+      --  The situation that is nontrivial is something like:
 
       --     subtype x1 is integer range -10 .. +10;
       --     subtype x2 is x1 range 0 .. V1;
@@ -2801,6 +2856,15 @@ package body Freeze is
          then
             Set_Alignment (Arr, Alignment (Component_Type (Arr)));
          end if;
+
+         --  A Ghost type cannot have a component of protected or task type
+         --  (SPARK RM 6.9(19)).
+
+         if Is_Ghost_Entity (Arr) and then Is_Concurrent_Type (Ctyp) then
+            Error_Msg_N
+              ("ghost array type & cannot have concurrent component type",
+               Arr);
+         end if;
       end Freeze_Array_Type;
 
       -------------------------------
@@ -3940,61 +4004,74 @@ package body Freeze is
             Next_Entity (Comp);
          end loop;
 
-         --  Deal with default setting of reverse storage order
+         SSO_ADC :=
+           Get_Attribute_Definition_Clause
+             (Rec, Attribute_Scalar_Storage_Order);
 
-         Set_SSO_From_Default (Rec);
+         --  If the record type has Complex_Representation, then it is treated
+         --  as a scalar in the back end so the storage order is irrelevant.
 
-         --  Check consistent attribute setting on component types
-
-         SSO_ADC := Get_Attribute_Definition_Clause
-                      (Rec, Attribute_Scalar_Storage_Order);
-
-         declare
-            Comp_ADC_Present : Boolean;
-         begin
-            Comp := First_Component (Rec);
-            while Present (Comp) loop
-               Check_Component_Storage_Order
-                 (Encl_Type        => Rec,
-                  Comp             => Comp,
-                  ADC              => SSO_ADC,
-                  Comp_ADC_Present => Comp_ADC_Present);
-               SSO_ADC_Component := SSO_ADC_Component or Comp_ADC_Present;
-               Next_Component (Comp);
-            end loop;
-         end;
-
-         --  Now deal with reverse storage order/bit order issues
-
-         if Present (SSO_ADC) then
-
-            --  Check compatibility of Scalar_Storage_Order with Bit_Order, if
-            --  the former is specified.
-
-            if Reverse_Bit_Order (Rec) /= Reverse_Storage_Order (Rec) then
-
-               --  Note: report error on Rec, not on SSO_ADC, as ADC may apply
-               --  to some ancestor type.
-
-               Error_Msg_Sloc := Sloc (SSO_ADC);
+         if Has_Complex_Representation (Rec) then
+            if Present (SSO_ADC) then
                Error_Msg_N
-                 ("scalar storage order for& specified# inconsistent with "
-                  & "bit order", Rec);
+                 ("??storage order has no effect with Complex_Representation",
+                  SSO_ADC);
             end if;
 
-            --  Warn if there is an Scalar_Storage_Order attribute definition
-            --  clause but no component clause, no component that itself has
-            --  such an attribute definition, and no pragma Pack.
+         else
+            --  Deal with default setting of reverse storage order
 
-            if not (Placed_Component
-                      or else
-                    SSO_ADC_Component
-                      or else
-                    Is_Packed (Rec))
-            then
-               Error_Msg_N
-                 ("??scalar storage order specified but no component clause",
-                  SSO_ADC);
+            Set_SSO_From_Default (Rec);
+
+            --  Check consistent attribute setting on component types
+
+            declare
+               Comp_ADC_Present : Boolean;
+            begin
+               Comp := First_Component (Rec);
+               while Present (Comp) loop
+                  Check_Component_Storage_Order
+                    (Encl_Type        => Rec,
+                     Comp             => Comp,
+                     ADC              => SSO_ADC,
+                     Comp_ADC_Present => Comp_ADC_Present);
+                  SSO_ADC_Component := SSO_ADC_Component or Comp_ADC_Present;
+                  Next_Component (Comp);
+               end loop;
+            end;
+
+            --  Now deal with reverse storage order/bit order issues
+
+            if Present (SSO_ADC) then
+
+               --  Check compatibility of Scalar_Storage_Order with Bit_Order,
+               --  if the former is specified.
+
+               if Reverse_Bit_Order (Rec) /= Reverse_Storage_Order (Rec) then
+
+                  --  Note: report error on Rec, not on SSO_ADC, as ADC may
+                  --  apply to some ancestor type.
+
+                  Error_Msg_Sloc := Sloc (SSO_ADC);
+                  Error_Msg_N
+                    ("scalar storage order for& specified# inconsistent with "
+                     & "bit order", Rec);
+               end if;
+
+               --  Warn if there is a Scalar_Storage_Order attribute definition
+               --  clause but no component clause, no component that itself has
+               --  such an attribute definition, and no pragma Pack.
+
+               if not (Placed_Component
+                         or else
+                       SSO_ADC_Component
+                         or else
+                       Is_Packed (Rec))
+               then
+                  Error_Msg_N
+                    ("??scalar storage order specified but no component "
+                     & "clause", SSO_ADC);
+               end if;
             end if;
          end if;
 
@@ -4299,6 +4376,44 @@ package body Freeze is
                      Error_Msg_N
                        ("component & of non-volatile type % cannot be "
                         & "volatile", Comp);
+                  end if;
+
+                  Next_Component (Comp);
+               end loop;
+            end if;
+
+            --  A type which does not yield a synchronized object cannot have
+            --  a component that yields a synchronized object (SPARK RM 9.5).
+
+            if not Yields_Synchronized_Object (Rec) then
+               Comp := First_Component (Rec);
+               while Present (Comp) loop
+                  if Comes_From_Source (Comp)
+                    and then Yields_Synchronized_Object (Etype (Comp))
+                  then
+                     Error_Msg_Name_1 := Chars (Rec);
+                     Error_Msg_N
+                       ("component & of non-synchronized type % cannot be "
+                        & "synchronized", Comp);
+                  end if;
+
+                  Next_Component (Comp);
+               end loop;
+            end if;
+
+            --  A Ghost type cannot have a component of protected or task type
+            --  (SPARK RM 6.9(19)).
+
+            if Is_Ghost_Entity (Rec) then
+               Comp := First_Component (Rec);
+               while Present (Comp) loop
+                  if Comes_From_Source (Comp)
+                    and then Is_Concurrent_Type (Etype (Comp))
+                  then
+                     Error_Msg_Name_1 := Chars (Rec);
+                     Error_Msg_N
+                       ("component & of ghost type % cannot be concurrent",
+                        Comp);
                   end if;
 
                   Next_Component (Comp);
@@ -5054,12 +5169,19 @@ package body Freeze is
             end if;
          end;
 
-         --  A Ghost type cannot be effectively volatile (SPARK RM 6.9(8))
+         if Is_Ghost_Entity (E) then
 
-         if Is_Ghost_Entity (E)
-           and then Is_Effectively_Volatile (E)
-         then
-            Error_Msg_N ("ghost type & cannot be volatile", E);
+            --  A Ghost type cannot be concurrent (SPARK RM 6.9(19)). Verify
+            --  this legality rule first to five a finer-grained diagnostic.
+
+            if Is_Concurrent_Type (E) then
+               Error_Msg_N ("ghost type & cannot be concurrent", E);
+
+            --  A Ghost type cannot be effectively volatile (SPARK RM 6.9(8))
+
+            elsif Is_Effectively_Volatile (E) then
+               Error_Msg_N ("ghost type & cannot be volatile", E);
+            end if;
          end if;
 
          --  Deal with special cases of freezing for subtype
@@ -8056,11 +8178,7 @@ package body Freeze is
    -- Warn_Overlay --
    ------------------
 
-   procedure Warn_Overlay
-     (Expr : Node_Id;
-      Typ  : Entity_Id;
-      Nam  : Entity_Id)
-   is
+   procedure Warn_Overlay (Expr : Node_Id; Typ : Entity_Id; Nam : Entity_Id) is
       Ent : constant Entity_Id := Entity (Nam);
       --  The object to which the address clause applies
 

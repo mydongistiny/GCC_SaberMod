@@ -1,5 +1,5 @@
 /* Structure for saving state for a nested function.
-   Copyright (C) 1989-2015 Free Software Foundation, Inc.
+   Copyright (C) 1989-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -536,6 +536,13 @@ do {								\
 
 #define ASLK_REDUCE_ALIGN 1
 #define ASLK_RECORD_PAD 2
+
+/* If pointers to member functions use the least significant bit to
+   indicate whether a function is virtual, ensure a pointer
+   to this function will have that bit clear.  */
+#define MINIMUM_METHOD_BOUNDARY \
+  ((TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn)	     \
+   ? MAX (FUNCTION_BOUNDARY, 2 * BITS_PER_UNIT) : FUNCTION_BOUNDARY)
 
 
 

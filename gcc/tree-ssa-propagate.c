@@ -1,5 +1,5 @@
 /* Generic SSA value propagation engine.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
    This file is part of GCC.
@@ -24,15 +24,9 @@
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "flags.h"
-#include "tm_p.h"
 #include "gimple-pretty-print.h"
 #include "dumpfile.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimplify.h"
@@ -40,8 +34,6 @@
 #include "tree-cfg.h"
 #include "tree-ssa.h"
 #include "tree-ssa-propagate.h"
-#include "langhooks.h"
-#include "value-prof.h"
 #include "domwalk.h"
 #include "cfgloop.h"
 #include "tree-cfgcleanup.h"
@@ -1131,7 +1123,7 @@ public:
       BITMAP_FREE (need_eh_cleanup);
     }
 
-    virtual void before_dom_children (basic_block);
+    virtual edge before_dom_children (basic_block);
     virtual void after_dom_children (basic_block) {}
 
     ssa_prop_get_value_fn get_value_fn;
@@ -1143,7 +1135,7 @@ public:
     bitmap need_eh_cleanup;
 };
 
-void
+edge
 substitute_and_fold_dom_walker::before_dom_children (basic_block bb)
 {
   /* Propagate known values into PHI nodes.  */
@@ -1301,6 +1293,7 @@ substitute_and_fold_dom_walker::before_dom_children (basic_block bb)
 	    fprintf (dump_file, "Not folded\n");
 	}
     }
+  return NULL;
 }
 
 
@@ -1501,14 +1494,14 @@ static void
 replace_exp_1 (use_operand_p op_p, tree val,
     	       bool for_propagation ATTRIBUTE_UNUSED)
 {
-#if defined ENABLE_CHECKING
-  tree op = USE_FROM_PTR (op_p);
-
-  gcc_assert (!(for_propagation
-		&& TREE_CODE (op) == SSA_NAME
-		&& TREE_CODE (val) == SSA_NAME
-		&& !may_propagate_copy (op, val)));
-#endif
+  if (flag_checking)
+    {
+      tree op = USE_FROM_PTR (op_p);
+      gcc_assert (!(for_propagation
+		  && TREE_CODE (op) == SSA_NAME
+		  && TREE_CODE (val) == SSA_NAME
+		  && !may_propagate_copy (op, val)));
+    }
 
   if (TREE_CODE (val) == SSA_NAME)
     SET_USE (op_p, val);

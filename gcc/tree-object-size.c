@@ -1,5 +1,5 @@
 /* __builtin_object_size (ptr, object_size_type) computation
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>
 
 This file is part of GCC.
@@ -24,19 +24,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "tree-object-size.h"
-#include "diagnostic-core.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "gimple-iterator.h"
-#include "tree-pass.h"
-#include "tree-ssa-propagate.h"
-#include "builtins.h"
+#include "tree-cfg.h"
 
 struct object_size_info
 {
@@ -1222,14 +1217,30 @@ class pass_object_sizes : public gimple_opt_pass
 {
 public:
   pass_object_sizes (gcc::context *ctxt)
-    : gimple_opt_pass (pass_data_object_sizes, ctxt)
+    : gimple_opt_pass (pass_data_object_sizes, ctxt), insert_min_max_p (false)
   {}
 
   /* opt_pass methods: */
   opt_pass * clone () { return new pass_object_sizes (m_ctxt); }
+  void set_pass_param (unsigned int n, bool param)
+    {
+      gcc_assert (n == 0);
+      insert_min_max_p = param;
+    }
   virtual unsigned int execute (function *);
 
+ private:
+  /* Determines whether the pass instance creates MIN/MAX_EXPRs.  */
+  bool insert_min_max_p;
 }; // class pass_object_sizes
+
+/* Dummy valueize function.  */
+
+static tree
+do_valueize (tree t)
+{
+  return t;
+}
 
 unsigned int
 pass_object_sizes::execute (function *fun)
@@ -1247,12 +1258,12 @@ pass_object_sizes::execute (function *fun)
 
 	  init_object_sizes ();
 
-	  /* In the first pass instance, only attempt to fold
+	  /* If insert_min_max_p, only attempt to fold
 	     __builtin_object_size (x, 1) and __builtin_object_size (x, 3),
 	     and rather than folding the builtin to the constant if any,
 	     create a MIN_EXPR or MAX_EXPR of the __builtin_object_size
 	     call result and the computed constant.  */
-	  if (first_pass_instance)
+	  if (insert_min_max_p)
 	    {
 	      tree ost = gimple_call_arg (call, 1);
 	      if (tree_fits_uhwi_p (ost))
@@ -1287,7 +1298,11 @@ pass_object_sizes::execute (function *fun)
 	      continue;
 	    }
 
-	  result = fold_call_stmt (as_a <gcall *> (call), false);
+	  tree lhs = gimple_call_lhs (call);
+	  if (!lhs)
+	    continue;
+
+	  result = gimple_fold_stmt_to_constant (call, do_valueize);
 	  if (!result)
 	    {
 	      tree ost = gimple_call_arg (call, 1);
@@ -1318,22 +1333,8 @@ pass_object_sizes::execute (function *fun)
 	      fprintf (dump_file, "\n");
 	    }
 
-	  tree lhs = gimple_call_lhs (call);
-	  if (!lhs)
-	    continue;
-
 	  /* Propagate into all uses and fold those stmts.  */
-	  gimple *use_stmt;
-	  imm_use_iterator iter;
-	  FOR_EACH_IMM_USE_STMT (use_stmt, iter, lhs)
-	    {
-	      use_operand_p use_p;
-	      FOR_EACH_IMM_USE_ON_STMT (use_p, iter)
-		SET_USE (use_p, result);
-	      gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
-	      fold_stmt (&gsi);
-	      update_stmt (gsi_stmt (gsi));
-	    }
+	  replace_uses_by (lhs, result);
 	}
     }
 

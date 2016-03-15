@@ -1,5 +1,5 @@
 /* Internals of libgccjit: classes for playing back recorded API calls.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -21,27 +21,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "opts.h"
-#include "hashtab.h"
-#include "statistics.h"
-#include "vec.h"
-#include "alias.h"
-#include "tree.h"
-#include "inchash.h"
-#include "hash-map.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "dumpfile.h"
-#include "cgraph.h"
-#include "toplev.h"
-#include "timevar.h"
-#include "tree-cfg.h"
 #include "target.h"
-#include "convert.h"
+#include "tree.h"
 #include "stringpool.h"
+#include "cgraph.h"
+#include "dumpfile.h"
+#include "toplev.h"
+#include "tree-cfg.h"
+#include "convert.h"
 #include "stor-layout.h"
 #include "print-tree.h"
 #include "gimplify.h"
@@ -49,11 +36,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "context.h"
 #include "fold-const.h"
-#include "debug.h"
 #include "gcc.h"
 
-#include "jit-common.h"
-#include "jit-logging.h"
+#include <pthread.h>
+
 #include "jit-playback.h"
 #include "jit-result.h"
 #include "jit-builtins.h"
@@ -1904,6 +1890,7 @@ playback::compile_to_file::postprocess (const char *ctxt_progname)
     case GCC_JIT_OUTPUT_KIND_ASSEMBLER:
       copy_file (get_tempdir ()->get_path_s_file (),
 		 m_output_path);
+      /* The .s file is automatically unlinked by tempdir::~tempdir.  */
       break;
 
     case GCC_JIT_OUTPUT_KIND_OBJECT_FILE:
@@ -1918,9 +1905,13 @@ playback::compile_to_file::postprocess (const char *ctxt_progname)
 		       false, /* bool shared, */
 		       false);/* bool run_linker */
 	if (!errors_occurred ())
-	  copy_file (tmp_o_path,
-		     m_output_path);
-	free (tmp_o_path);
+	  {
+	    copy_file (tmp_o_path,
+		       m_output_path);
+	    get_tempdir ()->add_temp_file (tmp_o_path);
+	  }
+	else
+	  free (tmp_o_path);
       }
       break;
 
@@ -1934,6 +1925,7 @@ playback::compile_to_file::postprocess (const char *ctxt_progname)
       if (!errors_occurred ())
 	copy_file (get_tempdir ()->get_path_so_file (),
 		   m_output_path);
+      /* The .so file is automatically unlinked by tempdir::~tempdir.  */
       break;
 
     case GCC_JIT_OUTPUT_KIND_EXECUTABLE:
@@ -1948,9 +1940,13 @@ playback::compile_to_file::postprocess (const char *ctxt_progname)
 		       false, /* bool shared, */
 		       true);/* bool run_linker */
 	if (!errors_occurred ())
-	  copy_file (tmp_exe_path,
-		     m_output_path);
-	free (tmp_exe_path);
+	  {
+	    copy_file (tmp_exe_path,
+		       m_output_path);
+	    get_tempdir ()->add_temp_file (tmp_exe_path);
+	  }
+	else
+	  free (tmp_exe_path);
       }
       break;
 
@@ -2295,7 +2291,7 @@ extract_any_requested_dumps (vec <recording::requested_dump> *requested_dumps)
       filename = g->get_dumps ()->get_dump_file_name (dfi);
       content = read_dump_file (filename);
       *(d->m_out_ptr) = content;
-      free (filename);
+      m_tempdir->add_temp_file (filename);
     }
 }
 

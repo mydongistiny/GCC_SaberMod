@@ -1,5 +1,5 @@
 /* Interprocedural Identical Code Folding pass
-   Copyright (C) 2014-2015 Free Software Foundation, Inc.
+   Copyright (C) 2014-2016 Free Software Foundation, Inc.
 
    Contributed by Jan Hubicka <hubicka@ucw.cz> and Martin Liska <mliska@suse.cz>
 
@@ -22,41 +22,24 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "ssa.h"
-#include "options.h"
-#include "fold-const.h"
-#include "internal-fn.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "gimple-iterator.h"
-#include "tree-cfg.h"
-#include "tree-dfa.h"
 #include "tree-pass.h"
-#include "gimple-pretty-print.h"
-#include "cfgloop.h"
-#include "except.h"
+#include "ssa.h"
 #include "cgraph.h"
 #include "data-streamer.h"
+#include "gimple-pretty-print.h"
+#include "alias.h"
+#include "fold-const.h"
+#include "gimple-iterator.h"
 #include "ipa-utils.h"
 #include <list>
 #include "tree-eh.h"
 #include "builtins.h"
 
 #include "ipa-icf-gimple.h"
-#include "ipa-icf.h"
 
 namespace ipa_icf_gimple {
 
@@ -250,7 +233,15 @@ func_checker::compatible_types_p (tree t1, tree t2)
   if (!types_compatible_p (t1, t2))
     return return_false_with_msg ("types are not compatible");
 
-  if (get_alias_set (t1) != get_alias_set (t2))
+  /* We do a lot of unnecesary matching of types that are not being
+     accessed and thus do not need to be compatible.  In longer term we should
+     remove these checks on all types which are not accessed as memory
+     locations.
+
+     For time being just avoid calling get_alias_set on types that are not
+     having alias sets defined at all.  */
+  if (type_with_alias_set_p (t1) && type_with_alias_set_p (t2)
+      && get_alias_set (t1) != get_alias_set (t2))
     return return_false_with_msg ("alias sets are different");
 
   return true;
@@ -988,6 +979,9 @@ bool
 func_checker::compare_gimple_asm (const gasm *g1, const gasm *g2)
 {
   if (gimple_asm_volatile_p (g1) != gimple_asm_volatile_p (g2))
+    return false;
+
+  if (gimple_asm_input_p (g1) != gimple_asm_input_p (g2))
     return false;
 
   if (gimple_asm_ninputs (g1) != gimple_asm_ninputs (g2))

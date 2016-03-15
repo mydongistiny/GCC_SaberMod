@@ -1,5 +1,5 @@
 /* Optimize jump instructions, for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -37,30 +37,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "tm_p.h"
-#include "flags.h"
-#include "regs.h"
 #include "insn-config.h"
-#include "insn-attr.h"
+#include "regs.h"
+#include "emit-rtl.h"
 #include "recog.h"
 #include "cfgrtl.h"
-#include "tree.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "except.h"
-#include "diagnostic-core.h"
-#include "reload.h"
-#include "tree-pass.h"
-#include "target.h"
 #include "rtl-iter.h"
 
 /* Optimize jump y; x: ... y: jumpif... x?
@@ -1815,8 +1802,16 @@ rtx_renumbered_equal_p (const_rtx x, const_rtx y)
 
       /* Two label-refs are equivalent if they point at labels
 	 in the same position in the instruction stream.  */
-      return (next_real_insn (LABEL_REF_LABEL (x))
-	      == next_real_insn (LABEL_REF_LABEL (y)));
+      else
+	{
+	  rtx_insn *xi = next_nonnote_nondebug_insn (LABEL_REF_LABEL (x));
+	  rtx_insn *yi = next_nonnote_nondebug_insn (LABEL_REF_LABEL (y));
+	  while (xi && LABEL_P (xi))
+	    xi = next_nonnote_nondebug_insn (xi);
+	  while (yi && LABEL_P (yi))
+	    yi = next_nonnote_nondebug_insn (yi);
+	  return xi == yi;
+	}
 
     case SYMBOL_REF:
       return XSTR (x, 0) == XSTR (y, 0);

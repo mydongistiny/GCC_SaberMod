@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 processor synchronization primitives.
-;; Copyright (C) 2009-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2016 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -17,34 +17,6 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GCC; see the file COPYING3.  If not see
 ;; <http://www.gnu.org/licenses/>.
-
-(define_c_enum "unspecv"
- [
-    UNSPECV_LX				; Represent a load-exclusive.
-    UNSPECV_SX				; Represent a store-exclusive.
-    UNSPECV_LDA				; Represent an atomic load or load-acquire.
-    UNSPECV_STL				; Represent an atomic store or store-release.
-    UNSPECV_ATOMIC_CMPSW		; Represent an atomic compare swap.
-    UNSPECV_ATOMIC_EXCHG		; Represent an atomic exchange.
-    UNSPECV_ATOMIC_CAS			; Represent an atomic CAS.
-    UNSPECV_ATOMIC_SWP			; Represent an atomic SWP.
-    UNSPECV_ATOMIC_OP			; Represent an atomic operation.
-    UNSPECV_ATOMIC_LDOP			; Represent an atomic load-operation
-    UNSPECV_ATOMIC_LDOP_OR		; Represent an atomic load-or
-    UNSPECV_ATOMIC_LDOP_BIC		; Represent an atomic load-bic
-    UNSPECV_ATOMIC_LDOP_XOR		; Represent an atomic load-xor
-    UNSPECV_ATOMIC_LDOP_PLUS		; Represent an atomic load-add
-])
-
-;; Iterators for load-operate instructions.
-
-(define_int_iterator ATOMIC_LDOP
- [UNSPECV_ATOMIC_LDOP_OR UNSPECV_ATOMIC_LDOP_BIC
-  UNSPECV_ATOMIC_LDOP_XOR UNSPECV_ATOMIC_LDOP_PLUS])
-
-(define_int_attr atomic_ldop
- [(UNSPECV_ATOMIC_LDOP_OR "set") (UNSPECV_ATOMIC_LDOP_BIC "clr")
-  (UNSPECV_ATOMIC_LDOP_XOR "eor") (UNSPECV_ATOMIC_LDOP_PLUS "add")])
 
 ;; Instruction patterns.
 
@@ -456,7 +428,7 @@
        (match_dup 2)
        (match_operand:SI 3 "const_int_operand")]
       UNSPECV_ATOMIC_LDOP))
-     (clobber (match_scratch:ALLI 4 "=r"))]
+     (clobber (match_scratch:ALLI 4 "=&r"))]
   "TARGET_LSE"
   "#"
   "&& reload_completed"
@@ -509,7 +481,7 @@
 )
 
 (define_insn "atomic_store<mode>"
-  [(set (match_operand:ALLI 0 "memory_operand" "=Q")
+  [(set (match_operand:ALLI 0 "aarch64_sync_memory_operand" "=Q")
     (unspec_volatile:ALLI
       [(match_operand:ALLI 1 "general_operand" "rZ")
        (match_operand:SI 2 "const_int_operand")]			;; model

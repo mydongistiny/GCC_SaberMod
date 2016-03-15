@@ -1,6 +1,6 @@
 ; Options for the ARM port of the compiler.
 
-; Copyright (C) 2005-2015 Free Software Foundation, Inc.
+; Copyright (C) 2005-2016 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -144,7 +144,7 @@ EnumValue
 Enum(arm_fp16_format_type) String(alternative) Value(ARM_FP16_FORMAT_ALTERNATIVE)
 
 mfpu=
-Target RejectNegative Joined Enum(arm_fpu) Var(arm_fpu_index)
+Target RejectNegative Joined Enum(arm_fpu) Var(arm_fpu_index) Save
 Specify the name of the target floating point hardware/format.
 
 mhard-float
@@ -267,7 +267,7 @@ Avoid overlapping destination and address registers on LDRD instructions
 that may trigger Cortex-M3 errata.
 
 munaligned-access
-Target Report Var(unaligned_access) Init(2)
+Target Report Var(unaligned_access) Init(2) Save
 Enable unaligned word and halfword accesses to packed data.
 
 mneon-for-64bits
@@ -280,4 +280,4 @@ Assume loading data from flash is slower than fetching instructions.
 
 masm-syntax-unified
 Target Report Var(inline_asm_unified) Init(0) Save
-Assume unified syntax for Thumb inline assembly code.
+Assume unified syntax for inline assembly code.

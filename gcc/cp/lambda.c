@@ -3,7 +3,7 @@
    building RTL.  These routines are used both during actual parsing
    and during the instantiation of template functions.
 
-   Copyright (C) 1998-2015 Free Software Foundation, Inc.
+   Copyright (C) 1998-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -24,17 +24,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
+#include "cp-tree.h"
 #include "stringpool.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "cgraph.h"
 #include "tree-iterator.h"
-#include "cp-tree.h"
 #include "toplev.h"
+#include "gimplify.h"
 
 /* Constructor for a lambda expression.  */
 
@@ -213,15 +208,8 @@ tree
 lambda_capture_field_type (tree expr, bool explicit_init_p)
 {
   tree type;
-  if (explicit_init_p)
-    {
-      type = make_auto ();
-      type = do_auto_deduction (type, expr, type);
-    }
-  else
-    type = non_reference (unlowered_expr_type (expr));
-  if (type_dependent_expression_p (expr)
-      && !is_this_parameter (tree_strip_nop_conversions (expr)))
+  bool is_this = is_this_parameter (tree_strip_nop_conversions (expr));
+  if (!is_this && type_dependent_expression_p (expr))
     {
       type = cxx_make_type (DECLTYPE_TYPE);
       DECLTYPE_TYPE_EXPR (type) = expr;
@@ -229,6 +217,13 @@ lambda_capture_field_type (tree expr, bool explicit_init_p)
       DECLTYPE_FOR_INIT_CAPTURE (type) = explicit_init_p;
       SET_TYPE_STRUCTURAL_EQUALITY (type);
     }
+  else if (!is_this && explicit_init_p)
+    {
+      type = make_auto ();
+      type = do_auto_deduction (type, expr, type);
+    }
+  else
+    type = non_reference (unlowered_expr_type (expr));
   return type;
 }
 
@@ -857,6 +852,16 @@ prepare_op_call (tree fn, int nargs)
   return t;
 }
 
+/* Return true iff CALLOP is the op() for a generic lambda.  */
+
+bool
+generic_lambda_fn_p (tree callop)
+{
+  return (LAMBDA_FUNCTION_P (callop)
+	  && DECL_TEMPLATE_INFO (callop)
+	  && PRIMARY_TEMPLATE_P (DECL_TI_TEMPLATE (callop)));
+}
+
 /* If the closure TYPE has a static op(), also add a conversion to function
    pointer.  */
 
@@ -873,9 +878,7 @@ maybe_add_lambda_conv_op (tree type)
   if (processing_template_decl)
     return;
 
-  bool const generic_lambda_p
-    = (DECL_TEMPLATE_INFO (callop)
-    && DECL_TEMPLATE_RESULT (DECL_TI_TEMPLATE (callop)) == callop);
+  bool const generic_lambda_p = generic_lambda_fn_p (callop);
 
   if (!generic_lambda_p && DECL_INITIAL (callop) == NULL_TREE)
     {
@@ -950,21 +953,18 @@ maybe_add_lambda_conv_op (tree type)
 
 	if (generic_lambda_p)
 	  {
-	    if (DECL_PACK_P (tgt))
-	      {
-		tree a = make_pack_expansion (tgt);
-		if (decltype_call)
-		  CALL_EXPR_ARG (decltype_call, ix) = copy_node (a);
-		PACK_EXPANSION_LOCAL_P (a) = true;
-		CALL_EXPR_ARG (call, ix) = a;
-	      }
-	    else
-	      {
-		tree a = convert_from_reference (tgt);
-		CALL_EXPR_ARG (call, ix) = a;
-		if (decltype_call)
-		  CALL_EXPR_ARG (decltype_call, ix) = copy_node (a);
-	      }
+	    ++processing_template_decl;
+	    tree a = forward_parm (tgt);
+	    --processing_template_decl;
+
+	    CALL_EXPR_ARG (call, ix) = a;
+	    if (decltype_call)
+	      CALL_EXPR_ARG (decltype_call, ix) = unshare_expr (a);
+
+	    if (PACK_EXPANSION_P (a))
+	      /* Set this after unsharing so it's not in decltype_call.  */
+	      PACK_EXPANSION_LOCAL_P (a) = true;
+
 	    ++ix;
 	  }
 	else
@@ -1006,11 +1006,7 @@ maybe_add_lambda_conv_op (tree type)
   tree convfn = build_lang_decl (FUNCTION_DECL, name, fntype);
   tree fn = convfn;
   DECL_SOURCE_LOCATION (fn) = DECL_SOURCE_LOCATION (callop);
-
-  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn
-      && DECL_ALIGN (fn) < 2 * BITS_PER_UNIT)
-    DECL_ALIGN (fn) = 2 * BITS_PER_UNIT;
-
+  DECL_ALIGN (fn) = MINIMUM_METHOD_BOUNDARY;
   SET_OVERLOADED_OPERATOR_CODE (fn, TYPE_EXPR);
   grokclassfn (type, fn, NO_SPECIAL);
   set_linkage_according_to_type (type, fn);
@@ -1042,9 +1038,6 @@ maybe_add_lambda_conv_op (tree type)
   tree statfn = build_lang_decl (FUNCTION_DECL, name, stattype);
   fn = statfn;
   DECL_SOURCE_LOCATION (fn) = DECL_SOURCE_LOCATION (callop);
-  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn
-      && DECL_ALIGN (fn) < 2 * BITS_PER_UNIT)
-    DECL_ALIGN (fn) = 2 * BITS_PER_UNIT;
   grokclassfn (type, fn, NO_SPECIAL);
   set_linkage_according_to_type (type, fn);
   rest_of_decl_compilation (fn, toplevel_bindings_p (), at_eof);
@@ -1065,6 +1058,15 @@ maybe_add_lambda_conv_op (tree type)
 
   if (generic_lambda_p)
     fn = add_inherited_template_parms (fn, DECL_TI_TEMPLATE (callop));
+
+  if (flag_sanitize & SANITIZE_NULL)
+    {
+      /* Don't UBsan this function; we're deliberately calling op() with a null
+	 object argument.  */
+      tree attrs = build_tree_list (get_identifier ("no_sanitize_undefined"),
+				    NULL_TREE);
+      cplus_decl_attributes (&fn, attrs, 0);
+    }
 
   add_method (type, fn, NULL_TREE);
 

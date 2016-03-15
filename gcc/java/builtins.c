@@ -1,5 +1,5 @@
 /* Built-in and inline functions for gcj
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -30,31 +30,17 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "alias.h"
+#include "rtl.h"
 #include "tree.h"
-#include "options.h"
+#include "stringpool.h"
+#include "expmed.h"
+#include "optabs.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "stringpool.h"
-#include "flags.h"
-#include "langhooks.h"
 #include "java-tree.h"
 
 /* FIXME: All these headers are necessary for sync_compare_and_swap.
    Front ends should never have to look at that.  */
-#include "rtl.h"
-#include "insn-codes.h"
-#include "function.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "optabs.h"
 
 static tree max_builtin (tree, tree);
 static tree min_builtin (tree, tree);

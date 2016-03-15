@@ -1,5 +1,5 @@
 /* Various declarations for language-independent diagnostics subroutines.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@codesourcery.com>
 
 This file is part of GCC.
@@ -29,10 +29,12 @@ along with GCC; see the file COPYING3.  If not see
    list in diagnostic.def.  */
 struct diagnostic_info
 {
-  /* Text to be formatted. It also contains the location(s) for this
-     diagnostic.  */
+  /* Text to be formatted.  */
   text_info message;
-  unsigned int override_column;
+
+  /* The location at which the diagnostic is to be reported.  */
+  rich_location *richloc;
+
   /* Auxiliary data for client.  */
   void *x_data;
   /* The kind of diagnostic it is about.  */
@@ -54,6 +56,10 @@ struct diagnostic_classification_change_t
 /*  Forward declarations.  */
 typedef void (*diagnostic_starter_fn) (diagnostic_context *,
 				       diagnostic_info *);
+
+typedef void (*diagnostic_start_span_fn) (diagnostic_context *,
+					  expanded_location);
+
 typedef diagnostic_starter_fn diagnostic_finalizer_fn;
 
 /* This data structure bundles altogether any information relevant to
@@ -102,8 +108,8 @@ struct diagnostic_context
   /* Maximum width of the source line printed.  */
   int caret_max_width;
 
-  /* Characters used for caret diagnostics.  */
-  char caret_chars[MAX_LOCATIONS_PER_MESSAGE];
+  /* Character used for caret diagnostics.  */
+  char caret_chars[rich_location::MAX_RANGES];
 
   /* True if we should print the command line option which controls
      each diagnostic, if known.  */
@@ -146,6 +152,11 @@ struct diagnostic_context
   */
   diagnostic_starter_fn begin_diagnostic;
 
+  /* This function is called by diagnostic_show_locus in between
+     disjoint spans of source code, so that the context can print
+     something to indicate that a new span of source code has begun.  */
+  diagnostic_start_span_fn start_span;
+
   /* This function is called after the diagnostic message is printed.  */
   diagnostic_finalizer_fn end_diagnostic;
 
@@ -181,6 +192,15 @@ struct diagnostic_context
   int lock;
 
   bool inhibit_notes_p;
+
+  /* When printing source code, should the characters at carets and ranges
+     be colorized? (assuming colorization is on at all).
+     This should be true for frontends that generate range information
+     (so that the ranges of code are colorized),
+     and false for frontends that merely specify points within the
+     source code (to avoid e.g. colorizing just the first character in
+     a token, which would look strange).  */
+  bool colorize_source_p;
 };
 
 static inline void
@@ -252,10 +272,6 @@ extern diagnostic_context *global_dc;
 
 #define report_diagnostic(D) diagnostic_report_diagnostic (global_dc, D)
 
-/* Override the column number to be used for reporting a
-   diagnostic.  */
-#define diagnostic_override_column(DI, COL) (DI)->override_column = (COL)
-
 /* Override the option index to be used for reporting a
    diagnostic.  */
 #define diagnostic_override_option_index(DI, OPTIDX) \
@@ -279,9 +295,9 @@ extern bool diagnostic_report_diagnostic (diagnostic_context *,
 					  diagnostic_info *);
 #ifdef ATTRIBUTE_GCC_DIAG
 extern void diagnostic_set_info (diagnostic_info *, const char *, va_list *,
-				 location_t, diagnostic_t) ATTRIBUTE_GCC_DIAG(2,0);
+				 rich_location *, diagnostic_t) ATTRIBUTE_GCC_DIAG(2,0);
 extern void diagnostic_set_info_translated (diagnostic_info *, const char *,
-					    va_list *, location_t,
+					    va_list *, rich_location *,
 					    diagnostic_t)
      ATTRIBUTE_GCC_DIAG(2,0);
 extern void diagnostic_append_note (diagnostic_context *, location_t,
@@ -289,6 +305,8 @@ extern void diagnostic_append_note (diagnostic_context *, location_t,
 #endif
 extern char *diagnostic_build_prefix (diagnostic_context *, const diagnostic_info *);
 void default_diagnostic_starter (diagnostic_context *, diagnostic_info *);
+void default_diagnostic_start_span_fn (diagnostic_context *,
+				       expanded_location);
 void default_diagnostic_finalizer (diagnostic_context *, diagnostic_info *);
 void diagnostic_set_caret_max_width (diagnostic_context *context, int value);
 void diagnostic_action_after_output (diagnostic_context *, diagnostic_t);
@@ -306,6 +324,14 @@ diagnostic_location (const diagnostic_info * diagnostic, int which = 0)
   return diagnostic->message.get_location (which);
 }
 
+/* Return the number of locations to be printed in DIAGNOSTIC.  */
+
+static inline unsigned int
+diagnostic_num_locations (const diagnostic_info * diagnostic)
+{
+  return diagnostic->message.m_richloc->get_num_locations ();
+}
+
 /* Expand the location of this diagnostic. Use this function for
    consistency.  Parameter WHICH specifies which location. By default,
    expand the first one.  */
@@ -313,12 +339,7 @@ diagnostic_location (const diagnostic_info * diagnostic, int which = 0)
 static inline expanded_location
 diagnostic_expand_location (const diagnostic_info * diagnostic, int which = 0)
 {
-  expanded_location s
-    = expand_location_to_spelling_point (diagnostic_location (diagnostic,
-							      which));
-  if (which == 0 && diagnostic->override_column)
-    s.column = diagnostic->override_column;
-  return s;
+  return diagnostic->richloc->get_expanded_location (which);
 }
 
 /* This is somehow the right-side margin of a caret line, that is, we
@@ -338,11 +359,7 @@ diagnostic_same_line (const diagnostic_context *context,
     && context->caret_max_width - CARET_LINE_MARGIN > abs (s1.column - s2.column);
 }
 
-void
-diagnostic_print_caret_line (diagnostic_context * context,
-			     expanded_location xloc1,
-			     expanded_location xloc2,
-			     char caret1, char caret2);
+extern const char *diagnostic_get_color_for_kind (diagnostic_t kind);
 
 /* Pure text formatting support functions.  */
 extern char *file_name_as_prefix (diagnostic_context *, const char *);

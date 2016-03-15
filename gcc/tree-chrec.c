@@ -1,5 +1,5 @@
 /* Chains of recurrences.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -26,15 +26,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
-#include "fold-const.h"
-#include "tree-pretty-print.h"
 #include "backend.h"
-#include "cfgloop.h"
-#include "hard-reg-set.h"
+#include "tree.h"
 #include "gimple-expr.h"
+#include "tree-pretty-print.h"
+#include "fold-const.h"
+#include "cfgloop.h"
 #include "tree-ssa-loop-ivopts.h"
 #include "tree-ssa-loop-niter.h"
 #include "tree-chrec.h"
@@ -731,12 +728,12 @@ hide_evolution_in_other_loops_than_loop (tree chrec,
 	/* There is no evolution in this loop.  */
 	return initial_condition (chrec);
 
+      else if (flow_loop_nested_p (loop, chloop))
+	return hide_evolution_in_other_loops_than_loop (CHREC_LEFT (chrec),
+							loop_num);
+
       else
-	{
-	  gcc_assert (flow_loop_nested_p (loop, chloop));
-	  return hide_evolution_in_other_loops_than_loop (CHREC_LEFT (chrec),
-							  loop_num);
-	}
+	return chrec_dont_know;
 
     default:
       return chrec;
@@ -1471,11 +1468,11 @@ eq_evolutions_p (const_tree chrec0, const_tree chrec1)
   if (chrec0 == chrec1)
     return true;
 
+  if (! types_compatible_p (TREE_TYPE (chrec0), TREE_TYPE (chrec1)))
+    return false;
+
   switch (TREE_CODE (chrec0))
     {
-    case INTEGER_CST:
-      return operand_equal_p (chrec0, chrec1, 0);
-
     case POLYNOMIAL_CHREC:
       return (CHREC_VARIABLE (chrec0) == CHREC_VARIABLE (chrec1)
 	      && eq_evolutions_p (CHREC_LEFT (chrec0), CHREC_LEFT (chrec1))
@@ -1490,8 +1487,12 @@ eq_evolutions_p (const_tree chrec0, const_tree chrec1)
 	  && eq_evolutions_p (TREE_OPERAND (chrec0, 1),
 			      TREE_OPERAND (chrec1, 1));
 
+    CASE_CONVERT:
+      return eq_evolutions_p (TREE_OPERAND (chrec0, 0),
+			      TREE_OPERAND (chrec1, 0));
+
     default:
-      return false;
+      return operand_equal_p (chrec0, chrec1, 0);
     }
 }
 

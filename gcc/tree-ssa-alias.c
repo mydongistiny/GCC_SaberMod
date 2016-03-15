@@ -1,5 +1,5 @@
 /* Alias analysis for trees.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -22,37 +22,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "timevar.h"	/* for TV_ALIAS_STMT_WALK */
 #include "ssa.h"
+#include "cgraph.h"
+#include "tree-pretty-print.h"
 #include "alias.h"
 #include "fold-const.h"
-#include "tm_p.h"
-#include "target.h"
 
-#include "dominance.h"
-#include "timevar.h"	/* for TV_ALIAS_STMT_WALK */
 #include "langhooks.h"
-#include "flags.h"
-#include "tree-pretty-print.h"
 #include "dumpfile.h"
-#include "internal-fn.h"
 #include "tree-eh.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
-#include "tree-inline.h"
-#include "params.h"
-#include "alloc-pool.h"
-#include "cgraph.h"
 #include "ipa-reference.h"
 
 /* Broad overview of how alias analysis on gimple works:
@@ -210,7 +194,7 @@ ptr_deref_may_alias_decl_p (tree ptr, tree decl)
 	ptr = TREE_OPERAND (base, 0);
       else if (base
 	       && DECL_P (base))
-	return base == decl;
+	return compare_base_decls (base, decl) != 0;
       else if (base
 	       && CONSTANT_CLASS_P (base))
 	return false;
@@ -557,10 +541,12 @@ ao_ref_init (ao_ref *r, tree ref)
 tree
 ao_ref_base (ao_ref *ref)
 {
+  bool reverse;
+
   if (ref->base)
     return ref->base;
   ref->base = get_ref_base_and_extent (ref->ref, &ref->offset, &ref->size,
-				       &ref->max_size);
+				       &ref->max_size, &reverse);
   return ref->base;
 }
 
@@ -741,9 +727,10 @@ aliasing_component_refs_p (tree ref1,
   else if (same_p == 1)
     {
       HOST_WIDE_INT offadj, sztmp, msztmp;
-      get_ref_base_and_extent (*refp, &offadj, &sztmp, &msztmp);
+      bool reverse;
+      get_ref_base_and_extent (*refp, &offadj, &sztmp, &msztmp, &reverse);
       offset2 -= offadj;
-      get_ref_base_and_extent (base1, &offadj, &sztmp, &msztmp);
+      get_ref_base_and_extent (base1, &offadj, &sztmp, &msztmp, &reverse);
       offset1 -= offadj;
       return ranges_overlap_p (offset1, max_size1, offset2, max_size2);
     }
@@ -759,9 +746,10 @@ aliasing_component_refs_p (tree ref1,
   else if (same_p == 1)
     {
       HOST_WIDE_INT offadj, sztmp, msztmp;
-      get_ref_base_and_extent (*refp, &offadj, &sztmp, &msztmp);
+      bool reverse;
+      get_ref_base_and_extent (*refp, &offadj, &sztmp, &msztmp, &reverse);
       offset1 -= offadj;
-      get_ref_base_and_extent (base2, &offadj, &sztmp, &msztmp);
+      get_ref_base_and_extent (base2, &offadj, &sztmp, &msztmp, &reverse);
       offset2 -= offadj;
       return ranges_overlap_p (offset1, max_size1, offset2, max_size2);
     }
@@ -817,8 +805,10 @@ nonoverlapping_component_refs_of_decl_p (tree ref1, tree ref2)
       ref2 = TREE_OPERAND (TREE_OPERAND (ref2, 0), 0);
     }
 
-  /* We must have the same base DECL.  */
-  gcc_assert (ref1 == ref2);
+  /* Bases must be either same or uncomparable.  */
+  gcc_checking_assert (ref1 == ref2
+		       || (DECL_P (ref1) && DECL_P (ref2)
+			   && compare_base_decls (ref1, ref2) != 0));
 
   /* Pop the stacks in parallel and examine the COMPONENT_REFs of the same
      rank.  This is sufficient because we start from the same DECL and you
@@ -1001,7 +991,7 @@ decl_refs_may_alias_p (tree ref1, tree base1,
   gcc_checking_assert (DECL_P (base1) && DECL_P (base2));
 
   /* If both references are based on different variables, they cannot alias.  */
-  if (base1 != base2)
+  if (compare_base_decls (base1, base2) == 0)
     return false;
 
   /* If both references are based on the same variable, they cannot alias if
@@ -1077,12 +1067,8 @@ indirect_ref_may_alias_decl_p (tree ref1 ATTRIBUTE_UNUSED, tree base1,
   ptrtype1 = TREE_TYPE (TREE_OPERAND (base1, 1));
 
   /* If the alias set for a pointer access is zero all bets are off.  */
-  if (base1_alias_set == -1)
-    base1_alias_set = get_deref_alias_set (ptrtype1);
   if (base1_alias_set == 0)
     return true;
-  if (base2_alias_set == -1)
-    base2_alias_set = get_alias_set (base2);
 
   /* When we are trying to disambiguate an access with a pointer dereference
      as base versus one with a decl as base we can use both the size
@@ -1249,13 +1235,8 @@ indirect_refs_may_alias_p (tree ref1 ATTRIBUTE_UNUSED, tree base1,
   ptrtype2 = TREE_TYPE (TREE_OPERAND (base2, 1));
 
   /* If the alias set for a pointer access is zero all bets are off.  */
-  if (base1_alias_set == -1)
-    base1_alias_set = get_deref_alias_set (ptrtype1);
-  if (base1_alias_set == 0)
-    return true;
-  if (base2_alias_set == -1)
-    base2_alias_set = get_deref_alias_set (ptrtype2);
-  if (base2_alias_set == 0)
+  if (base1_alias_set == 0
+      || base2_alias_set == 0)
     return true;
 
   /* If both references are through the same type, they do not alias
@@ -1427,7 +1408,8 @@ refs_may_alias_p_1 (ao_ref *ref1, ao_ref *ref2, bool tbaa_p)
   if (var1_p && ind2_p)
     return indirect_ref_may_alias_decl_p (ref2->ref, base2,
 					  offset2, max_size2,
-					  ao_ref_alias_set (ref2), -1,
+					  ao_ref_alias_set (ref2),
+					  ao_ref_base_alias_set (ref2),
 					  ref1->ref, base1,
 					  offset1, max_size1,
 					  ao_ref_alias_set (ref1),
@@ -1436,18 +1418,15 @@ refs_may_alias_p_1 (ao_ref *ref1, ao_ref *ref2, bool tbaa_p)
   else if (ind1_p && ind2_p)
     return indirect_refs_may_alias_p (ref1->ref, base1,
 				      offset1, max_size1,
-				      ao_ref_alias_set (ref1), -1,
+				      ao_ref_alias_set (ref1),
+				      ao_ref_base_alias_set (ref1),
 				      ref2->ref, base2,
 				      offset2, max_size2,
-				      ao_ref_alias_set (ref2), -1,
+				      ao_ref_alias_set (ref2),
+				      ao_ref_base_alias_set (ref2),
 				      tbaa_p);
 
-  /* We really do not want to end up here, but returning true is safe.  */
-#ifdef ENABLE_CHECKING
   gcc_unreachable ();
-#else
-  return true;
-#endif
 }
 
 static bool
@@ -1763,7 +1742,7 @@ ref_maybe_used_by_call_p_1 (gcall *call, ao_ref *ref)
 	 IL and remove this check instead.  */
       if (node
 	  && (not_read = ipa_reference_get_not_read_global (node))
-	  && bitmap_bit_p (not_read, DECL_UID (base)))
+	  && bitmap_bit_p (not_read, ipa_reference_var_uid (base)))
 	goto process_args;
     }
 
@@ -2149,7 +2128,7 @@ call_may_clobber_ref_p_1 (gcall *call, ao_ref *ref)
 
       if (node
 	  && (not_written = ipa_reference_get_not_written_global (node))
-	  && bitmap_bit_p (not_written, DECL_UID (base)))
+	  && bitmap_bit_p (not_written, ipa_reference_var_uid (base)))
 	return false;
     }
 
@@ -2302,7 +2281,9 @@ stmt_kills_ref_p (gimple *stmt, ao_ref *ref)
       if (ref->max_size == -1)
 	return false;
       HOST_WIDE_INT size, offset, max_size, ref_offset = ref->offset;
-      tree base = get_ref_base_and_extent (lhs, &offset, &size, &max_size);
+      bool reverse;
+      tree base
+	= get_ref_base_and_extent (lhs, &offset, &size, &max_size, &reverse);
       /* We can get MEM[symbol: sZ, index: D.8862_1] here,
 	 so base == ref->base does not always hold.  */
       if (base != ref->base)

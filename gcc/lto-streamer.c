@@ -1,7 +1,7 @@
 /* Miscellaneous utilities for GIMPLE streaming.  Things that are used
    in both input and output are here.
 
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by Doug Kwan <dougkwan@google.com>
 
 This file is part of GCC.
@@ -26,16 +26,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
-#include "toplev.h"
-#include "flags.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "internal-fn.h"
-#include "diagnostic-core.h"
-#include "cgraph.h"
 #include "tree-streamer.h"
+#include "cgraph.h"
 #include "lto-streamer.h"
+#include "toplev.h"
 #include "lto-section-names.h"
 
 /* Statistics gathered during LTO, WPA and LTRANS.  */
@@ -297,13 +291,12 @@ static hash_table<tree_hash_entry> *tree_htab;
 void
 lto_streamer_init (void)
 {
-#ifdef ENABLE_CHECKING
   /* Check that all the TS_* handled by the reader and writer routines
      match exactly the structures defined in treestruct.def.  When a
      new TS_* astructure is added, the streamer should be updated to
      handle it.  */
-  streamer_check_handled_ts_structures ();
-#endif
+  if (flag_checking)
+    streamer_check_handled_ts_structures ();
 
 #ifdef LTO_STREAMER_DEBUG
   tree_htab = new hash_table<tree_hash_entry> (31);

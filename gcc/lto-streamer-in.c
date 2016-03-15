@@ -1,6 +1,6 @@
 /* Read the GIMPLE representation from a file stream.
 
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
    Re-implemented by Diego Novillo <dnovillo@google.com>
 
@@ -24,39 +24,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
+#include "gimple-streamer.h"
 #include "toplev.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "params.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
-#include "tree-pass.h"
-#include "diagnostic.h"
 #include "except.h"
-#include "debug.h"
 #include "cgraph.h"
-#include "ipa-utils.h"
-#include "target.h"
-#include "gimple-streamer.h"
 #include "cfgloop.h"
 
 
@@ -1248,7 +1231,9 @@ lto_read_body_or_constructor (struct lto_file_decl_data *file_data, struct symta
 	      if (TYPE_P (t))
 		{
 		  gcc_assert (TYPE_CANONICAL (t) == NULL_TREE);
-		  TYPE_CANONICAL (t) = TYPE_MAIN_VARIANT (t);
+		  if (type_with_alias_set_p (t)
+		      && canonical_type_used_p (t))
+		    TYPE_CANONICAL (t) = TYPE_MAIN_VARIANT (t);
 		  if (TYPE_MAIN_VARIANT (t) != t)
 		    {
 		      gcc_assert (TYPE_NEXT_VARIANT (t) == NULL_TREE);

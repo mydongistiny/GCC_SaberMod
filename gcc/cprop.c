@@ -1,5 +1,5 @@
 /* Global constant/copy propagation for RTL.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,39 +21,25 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
 #include "rtl.h"
+#include "cfghooks.h"
 #include "df.h"
+#include "insn-config.h"
+#include "emit-rtl.h"
+#include "recog.h"
 #include "diagnostic-core.h"
 #include "toplev.h"
-#include "alias.h"
-#include "tm_p.h"
-#include "regs.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "recog.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "lcm.h"
 #include "cfgcleanup.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "except.h"
 #include "params.h"
-#include "alloc-pool.h"
 #include "cselib.h"
 #include "intl.h"
 #include "tree-pass.h"
 #include "dbgcnt.h"
-#include "target.h"
 #include "cfgloop.h"
+#include "gcse.h"
 
 
 /* An obstack for our working variables.  */
@@ -1739,47 +1725,6 @@ bypass_conditional_jumps (void)
   return changed;
 }
 
-/* Return true if the graph is too expensive to optimize.  PASS is the
-   optimization about to be performed.  */
-
-static bool
-is_too_expensive (const char *pass)
-{
-  /* Trying to perform global optimizations on flow graphs which have
-     a high connectivity will take a long time and is unlikely to be
-     particularly useful.
-
-     In normal circumstances a cfg should have about twice as many
-     edges as blocks.  But we do not want to punish small functions
-     which have a couple switch statements.  Rather than simply
-     threshold the number of blocks, uses something with a more
-     graceful degradation.  */
-  if (n_edges_for_fn (cfun) > 20000 + n_basic_blocks_for_fn (cfun) * 4)
-    {
-      warning (OPT_Wdisabled_optimization,
-	       "%s: %d basic blocks and %d edges/basic block",
-	       pass, n_basic_blocks_for_fn (cfun),
-	       n_edges_for_fn (cfun) / n_basic_blocks_for_fn (cfun));
-
-      return true;
-    }
-
-  /* If allocating memory for the cprop bitmap would take up too much
-     storage it's better just to disable the optimization.  */
-  if ((n_basic_blocks_for_fn (cfun)
-       * SBITMAP_SET_SIZE (max_reg_num ())
-       * sizeof (SBITMAP_ELT_TYPE)) > MAX_GCSE_MEMORY)
-    {
-      warning (OPT_Wdisabled_optimization,
-	       "%s: %d basic blocks and %d registers",
-	       pass, n_basic_blocks_for_fn (cfun), max_reg_num ());
-
-      return true;
-    }
-
-  return false;
-}
-
 /* Main function for the CPROP pass.  */
 
 static int
@@ -1790,7 +1735,7 @@ one_cprop_pass (void)
 
   /* Return if there's nothing to do, or it is too expensive.  */
   if (n_basic_blocks_for_fn (cfun) <= NUM_FIXED_BLOCKS + 1
-      || is_too_expensive (_ ("const/copy propagation disabled")))
+      || gcse_or_cprop_is_too_expensive (_ ("const/copy propagation disabled")))
     return 0;
 
   global_const_prop_count = local_const_prop_count = 0;

@@ -1,5 +1,5 @@
 /* Process machine description and calculate constant conditions.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -51,6 +51,7 @@ write_header (void)
    machine description file.  */\n\
 \n\
 #include \"bconfig.h\"\n\
+#define INCLUDE_STRING\n\
 #include \"system.h\"\n\
 \n\
 /* It is necessary, but not entirely safe, to include the headers below\n\
@@ -59,7 +60,8 @@ write_header (void)
 #if GCC_VERSION >= 3001\n\
 \n\
 /* Do not allow checking to confuse the issue.  */\n\
-#undef ENABLE_CHECKING\n\
+#undef CHECKING_P\n\
+#define CHECKING_P 0\n\
 #undef ENABLE_TREE_CHECKING\n\
 #undef ENABLE_RTL_CHECKING\n\
 #undef ENABLE_RTL_FLAG_CHECKING\n\

@@ -142,29 +142,21 @@ procedure Gnat1drv is
          Modify_Tree_For_C := True;
       end if;
 
-      --  Set all flags required when generating C code (-gnatd.V)
+      --  Set all flags required when generating C code
 
-      if Debug_Flag_Dot_VV then
-         Generate_C_Code := True;
+      if Generate_C_Code then
          Modify_Tree_For_C := True;
          Unnest_Subprogram_Mode := True;
-         Back_Annotate_Rep_Info := True;
-
-         --  Enable some restrictions systematically to simplify the generated
-         --  code. Note that restriction checks are also disabled in C mode,
-         --  see Restrict.Check_Restriction.
-
-         Restrict.Restrictions.Set   (No_Exception_Registration)       := True;
-         Restrict.Restrictions.Set   (No_Initialize_Scalars)           := True;
-         Restrict.Restrictions.Set   (No_Task_Hierarchy)               := True;
-         Restrict.Restrictions.Set   (No_Abort_Statements)             := True;
-         Restrict.Restrictions.Set   (Max_Asynchronous_Select_Nesting) := True;
-         Restrict.Restrictions.Value (Max_Asynchronous_Select_Nesting) := 0;
 
          --  Set operating mode to Generate_Code to benefit from full front-end
          --  expansion (e.g. generics).
 
          Operating_Mode := Generate_Code;
+
+         --  Suppress alignment checks since we do not have access to alignment
+         --  info on the target.
+
+         Suppress_Options.Suppress (Alignment_Check) := False;
       end if;
 
       --  -gnatd.E sets Error_To_Warning mode, causing selected error messages
@@ -224,7 +216,7 @@ procedure Gnat1drv is
          --  do not expect this to happen in normal use, since both modes are
          --  enabled by special tools, but it is useful to turn off these flags
          --  this way when we are doing CodePeer tests on existing test suites
-         --  that may have -gnatd.V set, to avoid the need for special casing.
+         --  that may have -gnateg set, to avoid the need for special casing.
 
          Modify_Tree_For_C := False;
          Generate_C_Code := False;
@@ -535,9 +527,26 @@ procedure Gnat1drv is
 
       --  Set and check exception mechanism
 
-      if Targparm.ZCX_By_Default_On_Target then
-         Exception_Mechanism := Back_End_Exceptions;
-      end if;
+      case Targparm.Frontend_Exceptions_On_Target is
+         when True =>
+            case Targparm.ZCX_By_Default_On_Target is
+               when True =>
+                  Write_Line
+                    ("Run-time library configured incorrectly");
+                  Write_Line
+                    ("(requesting support for Frontend ZCX exceptions)");
+                  raise Unrecoverable_Error;
+               when False =>
+                  Exception_Mechanism := Front_End_SJLJ;
+            end case;
+         when False =>
+            case Targparm.ZCX_By_Default_On_Target is
+               when True =>
+                  Exception_Mechanism := Back_End_ZCX;
+               when False =>
+                  Exception_Mechanism := Back_End_SJLJ;
+            end case;
+      end case;
 
       --  Set proper status for overflow check mechanism
 
@@ -1036,7 +1045,7 @@ begin
       Original_Operating_Mode := Operating_Mode;
       Frontend;
 
-      --  Exit with errors if the main source could not be parsed.
+      --  Exit with errors if the main source could not be parsed
 
       if Sinput.Main_Source_File = No_Source_File then
          Errout.Finalize (Last_Call => True);
@@ -1180,8 +1189,9 @@ begin
 
       --  It is not an error to analyze in CodePeer mode a spec which requires
       --  a body, in order to generate SCIL for this spec.
+      --  Ditto for Generate_C_Code mode and generate a C header for a spec.
 
-      elsif CodePeer_Mode then
+      elsif CodePeer_Mode or Generate_C_Code then
          Back_End_Mode := Generate_Object;
 
       --  It is not an error to analyze in GNATprove mode a spec which requires
@@ -1356,8 +1366,8 @@ begin
       Back_End.Call_Back_End (Back_End_Mode);
 
       --  Once the backend is complete, we unlock the names table. This call
-      --  allows a few extra entries, needed for example for the file name for
-      --  the library file output.
+      --  allows a few extra entries, needed for example for the file name
+      --  for the library file output.
 
       Namet.Unlock;
 

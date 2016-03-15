@@ -1,7 +1,7 @@
 // -*- C++ -*-
 // Filesystem utils for the C++ library testsuite.
 //
-// Copyright (C) 2014-2015 Free Software Foundation, Inc.
+// Copyright (C) 2014-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -83,7 +83,7 @@ namespace __gnu_test
     p = tmp;
 #else
     char buf[64];
-#if _GLIBCXX_USE_C99
+#if _GLIBCXX_USE_C99_STDIO
     std::snprintf(buf, 64, "filesystem-ts-test.%lu", (unsigned long)::getpid());
 #else
     std::sprintf(buf, "filesystem-ts-test.%lu", (unsigned long)::getpid());

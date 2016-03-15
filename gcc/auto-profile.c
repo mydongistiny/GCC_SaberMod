@@ -1,5 +1,5 @@
 /* Read and annotate call graph profile from the auto profile data file.
-   Copyright (C) 2014-2015 Free Software Foundation, Inc.
+   Copyright (C) 2014-2016 Free Software Foundation, Inc.
    Contributed by Dehao Chen (dehao@google.com)
 
 This file is part of GCC.
@@ -20,40 +20,31 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
+#include "coretypes.h"
+#include "backend.h"
+#include "tree.h"
+#include "gimple.h"
+#include "predict.h"
+#include "alloc-pool.h"
+#include "tree-pass.h"
+#include "ssa.h"
+#include "cgraph.h"
+#include "gcov-io.h"
+#include "diagnostic-core.h"
 
 #include <string.h>
 #include <map>
 #include <set>
 
-#include "coretypes.h"
-#include "alias.h"
-#include "backend.h"
-#include "predict.h"
-#include "tree.h"
-#include "gimple.h"
-#include "hard-reg-set.h"
-#include "ssa.h"
-#include "options.h"
-#include "fold-const.h"
-#include "tree-pass.h"
-#include "flags.h"
-#include "diagnostic-core.h"
-#include "gcov-io.h"
 #include "profile.h"
 #include "langhooks.h"
-#include "opts.h"
-#include "tree-pass.h"
 #include "cfgloop.h"
 #include "tree-cfg.h"
 #include "tree-cfgcleanup.h"
 #include "tree-into-ssa.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
-#include "cgraph.h"
 #include "value-prof.h"
-#include "coverage.h"
 #include "params.h"
-#include "alloc-pool.h"
 #include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "ipa-inline.h"

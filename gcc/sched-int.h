@@ -1,6 +1,6 @@
 /* Instruction scheduling pass.  This file contains definitions used
    internally in the scheduler.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -100,7 +100,7 @@ extern int get_rgn_sched_max_insns_priority (void);
 extern void sel_add_to_insn_priority (rtx, int);
 
 /* True if during selective scheduling we need to emulate some of haifa
-   scheduler behaviour.  */
+   scheduler behavior.  */
 extern int sched_emulate_haifa_p;
 
 /* Mapping from INSN_UID to INSN_LUID.  In the end all other per insn data
@@ -1497,6 +1497,9 @@ extern void compute_priorities (void);
 extern void increase_insn_priority (rtx_insn *, int);
 extern void debug_rgn_dependencies (int);
 extern void debug_dependencies (rtx_insn *, rtx_insn *);
+extern void dump_rgn_dependencies_dot (FILE *);
+extern void dump_rgn_dependencies_dot (const char *);
+
 extern void free_rgn_deps (void);
 extern int contributes_to_priority (rtx_insn *, rtx_insn *);
 extern void extend_rgns (int *, int *, sbitmap, int *);

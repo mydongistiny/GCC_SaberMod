@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
 
@@ -126,27 +126,23 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "target.h"
 #include "rtl.h"
+#include "cfghooks.h"
 #include "df.h"
-#include "diagnostic-core.h"
 #include "tm_p.h"
-#include "regs.h"
-#include "flags.h"
 #include "insn-config.h"
-#include "insn-attr.h"
-#include "except.h"
+#include "regs.h"
+#include "ira.h"
 #include "recog.h"
+#include "insn-attr.h"
 #include "cfgrtl.h"
 #include "cfgbuild.h"
 #include "sched-int.h"
-#include "target.h"
 #include "common/common-target.h"
 #include "params.h"
 #include "dbgcnt.h"
 #include "cfgloop.h"
-#include "ira.h"
-#include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
 #include "dumpfile.h"
 #include "print-rtl.h"
 
@@ -207,17 +203,14 @@ static int modulo_last_stage;
 
 /* sched-verbose controls the amount of debugging output the
    scheduler prints.  It is controlled by -fsched-verbose=N:
-   N>0 and no -DSR : the output is directed to stderr.
-   N>=10 will direct the printouts to stderr (regardless of -dSR).
-   N=1: same as -dSR.
+   N=0: no debugging output.
+   N=1: default value.
    N=2: bb's probabilities, detailed ready list info, unit/insn info.
    N=3: rtl at abort point, control-flow, regions info.
    N=5: dependences info.  */
-
 int sched_verbose = 0;
 
-/* Debugging file.  All printouts are sent to dump, which is always set,
-   either to stderr, or to the dump listing file (-dRS).  */
+/* Debugging file.  All printouts are sent to dump. */
 FILE *sched_dump = 0;
 
 /* This is a placeholder for the scheduler parameters common
@@ -5606,8 +5599,8 @@ autopref_multipass_init (const rtx_insn *insn, int write)
 
       int i = 0;
       rtx prev_base = NULL_RTX;
-      int min_offset;
-      int max_offset;
+      int min_offset = 0;
+      int max_offset = 0;
 
       for (i = 0; i < n_elems; i++)
 	{
@@ -5810,7 +5803,10 @@ autopref_multipass_dfa_lookahead_guard (rtx_insn *insn1, int ready_index)
 {
   int r = 0;
 
-  if (PARAM_VALUE (PARAM_SCHED_AUTOPREF_QUEUE_DEPTH) <= 0)
+  /* Exit early if the param forbids this or if we're not entering here through
+     normal haifa scheduling.  This can happen if selective scheduling is
+     explicitly enabled.  */
+  if (!insn_queue || PARAM_VALUE (PARAM_SCHED_AUTOPREF_QUEUE_DEPTH) <= 0)
     return 0;
 
   if (sched_verbose >= 2 && ready_index == 0)
@@ -7223,17 +7219,14 @@ set_priorities (rtx_insn *head, rtx_insn *tail)
   return n_insn;
 }
 
-/* Set dump and sched_verbose for the desired debugging output.  If no
-   dump-file was specified, but -fsched-verbose=N (any N), print to stderr.
-   For -fsched-verbose=N, N>=10, print everything to stderr.  */
+/* Set sched_dump and sched_verbose for the desired debugging output. */
 void
 setup_sched_dump (void)
 {
   sched_verbose = sched_verbose_param;
-  if (sched_verbose_param == 0 && dump_file)
-    sched_verbose = 1;
-  sched_dump = ((sched_verbose_param >= 10 || !dump_file)
-		? stderr : dump_file);
+  sched_dump = dump_file;
+  if (!dump_file)
+    sched_verbose = 0;
 }
 
 /* Allocate data for register pressure sensitive scheduling.  */
@@ -7487,6 +7480,7 @@ haifa_sched_finish (void)
   sched_deps_finish ();
   sched_finish_luids ();
   current_sched_info = NULL;
+  insn_queue = NULL;
   sched_finish ();
 }
 
@@ -9153,17 +9147,24 @@ haifa_finish_h_i_d (void)
 {
   int i;
   haifa_insn_data_t data;
-  struct reg_use_data *use, *next;
+  reg_use_data *use, *next_use;
+  reg_set_data *set, *next_set;
 
   FOR_EACH_VEC_ELT (h_i_d, i, data)
     {
       free (data->max_reg_pressure);
       free (data->reg_pressure);
-      for (use = data->reg_use_list; use != NULL; use = next)
+      for (use = data->reg_use_list; use != NULL; use = next_use)
 	{
-	  next = use->next_insn_use;
+	  next_use = use->next_insn_use;
 	  free (use);
 	}
+      for (set = data->reg_set_list; set != NULL; set = next_set)
+	{
+	  next_set = set->next_insn_set;
+	  free (set);
+	}
+
     }
   h_i_d.release ();
 }

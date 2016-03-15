@@ -1197,19 +1197,29 @@ Func_descriptor_expression::do_get_backend(Translate_context* context)
 
   Gogo* gogo = context->gogo();
   std::string var_name;
-  if (no->package() == NULL)
-    var_name = gogo->pkgpath_symbol();
+  bool is_descriptor = false;
+  if (no->is_function_declaration()
+      && !no->func_declaration_value()->asm_name().empty()
+      && Linemap::is_predeclared_location(no->location()))
+    {
+      var_name = no->func_declaration_value()->asm_name() + "_descriptor";
+      is_descriptor = true;
+    }
   else
-    var_name = no->package()->pkgpath_symbol();
-  var_name.push_back('.');
-  var_name.append(Gogo::unpack_hidden_name(no->name()));
-  var_name.append("$descriptor");
+    {
+      if (no->package() == NULL)
+	var_name = gogo->pkgpath_symbol();
+      else
+	var_name = no->package()->pkgpath_symbol();
+      var_name.push_back('.');
+      var_name.append(Gogo::unpack_hidden_name(no->name()));
+      var_name.append("$descriptor");
+    }
 
   Btype* btype = this->type()->get_backend(gogo);
 
   Bvariable* bvar;
-  if (no->package() != NULL
-      || Linemap::is_predeclared_location(no->location()))
+  if (no->package() != NULL || is_descriptor)
     bvar = context->backend()->immutable_struct_reference(var_name, btype,
 							  loc);
   else
@@ -8598,6 +8608,16 @@ Builtin_call_expression::do_export(Export* exp) const
 int
 Call_expression::do_traverse(Traverse* traverse)
 {
+  // If we are calling a function in a different package that returns
+  // an unnamed type, this may be the only chance we get to traverse
+  // that type.  We don't traverse this->type_ because it may be a
+  // Call_multiple_result_type that will just lead back here.
+  if (this->type_ != NULL && !this->type_->is_error_type())
+    {
+      Function_type *fntype = this->get_function_type();
+      if (fntype != NULL && Type::traverse(fntype, traverse) == TRAVERSE_EXIT)
+	return TRAVERSE_EXIT;
+    }
   if (Expression::traverse(&this->fn_, traverse) == TRAVERSE_EXIT)
     return TRAVERSE_EXIT;
   if (this->args_ != NULL)
@@ -12563,69 +12583,7 @@ Map_construction_expression::do_dump_expression(
   ast_dump_context->ostream() << "}";
 }
 
-// A general composite literal.  This is lowered to a type specific
-// version.
-
-class Composite_literal_expression : public Parser_expression
-{
- public:
-  Composite_literal_expression(Type* type, int depth, bool has_keys,
-			       Expression_list* vals, bool all_are_names,
-			       Location location)
-    : Parser_expression(EXPRESSION_COMPOSITE_LITERAL, location),
-      type_(type), depth_(depth), vals_(vals), has_keys_(has_keys),
-      all_are_names_(all_are_names)
-  { }
-
- protected:
-  int
-  do_traverse(Traverse* traverse);
-
-  Expression*
-  do_lower(Gogo*, Named_object*, Statement_inserter*, int);
-
-  Expression*
-  do_copy()
-  {
-    return new Composite_literal_expression(this->type_, this->depth_,
-					    this->has_keys_,
-					    (this->vals_ == NULL
-					     ? NULL
-					     : this->vals_->copy()),
-					    this->all_are_names_,
-					    this->location());
-  }
-
-  void
-  do_dump_expression(Ast_dump_context*) const;
-  
- private:
-  Expression*
-  lower_struct(Gogo*, Type*);
-
-  Expression*
-  lower_array(Type*);
-
-  Expression*
-  make_array(Type*, const std::vector<unsigned long>*, Expression_list*);
-
-  Expression*
-  lower_map(Gogo*, Named_object*, Statement_inserter*, Type*);
-
-  // The type of the composite literal.
-  Type* type_;
-  // The depth within a list of composite literals within a composite
-  // literal, when the type is omitted.
-  int depth_;
-  // The values to put in the composite literal.
-  Expression_list* vals_;
-  // If this is true, then VALS_ is a list of pairs: a key and a
-  // value.  In an array initializer, a missing key will be NULL.
-  bool has_keys_;
-  // If this is true, then HAS_KEYS_ is true, and every key is a
-  // simple identifier.
-  bool all_are_names_;
-};
+// Class Composite_literal_expression.
 
 // Traversal.
 
@@ -12644,12 +12602,17 @@ Composite_literal_expression::do_traverse(Traverse* traverse)
       // The type may not be resolvable at this point.
       Type* type = this->type_;
 
-      for (int depth = this->depth_; depth > 0; --depth)
+      for (int depth = 0; depth < this->depth_; ++depth)
         {
           if (type->array_type() != NULL)
             type = type->array_type()->element_type();
           else if (type->map_type() != NULL)
-            type = type->map_type()->val_type();
+            {
+              if (this->key_path_[depth])
+                type = type->map_type()->key_type();
+              else
+                type = type->map_type()->val_type();
+            }
           else
             {
               // This error will be reported during lowering.
@@ -12703,12 +12666,17 @@ Composite_literal_expression::do_lower(Gogo* gogo, Named_object* function,
 {
   Type* type = this->type_;
 
-  for (int depth = this->depth_; depth > 0; --depth)
+  for (int depth = 0; depth < this->depth_; ++depth)
     {
       if (type->array_type() != NULL)
 	type = type->array_type()->element_type();
       else if (type->map_type() != NULL)
-	type = type->map_type()->val_type();
+        {
+          if (this->key_path_[depth])
+            type = type->map_type()->key_type();
+          else
+            type = type->map_type()->val_type();
+        }
       else
 	{
 	  if (!type->is_error())

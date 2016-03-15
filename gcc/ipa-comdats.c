@@ -1,5 +1,5 @@
 /* Localize comdats.
-   Copyright (C) 2014-2015 Free Software Foundation, Inc.
+   Copyright (C) 2014-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -52,12 +52,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "alias.h"
 #include "tree.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
 #include "tree-pass.h"
+#include "cgraph.h"
 
 /* Main dataflow loop propagating comdat groups across
    the symbol table.  All references to SYMBOL are examined

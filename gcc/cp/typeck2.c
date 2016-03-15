@@ -1,6 +1,6 @@
 /* Report error messages, build initializers, and perform
    some front-end optimizations for C++ compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -28,15 +28,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
+#include "cp-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
 #include "intl.h"
-#include "cp-tree.h"
-#include "flags.h"
-#include "diagnostic-core.h"
 
 static tree
 process_init_constructor (tree type, tree init, tsubst_flags_t complain);
@@ -480,13 +475,15 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
  retry:
   /* We must print an error message.  Be clever about what it says.  */
 
+  location_t loc = EXPR_LOC_OR_LOC (value, input_location);
+
   switch (TREE_CODE (type))
     {
     case RECORD_TYPE:
     case UNION_TYPE:
     case ENUMERAL_TYPE:
       if (!is_decl)
-	complained = emit_diagnostic (diag_kind, input_location, 0,
+	complained = emit_diagnostic (diag_kind, loc, 0,
 				      "invalid use of incomplete type %q#T",
 				      type);
       if (complained)
@@ -494,7 +491,7 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
       break;
 
     case VOID_TYPE:
-      emit_diagnostic (diag_kind, input_location, 0,
+      emit_diagnostic (diag_kind, loc, 0,
 		       "invalid use of %qT", type);
       break;
 
@@ -504,7 +501,7 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
 	  type = TREE_TYPE (type);
 	  goto retry;
 	}
-      emit_diagnostic (diag_kind, input_location, 0,
+      emit_diagnostic (diag_kind, loc, 0,
 		       "invalid use of array with unspecified bounds");
       break;
 
@@ -516,40 +513,40 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
 	  member = get_first_fn (member);
 	if (DECL_FUNCTION_MEMBER_P (member)
 	    && ! flag_ms_extensions)
-	  emit_diagnostic (diag_kind, input_location, 0,
-			   "invalid use of member function "
-			   "(did you forget the %<()%> ?)");
+	  emit_diagnostic (diag_kind, loc, 0,
+			   "invalid use of member function %qD "
+			   "(did you forget the %<()%> ?)", member);
 	else
-	  emit_diagnostic (diag_kind, input_location, 0,
-			   "invalid use of member "
-			   "(did you forget the %<&%> ?)");
+	  emit_diagnostic (diag_kind, loc, 0,
+			   "invalid use of member %qD "
+			   "(did you forget the %<&%> ?)", member);
       }
       break;
 
     case TEMPLATE_TYPE_PARM:
       if (is_auto (type))
-	emit_diagnostic (diag_kind, input_location, 0,
+	emit_diagnostic (diag_kind, loc, 0,
 			 "invalid use of %<auto%>");
       else
-	emit_diagnostic (diag_kind, input_location, 0,
+	emit_diagnostic (diag_kind, loc, 0,
 			 "invalid use of template type parameter %qT", type);
       break;
 
     case BOUND_TEMPLATE_TEMPLATE_PARM:
-      emit_diagnostic (diag_kind, input_location, 0,
+      emit_diagnostic (diag_kind, loc, 0,
 		       "invalid use of template template parameter %qT",
 		       TYPE_NAME (type));
       break;
 
     case TYPENAME_TYPE:
-      emit_diagnostic (diag_kind, input_location, 0,
+      emit_diagnostic (diag_kind, loc, 0,
 		       "invalid use of dependent type %qT", type);
       break;
 
     case LANG_TYPE:
       if (type == init_list_type_node)
 	{
-	  emit_diagnostic (diag_kind, input_location, 0,
+	  emit_diagnostic (diag_kind, loc, 0,
 			   "invalid use of brace-enclosed initializer list");
 	  break;
 	}
@@ -557,14 +554,14 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
       if (value && TREE_CODE (value) == COMPONENT_REF)
 	goto bad_member;
       else if (value && TREE_CODE (value) == ADDR_EXPR)
-	emit_diagnostic (diag_kind, input_location, 0,
+	emit_diagnostic (diag_kind, loc, 0,
 			 "address of overloaded function with no contextual "
 			 "type information");
       else if (value && TREE_CODE (value) == OVERLOAD)
-	emit_diagnostic (diag_kind, input_location, 0,
+	emit_diagnostic (diag_kind, loc, 0,
 			 "overloaded function with no contextual type information");
       else
-	emit_diagnostic (diag_kind, input_location, 0,
+	emit_diagnostic (diag_kind, loc, 0,
 			 "insufficient contextual information to determine type");
       break;
 
@@ -743,6 +740,7 @@ split_nonconstant_init (tree dest, tree init)
     init = TARGET_EXPR_INITIAL (init);
   if (TREE_CODE (init) == CONSTRUCTOR)
     {
+      init = cp_fully_fold (init);
       code = push_stmt_list ();
       if (split_nonconstant_init_1 (dest, init))
 	init = NULL_TREE;
@@ -833,10 +831,14 @@ store_init_value (tree decl, tree init, vec<tree, va_gc>** cleanups, int flags)
       DECL_INITIALIZED_BY_CONSTANT_EXPRESSION_P (decl) = const_init;
       TREE_CONSTANT (decl) = const_init && decl_maybe_constant_var_p (decl);
     }
+  value = cp_fully_fold (value);
 
   if (cxx_dialect >= cxx14 && CLASS_TYPE_P (strip_array_types (type)))
     /* Handle aggregate NSDMI in non-constant initializers, too.  */
     value = replace_placeholders (value, decl);
+
+  /* DECL may change value; purge caches.  */
+  clear_cv_and_fold_caches ();
 
   /* If the initializer is not a constant, fill in DECL_INITIAL with
      the bits that are constant, and then return an expression that
@@ -931,19 +933,35 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain)
 	}
     }
 
+  bool almost_ok = ok;
+  if (!ok && !CONSTANT_CLASS_P (init) && (complain & tf_warning_or_error))
+    {
+      tree folded = cp_fully_fold (init);
+      if (TREE_CONSTANT (folded) && check_narrowing (type, folded, tf_none))
+	almost_ok = true;
+    }
+
   if (!ok)
     {
+      location_t loc = EXPR_LOC_OR_LOC (init, input_location);
       if (cxx_dialect == cxx98)
-	warning_at (EXPR_LOC_OR_LOC (init, input_location), OPT_Wnarrowing,
-		    "narrowing conversion of %qE from %qT to %qT inside { } "
-		    "is ill-formed in C++11", init, ftype, type);
-      else if (!TREE_CONSTANT (init))
+	{
+	  if (complain & tf_warning)
+	    warning_at (loc, OPT_Wnarrowing, "narrowing conversion of %qE "
+			"from %qT to %qT inside { } is ill-formed in C++11",
+			init, ftype, type);
+	  ok = true;
+	}
+      else if (!CONSTANT_CLASS_P (init))
 	{
 	  if (complain & tf_warning_or_error)
 	    {
-	      pedwarn (EXPR_LOC_OR_LOC (init, input_location), OPT_Wnarrowing,
-		       "narrowing conversion of %qE from %qT to %qT inside { }",
-		       init, ftype, type);
+	      if (!almost_ok || pedantic)
+		pedwarn (loc, OPT_Wnarrowing, "narrowing conversion of %qE "
+			 "from %qT to %qT inside { }", init, ftype, type);
+	      if (pedantic && almost_ok)
+		inform (loc, " the expression has a constant value but is not "
+			"a C++ constant-expression");
 	      ok = true;
 	    }
 	}
@@ -951,7 +969,7 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain)
 	{
 	  int savederrorcount = errorcount;
 	  global_dc->pedantic_errors = 1;
-	  pedwarn (EXPR_LOC_OR_LOC (init, input_location), OPT_Wnarrowing,
+	  pedwarn (loc, OPT_Wnarrowing,
 		   "narrowing conversion of %qE from %qT to %qT "
 		   "inside { }", init, ftype, type);
 	  if (errorcount == savederrorcount)
@@ -960,7 +978,7 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain)
 	}
     }
 
-  return cxx_dialect == cxx98 || ok; 
+  return ok;
 }
 
 /* Process the initializer INIT for a variable of type TYPE, emitting
@@ -1000,6 +1018,13 @@ digest_init_r (tree type, tree init, bool nested, int flags,
      them if they were present.  */
   if (code == ARRAY_TYPE)
     {
+      if (nested && !TYPE_DOMAIN (type))
+	{
+	  /* C++ flexible array members have a null domain.  */
+	  pedwarn (EXPR_LOC_OR_LOC (init, input_location), OPT_Wpedantic,
+		   "initialization of a flexible array member");
+	}
+
       tree typ1 = TYPE_MAIN_VARIANT (TREE_TYPE (type));
       if (char_type_p (typ1)
 	  /*&& init */
@@ -1038,8 +1063,9 @@ digest_init_r (tree type, tree init, bool nested, int flags,
 	      init = copy_node (init);
 	      TREE_TYPE (init) = type;
 	    }
-	  if (TYPE_DOMAIN (type) != 0 && TREE_CONSTANT (TYPE_SIZE (type)))
+	  if (TYPE_DOMAIN (type) && TREE_CONSTANT (TYPE_SIZE (type)))
 	    {
+	      /* Not a flexible array member.  */
 	      int size = TREE_INT_CST_LOW (TYPE_SIZE (type));
 	      size = (size + BITS_PER_UNIT - 1) / BITS_PER_UNIT;
 	      /* In C it is ok to subtract 1 from the length of the string
@@ -1076,11 +1102,11 @@ digest_init_r (tree type, tree init, bool nested, int flags,
 	      || TREE_CODE (type) == UNION_TYPE
 	      || TREE_CODE (type) == COMPLEX_TYPE);
 
-#ifdef ENABLE_CHECKING
   /* "If T is a class type and the initializer list has a single
      element of type cv U, where U is T or a class derived from T,
      the object is initialized from that element."  */
-  if (cxx_dialect >= cxx11
+  if (flag_checking
+      && cxx_dialect >= cxx11
       && BRACE_ENCLOSED_INITIALIZER_P (init)
       && CONSTRUCTOR_NELTS (init) == 1
       && ((CLASS_TYPE_P (type) && !CLASSTYPE_NON_AGGREGATE (type))
@@ -1091,7 +1117,6 @@ digest_init_r (tree type, tree init, bool nested, int flags,
 	/* We should have fixed this in reshape_init.  */
 	gcc_unreachable ();
     }
-#endif
 
   if (BRACE_ENCLOSED_INITIALIZER_P (init)
       && !TYPE_NON_AGGREGATE_CLASS (type))
@@ -1227,10 +1252,11 @@ process_init_constructor_array (tree type, tree init,
 
   if (TREE_CODE (type) == ARRAY_TYPE)
     {
+      /* C++ flexible array members have a null domain.  */
       tree domain = TYPE_DOMAIN (type);
       if (domain && TREE_CONSTANT (TYPE_MAX_VALUE (domain)))
 	len = wi::ext (wi::to_offset (TYPE_MAX_VALUE (domain))
-		       - wi::to_offset (TYPE_MIN_VALUE (domain)) + 1,
+                       - wi::to_offset (TYPE_MIN_VALUE (domain)) + 1,
 		       TYPE_PRECISION (TREE_TYPE (domain)),
 		       TYPE_SIGN (TREE_TYPE (domain))).to_uhwi ();
       else
@@ -1405,14 +1431,15 @@ process_init_constructor_record (tree type, tree init,
 	}
       else
 	{
-	  if (TREE_CODE (TREE_TYPE (field)) == REFERENCE_TYPE)
+	  const_tree fldtype = TREE_TYPE (field);
+	  if (TREE_CODE (fldtype) == REFERENCE_TYPE)
 	    {
 	      if (complain & tf_error)
 		error ("member %qD is uninitialized reference", field);
 	      else
 		return PICFLAG_ERRONEOUS;
 	    }
-	  else if (CLASSTYPE_REF_FIELDS_NEED_INIT (TREE_TYPE (field)))
+	  else if (CLASSTYPE_REF_FIELDS_NEED_INIT (fldtype))
 	    {
 	      if (complain & tf_error)
 		error ("member %qD with uninitialized reference fields", field);
@@ -1421,13 +1448,15 @@ process_init_constructor_record (tree type, tree init,
 	    }
 
 	  /* Warn when some struct elements are implicitly initialized
-	     to zero.  */
-	  if ((complain & tf_warning)
+	     to zero.  However, avoid issuing the warning for flexible
+	     array members since they need not have any elements.  */
+	  if ((TREE_CODE (fldtype) != ARRAY_TYPE || TYPE_DOMAIN (fldtype))
+	      && (complain & tf_warning)
 	      && !EMPTY_CONSTRUCTOR_P (init))
 	    warning (OPT_Wmissing_field_initializers,
 		     "missing initializer for member %qD", field);
 
-	  if (!zero_init_p (TREE_TYPE (field))
+	  if (!zero_init_p (fldtype)
 	      || skipped < 0)
 	    next = build_zero_init (TREE_TYPE (field), /*nelts=*/NULL_TREE,
 				    /*static_storage_p=*/false);

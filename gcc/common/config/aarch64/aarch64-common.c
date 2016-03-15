@@ -1,5 +1,5 @@
 /* Common hooks for AArch64.
-   Copyright (C) 2012-2015 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -19,6 +19,7 @@
    <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
+#define INCLUDE_STRING
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
@@ -97,7 +98,7 @@ aarch64_handle_option (struct gcc_options *opts,
       return true;
 
     case OPT_momit_leaf_frame_pointer:
-      opts->x_flag_omit_frame_pointer = val;
+      opts->x_flag_omit_leaf_frame_pointer = val;
       return true;
 
     default:

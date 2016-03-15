@@ -1,5 +1,5 @@
 /* Implementation of the C API; all wrappers into the internal C++ API
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -21,14 +21,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "opts.h"
-#include "safe-ctype.h"
-#include "typed-splay-tree.h"
 #include "timevar.h"
+#include "typed-splay-tree.h"
 
 #include "libgccjit.h"
-#include "jit-common.h"
-#include "jit-logging.h"
 #include "jit-recording.h"
 #include "jit-result.h"
 

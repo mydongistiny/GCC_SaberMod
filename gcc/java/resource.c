@@ -1,5 +1,5 @@
 /* Functions related to building resource files.
-   Copyright (C) 1996-2015 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -24,22 +24,15 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
+#include "tm.h"
 #include "tree.h"
-#include "options.h"
-#include "fold-const.h"
 #include "stringpool.h"
+#include "cgraph.h"
+#include "fold-const.h"
 #include "stor-layout.h"
 #include "java-tree.h"
-#include "jcf.h"
-#include "diagnostic-core.h"
 #include "toplev.h"
-#include "parse.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "tree-iterator.h"
-#include "cgraph.h"
 
 /* A list of all the resources files.  */
 static GTY(()) vec<tree, va_gc> *resources;

@@ -1,5 +1,5 @@
 /* jit.c -- Dummy "frontend" for use during JIT-compilation.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,26 +20,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "opts.h"
-#include "alias.h"
-#include "tree.h"
+#include "jit-playback.h"
 #include "stor-layout.h"
-#include "inchash.h"
 #include "debug.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "hash-map.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "dumpfile.h"
-#include "cgraph.h"
 
-#include "jit-common.h"
-#include "jit-logging.h"
-#include "jit-playback.h"
 
 #include <mpfr.h>
 
@@ -119,7 +105,7 @@ jit_langhook_init (void)
       registered_root_tab = true;
     }
 
-  build_common_tree_nodes (false, false);
+  build_common_tree_nodes (false);
 
   /* I don't know why this has to be done explicitly.  */
   void_list_node = build_tree_list (NULL_TREE, void_type_node);

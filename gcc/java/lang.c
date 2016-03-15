@@ -1,5 +1,5 @@
 /* Java(TM) language-specific utility routines.
-   Copyright (C) 1996-2015 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,21 +26,15 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
+#include "target.h"
 #include "tree.h"
+#include "diagnostic.h"
 #include "java-tree.h"
 #include "jcf.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "flags.h"
-#include "diagnostic.h"
-#include "tree-inline.h"
-#include "splay-tree.h"
 #include "tree-dump.h"
 #include "opts.h"
-#include "options.h"
-#include "target.h"
 #include "context.h"
 
 static bool java_init (void);

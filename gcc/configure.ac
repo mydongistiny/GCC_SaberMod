@@ -1,7 +1,7 @@
 # configure.ac for GCC
 # Process this file with autoconf to generate a configuration script.
 
-# Copyright (C) 1997-2015 Free Software Foundation, Inc.
+# Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -416,6 +416,15 @@ struct X<long long> { typedef long long t; };
 ]], [[X<int64_t>::t x;]])],[],[AC_MSG_ERROR([error verifying int64_t uses long long])])
 fi
 
+AC_CACHE_CHECK(for std::swap in <utility>, ac_cv_std_swap_in_utility, [
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <utility>
+]], [[int a, b; std::swap(a,b);]])],[ac_cv_std_swap_in_utility=yes],[ac_cv_std_swap_in_utility=no])])
+if test $ac_cv_std_swap_in_utility = yes; then
+  AC_DEFINE(HAVE_SWAP_IN_UTILITY, 1,
+  [Define if <utility> defines std::swap.])
+fi
+
 # Check whether compiler is affected by placement new aliasing bug (PR 29286).
 # If the host compiler is affected by the bug, and we build with optimization
 # enabled (which happens e.g. when cross-compiling), the pool allocator may
@@ -566,9 +575,6 @@ IFS="$ac_save_IFS"
 
 nocommon_flag=""
 if test x$ac_checking != x ; then
-  AC_DEFINE(ENABLE_CHECKING, 1,
-[Define if you want more run-time sanity checks.  This one gets a grab
-   bag of miscellaneous but relatively cheap checks.])
   AC_DEFINE(CHECKING_P, 1,
 [Define to 1 if you want more run-time sanity checks.  This one gets a grab
    bag of miscellaneous but relatively cheap checks.])
@@ -943,6 +949,13 @@ AC_SUBST(accel_dir_suffix)
 
 for tgt in `echo $enable_offload_targets | sed 's/,/ /g'`; do
   tgt=`echo $tgt | sed 's/=.*//'`
+
+  if echo "$tgt" | grep "^hsa" > /dev/null ; then
+    enable_hsa=1
+  else
+    enable_offloading=1
+  fi
+
   if test x"$offload_targets" = x; then
     offload_targets=$tgt
   else
@@ -951,9 +964,17 @@ for tgt in `echo $enable_offload_targets | sed 's/,/ /g'`; do
 done
 AC_DEFINE_UNQUOTED(OFFLOAD_TARGETS, "$offload_targets",
   [Define to offload targets, separated by commas.])
-if test x"$offload_targets" != x; then
+if test x"$enable_offloading" != x; then
   AC_DEFINE(ENABLE_OFFLOADING, 1,
     [Define this to enable support for offloading.])
+else
+  AC_DEFINE(ENABLE_OFFLOADING, 0,
+    [Define this to enable support for offloading.])
+fi
+
+if test x"$enable_hsa" = x1 ; then
+  AC_DEFINE(ENABLE_HSA, 1,
+    [Define this to enable support for generating HSAIL.])
 fi
 
 AC_ARG_WITH(multilib-list,
@@ -2041,13 +2062,23 @@ BUILD_CXXFLAGS='$(ALL_CXXFLAGS)' AC_SUBST(BUILD_CXXFLAGS)
 BUILD_LDFLAGS='$(LDFLAGS)'	AC_SUBST(BUILD_LDFLAGS)
 STMP_FIXINC=stmp-fixinc		AC_SUBST(STMP_FIXINC)
 
+BUILD_NO_PIE_CFLAGS='$(NO_PIE_CFLAGS)' AC_SUBST(BUILD_NO_PIE_CFLAGS)
+BUILD_NO_PIE_FLAG='$(NO_PIE_FLAG)' AC_SUBST(BUILD_NO_PIE_FLAG)
+
 # And these apply if build != host, or we are generating coverage data
 if test x$build != x$host || test "x$coverage_flags" != x
 then
     BUILD_CFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CFLAGS_FOR_BUILD)'
     BUILD_CXXFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CXXFLAGS_FOR_BUILD)'
     BUILD_LDFLAGS='$(LDFLAGS_FOR_BUILD)'
+
+    NO_PIE_CFLAGS_FOR_BUILD=${NO_PIE_CFLAGS_FOR_BUILD-${NO_PIE_CFLAGS}}
+    NO_PIE_FLAG_FOR_BUILD=${NO_PIE_FLAG_FOR_BUILD-${NO_PIE_FLAG}}
+    BUILD_NO_PIE_CFLAGS='$(NO_PIE_CFLAGS_FOR_BUILD)'
+    BUILD_NO_PIE_FLAG='$(NO_PIE_FLAG_FOR_BUILD)'
 fi
+AC_SUBST(NO_PIE_CFLAGS_FOR_BUILD)
+AC_SUBST(NO_PIE_FLAG_FOR_BUILD)
 
 # Expand extra_headers to include complete path.
 # This substitutes for lots of t-* files.
@@ -2236,7 +2267,7 @@ AC_ARG_WITH(plugin-ld,
 [AS_HELP_STRING([[--with-plugin-ld=[ARG]]], [specify the plugin linker])],
 [if test x"$withval" != x; then
    ORIGINAL_PLUGIN_LD_FOR_TARGET="$withval"
-   PLUGIN_LD_SUFFIX=`echo $withval | sed -e "s,$target_alias-,,"`
+   PLUGIN_LD_SUFFIX="$withval"
  fi])
 AC_SUBST(ORIGINAL_PLUGIN_LD_FOR_TARGET)
 AC_DEFINE_UNQUOTED(PLUGIN_LD_SUFFIX, "$PLUGIN_LD_SUFFIX", [Specify plugin linker])
@@ -2898,6 +2929,11 @@ fi
 AC_DEFINE_UNQUOTED(HAVE_GAS_SHF_MERGE,
   [`if test $gcc_cv_as_shf_merge = yes; then echo 1; else echo 0; fi`],
 [Define 0/1 if your assembler supports marking sections with SHF_MERGE flag.])
+
+gcc_GAS_CHECK_FEATURE([stabs directive], gcc_cv_as_stabs_directive, ,,
+[.stabs "gcc2_compiled.",60,0,0,0],,
+[AC_DEFINE(HAVE_AS_STABS_DIRECTIVE, 1,
+  [Define if your assembler supports .stabs.])])
 
 gcc_GAS_CHECK_FEATURE([COMDAT group support (GNU as)],
  gcc_cv_as_comdat_group,
@@ -3747,13 +3783,6 @@ AS_HELP_STRING([--disable-fix-cortex-a53-843419],
       [AC_DEFINE(HAVE_AS_REGISTER_PSEUDO_OP, 1,
 		[Define if your assembler supports .register.])])
 
-    gcc_GAS_CHECK_FEATURE([@%:@nobits], gcc_cv_as_sparc_nobits,,,
-      [.section "nobits",#alloc,#write,#nobits
-       .section "progbits",#alloc,#write,#progbits])
-    AC_DEFINE_UNQUOTED(HAVE_AS_SPARC_NOBITS,
-      [`if test $gcc_cv_as_sparc_nobits = yes; then echo 1; else echo 0; fi`],
-      [Define to 1 if your assembler supports #nobits, 0 otherwise.])
-
     gcc_GAS_CHECK_FEATURE([-relax option], gcc_cv_as_sparc_relax,,
       [-relax], [.text],,
       [AC_DEFINE(HAVE_AS_RELAX_OPTION, 1,
@@ -4152,10 +4181,8 @@ value:'
     ;;
 
   powerpc*-*-*)
+
     case $target in
-      *-*-aix*) conftest_s='	.machine "pwr5"
-	.csect .text[[PR]]
-	mfcr 3,128';;
       *-*-darwin*)
 	gcc_GAS_CHECK_FEATURE([.machine directive support],
 	  gcc_cv_as_machine_directive,,,
@@ -4165,7 +4192,14 @@ value:'
 	  echo you can get it from: ftp://gcc.gnu.org/pub/gcc/infrastructure/cctools-528.5.dmg >&2
 	  test x$build = x$target && exit 1
 	fi
-	conftest_s='	.text
+        ;;
+    esac
+
+    case $target in
+      *-*-aix*) conftest_s='	.machine "pwr5"
+	.csect .text[[PR]]
+	mfcr 3,128';;
+      *-*-darwin*) conftest_s='	.text
 	mfcr r3,128';;
       *) conftest_s='	.machine power4
 	.text
@@ -4316,6 +4350,19 @@ LCF0:
 	  [Define if your assembler supports POWER8 instructions.])])
 
     case $target in
+      *-*-aix*) conftest_s='	.machine "pwr9"
+	.csect .text[[PR]]';;
+      *) conftest_s='	.machine power9
+	.text';;
+    esac
+
+    gcc_GAS_CHECK_FEATURE([power9 support],
+      gcc_cv_as_powerpc_power9, [2,19,2], -a32,
+      [$conftest_s],,
+      [AC_DEFINE(HAVE_AS_POWER9, 1,
+	  [Define if your assembler supports POWER9 instructions.])])
+
+    case $target in
       *-*-aix*) conftest_s='	.csect .text[[PR]]
 	lwsync';;
       *) conftest_s='	.text
@@ -4355,9 +4402,15 @@ LCF0:
       [AC_DEFINE(HAVE_AS_TLS_MARKERS, 1,
 	  [Define if your assembler supports arg info for __tls_get_addr.])])
 
+    gcc_GAS_CHECK_FEATURE([prologue entry point marker support],
+      gcc_cv_as_powerpc_entry_markers, [2,26,0],-a64 --fatal-warnings,
+      [ .reloc .,R_PPC64_ENTRY; nop],,
+      [AC_DEFINE(HAVE_AS_ENTRY_MARKERS, 1,
+	  [Define if your assembler supports the R_PPC64_ENTRY relocation.])])
+
     case $target in
       *-*-aix*)
-	gcc_GAS_CHECK_FEATURE([.ref support],
+	gcc_GAS_CHECK_FEATURE([AIX .ref support],
 	  gcc_cv_as_aix_ref, [2,21,0],,
 	  [	.csect stuff[[rw]]
 	     stuff:
@@ -4367,17 +4420,15 @@ LCF0:
 	  ],,
 	  [AC_DEFINE(HAVE_AS_REF, 1,
 	    [Define if your assembler supports .ref])])
-	;;
-    esac
 
-    case $target in
-      *-*-aix*)
-	gcc_GAS_CHECK_FEATURE([dwarf location lists section support],
+	gcc_GAS_CHECK_FEATURE([AIX DWARF location lists section support],
 	  gcc_cv_as_aix_dwloc, [2,21,0],,
-	  [	.dwsect 0xB0000
+	  [	.dwsect 0xA0000
+	Lframe..0:
+		.vbyte 4,Lframe..0:
 	  ],,
 	  [AC_DEFINE(HAVE_XCOFF_DWARF_EXTRAS, 1,
-	    [Define if your assembler supports .dwsect 0xB0000])])
+	    [Define if your assembler supports AIX debug frame section label reference.])])
 	;;
     esac
     ;;
@@ -4542,6 +4593,19 @@ pointers into PC-relative form.])
       [.gnu_attribute 8,1],,
       [AC_DEFINE(HAVE_AS_GNU_ATTRIBUTE, 1,
 	  [Define if your assembler supports .gnu_attribute.])])
+    gcc_GAS_CHECK_FEATURE([.machine and .machinemode support],
+      gcc_cv_as_s390_machine_machinemode, [2,24,0],,
+      [	.machinemode push
+	.machinemode pop
+	.machine push
+	.machine pop],,
+      [AC_DEFINE(HAVE_AS_MACHINE_MACHINEMODE, 1,
+	  [Define if your assembler supports .machine and .machinemode.])])
+    gcc_GAS_CHECK_FEATURE([architecture modifiers support],
+      gcc_cv_as_s390_architecture_modifiers, [2,26,0],,
+      [	.machine z13+vx ],,
+      [AC_DEFINE(HAVE_AS_ARCHITECTURE_MODIFIERS, 1,
+	  [Define if your assembler supports architecture modifiers.])])
     ;;
 esac
 
@@ -5270,7 +5334,7 @@ _start:
 x:	.quad .TOC.
 EOF
       if $gcc_cv_as -a64 -o conftest.o conftest.s > /dev/null 2>&1 \
-         && $gcc_cv_ld $emul_name -o conftest conftest.o > /dev/null 2>&1; then
+         && $gcc_cv_ld $emul_name -z norelro -o conftest conftest.o > /dev/null 2>&1; then
         gcc_cv_ld_toc_align=`$gcc_cv_nm conftest | ${AWK} '/\.TOC\./ { match ($0, "0[[[:xdigit:]]]*", a); print strtonum ("0x" substr(a[[0]], length(a[[0]])-3)) }'`
       fi
       rm -f conftest conftest.o conftest.s
@@ -5454,7 +5518,7 @@ AC_CACHE_CHECK(__stack_chk_fail in target C library,
 	 # realistically usable GNU/Hurd configurations.
 	 # All supported versions of musl provide it as well
 	 gcc_cv_libc_provides_ssp=yes;;
-       *-*-darwin* | *-*-freebsd*)
+       *-*-darwin* | *-*-freebsd* | *-*-netbsd*)
 	 AC_CHECK_FUNC(__stack_chk_fail,[gcc_cv_libc_provides_ssp=yes],
            [echo "no __stack_chk_fail on this target"])
         ;;
@@ -5479,7 +5543,7 @@ else
   enable_default_ssp=no
 fi],
 enable_default_ssp=no)
-if test x$enable_default_ssp == xyes ; then
+if test x$enable_default_ssp = xyes ; then
   AC_DEFINE(ENABLE_DEFAULT_SSP, 1,
       [Define if your target supports default stack protector and it is enabled.])
 fi
@@ -5519,6 +5583,19 @@ esac
 if test x$gcc_cv_target_ldbl128 = xyes; then
   AC_DEFINE(TARGET_DEFAULT_LONG_DOUBLE_128, 1,
 	    [Define if TFmode long double should be the default])
+fi
+
+# Check if the target LIBC supports exporting the AT_PLATFORM and AT_HWCAP
+# values in the TCB.  Currently, only GLIBC 2.23 and later support this.
+gcc_cv_libc_provides_hwcap_in_tcb=no
+case "$target" in
+  powerpc*-*-linux*)
+    GCC_GLIBC_VERSION_GTE_IFELSE([2], [23], [gcc_cv_libc_provides_hwcap_in_tcb=yes], )
+    ;;
+esac
+if test x$gcc_cv_libc_provides_hwcap_in_tcb = xyes; then
+  AC_DEFINE(TARGET_LIBC_PROVIDES_HWCAP_IN_TCB, 1,
+	    [Define if your target C Library provides the AT_HWCAP value in the TCB])
 fi
 
 AC_MSG_CHECKING(dl_iterate_phdr in target C library)
@@ -5897,28 +5974,19 @@ fi
 AC_ARG_VAR(GMPLIBS,[How to link GMP])
 AC_ARG_VAR(GMPINC,[How to find GMP include files])
 
-AC_ARG_VAR(ISLLIBS,[How to link ISL])
-AC_ARG_VAR(ISLINC,[How to find ISL include files])
+AC_ARG_VAR(ISLLIBS,[How to link isl])
+AC_ARG_VAR(ISLINC,[How to find isl include files])
 if test "x${ISLLIBS}" != "x" ; then 
    AC_DEFINE(HAVE_isl, 1, [Define if isl is in use.])
 fi
 
-# Check whether isl_schedule_constraints_compute_schedule is available;
-# it's new in ISL-0.13.
 # Check whether isl_options_set_schedule_serialize_sccs is available;
-# it's new in ISL-0.15.
+# it's new in isl 0.15.
 if test "x${ISLLIBS}" != "x" ; then
   saved_CXXFLAGS="$CXXFLAGS"
-  CXXFLAGS="$CXXFLAGS $ISLINC"
+  CXXFLAGS="$CXXFLAGS $ISLINC $GMPINC"
   saved_LIBS="$LIBS"
   LIBS="$LIBS $ISLLIBS $GMPLIBS"
-
-  AC_MSG_CHECKING([Checking for isl_schedule_constraints_compute_schedule])
-  AC_TRY_LINK([#include <isl/schedule.h>],
-              [isl_schedule_constraints_compute_schedule (NULL);],
-              [ac_has_isl_schedule_constraints_compute_schedule=yes],
-              [ac_has_isl_schedule_constraints_compute_schedule=no])
-  AC_MSG_RESULT($ac_has_isl_schedule_constraints_compute_schedule)
 
   AC_MSG_CHECKING([Checking for isl_options_set_schedule_serialize_sccs])
   AC_TRY_LINK([#include <isl/schedule.h>],
@@ -5927,28 +5995,12 @@ if test "x${ISLLIBS}" != "x" ; then
               [ac_has_isl_options_set_schedule_serialize_sccs=no])
   AC_MSG_RESULT($ac_has_isl_options_set_schedule_serialize_sccs)
 
-  AC_MSG_CHECKING([Checking for isl_ctx_get_max_operations])
-  AC_TRY_LINK([#include <isl/ctx.h>],
-              [isl_ctx_get_max_operations (isl_ctx_alloc ());],
-              [ac_has_isl_ctx_get_max_operations=yes],
-              [ac_has_isl_ctx_get_max_operations=no])
-  AC_MSG_RESULT($ac_has_isl_ctx_get_max_operations)
-
   LIBS="$saved_LIBS"
   CXXFLAGS="$saved_CXXFLAGS"
-
-  if test x"$ac_has_isl_schedule_constraints_compute_schedule" = x"yes"; then
-     AC_DEFINE(HAVE_ISL_SCHED_CONSTRAINTS_COMPUTE_SCHEDULE, 1,
-               [Define if isl_schedule_constraints_compute_schedule exists.])
-  fi
 
   if test x"$ac_has_isl_options_set_schedule_serialize_sccs" = x"yes"; then
      AC_DEFINE(HAVE_ISL_OPTIONS_SET_SCHEDULE_SERIALIZE_SCCS, 1,
                [Define if isl_options_set_schedule_serialize_sccs exists.])
-  fi
-  if test x"$ac_has_isl_ctx_get_max_operations" = x"yes"; then
-     AC_DEFINE(HAVE_ISL_CTX_MAX_OPERATIONS, 1,
-               [Define if isl_ctx_get_max_operations exists.])
   fi
 fi
 
@@ -6044,7 +6096,7 @@ AC_ARG_ENABLE(default-pie,
   [enable Position Independent Executable as default])],
 enable_default_pie=$enableval,
 enable_default_pie=no)
-if test x$enable_default_pie == xyes ; then
+if test x$enable_default_pie = xyes ; then
   AC_DEFINE(ENABLE_DEFAULT_PIE, 1,
       [Define if your target supports default PIE and it is enabled.])
 fi

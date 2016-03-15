@@ -1,5 +1,5 @@
 /* Building internal representation for IRA.
-   Copyright (C) 2006-2015 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -22,23 +22,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "rtl.h"
-#include "df.h"
-#include "tm_p.h"
 #include "target.h"
-#include "regs.h"
-#include "flags.h"
+#include "rtl.h"
+#include "predict.h"
+#include "df.h"
 #include "insn-config.h"
-#include "diagnostic-core.h"
+#include "regs.h"
+#include "ira.h"
+#include "ira-int.h"
 #include "params.h"
-#include "reload.h"
 #include "sparseset.h"
 #include "cfgloop.h"
-#include "ira.h"
-#include "alloc-pool.h"
-#include "ira-int.h"
-#include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
 
 static ira_copy_t find_allocno_copy (ira_allocno_t, ira_allocno_t, rtx_insn *,
 				     ira_loop_tree_node_t);
@@ -1678,7 +1672,7 @@ finish_cost_vectors (void)
    minimizes the number of chain elements per allocno live range.  If the
    blocks would be visited in a different order, we would still compute a
    correct post-ordering but it would be less likely that two nodes
-   connected by an edge in the CFG are neighbours in the topsort.  */
+   connected by an edge in the CFG are neighbors in the topsort.  */
 
 static vec<ira_loop_tree_node_t>
 ira_loop_tree_body_rev_postorder (ira_loop_tree_node_t loop_node ATTRIBUTE_UNUSED,

@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on Renesas RX processors.
-   Copyright (C) 2008-2015 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -379,7 +379,7 @@ rx_mode_dependent_address_p (const_rtx addr, addr_space_t as ATTRIBUTE_UNUSED)
    reference whose address is ADDR.  */
 
 static void
-rx_print_operand_address (FILE * file, rtx addr)
+rx_print_operand_address (FILE * file, machine_mode /*mode*/, rtx addr)
 {
   switch (GET_CODE (addr))
     {
@@ -690,7 +690,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case MEM:
 	  if (! WORDS_BIG_ENDIAN)
 	    op = adjust_address (op, SImode, 4);
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -714,7 +714,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case MEM:
 	  if (WORDS_BIG_ENDIAN)
 	    op = adjust_address (op, SImode, 4);
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -846,11 +846,11 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	  }
 
 	case MEM:
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 
 	case PLUS:
-	  output_address (op);
+	  output_address (VOIDmode, op);
 	  break;
 
 	case REG:
@@ -915,7 +915,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case SYMBOL_REF:
 	case LABEL_REF:
 	case CODE_LABEL:
-	  rx_print_operand_address (file, op);
+	  rx_print_operand_address (file, VOIDmode, op);
 	  break;
 
 	default:
@@ -2857,6 +2857,9 @@ rx_warn_func_return (tree decl)
 static bool
 rx_function_ok_for_sibcall (tree decl, tree exp ATTRIBUTE_UNUSED)
 {
+  if (TARGET_JSR)
+    return false;
+
   /* Do not allow indirect tailcalls.  The
      sibcall patterns do not support them.  */
   if (decl == NULL)
@@ -2881,7 +2884,7 @@ rx_file_start (void)
 static bool
 rx_is_ms_bitfield_layout (const_tree record_type ATTRIBUTE_UNUSED)
 {
-  /* The packed attribute overrides the MS behaviour.  */
+  /* The packed attribute overrides the MS behavior.  */
   return ! TYPE_PACKED (record_type);
 }
 

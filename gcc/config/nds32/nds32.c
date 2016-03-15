@@ -1,5 +1,5 @@
 /* Subroutines used for code generation of Andes NDS32 cpu for GNU compiler
-   Copyright (C) 2012-2015 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GCC.
@@ -2311,7 +2311,7 @@ nds32_print_operand (FILE *stream, rtx x, int code)
       break;
 
     case MEM:
-      output_address (XEXP (x, 0));
+      output_address (GET_MODE (x), XEXP (x, 0));
       break;
 
     case CODE_LABEL:
@@ -2331,7 +2331,7 @@ nds32_print_operand (FILE *stream, rtx x, int code)
 }
 
 static void
-nds32_print_operand_address (FILE *stream, rtx x)
+nds32_print_operand_address (FILE *stream, machine_mode /*mode*/, rtx x)
 {
   rtx op0, op1;
 

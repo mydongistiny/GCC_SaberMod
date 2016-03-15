@@ -1,5 +1,5 @@
 /* Help friends in C++.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,11 +20,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
 #include "cp-tree.h"
-#include "flags.h"
 
 /* Friend data structures are described in cp-tree.h.  */
 
@@ -257,6 +253,18 @@ make_friend_class (tree type, tree friend_type, bool complain)
 	     specializations.  */
 	  error ("partial specialization %qT declared %<friend%>",
 		 friend_type);
+	  return;
+	}
+      if (TYPE_TEMPLATE_INFO (friend_type)
+	  && !PRIMARY_TEMPLATE_P (TYPE_TI_TEMPLATE (friend_type)))
+	{
+	  error ("%qT is not a template", friend_type);
+	  inform (location_of (friend_type), "previous declaration here");
+	  if (TYPE_CLASS_SCOPE_P (friend_type)
+	      && CLASSTYPE_TEMPLATE_INFO (TYPE_CONTEXT (friend_type))
+	      && currently_open_class (TYPE_CONTEXT (friend_type)))
+	    inform (input_location, "perhaps you need explicit template "
+		    "arguments in your nested-name-specifier");
 	  return;
 	}
     }

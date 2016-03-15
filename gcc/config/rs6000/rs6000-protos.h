@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for IBM RS/6000.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
    This file is part of GCC.
@@ -55,6 +55,8 @@ extern const char *rs6000_output_move_128bit (rtx *);
 extern bool rs6000_move_128bit_ok_p (rtx []);
 extern bool rs6000_split_128bit_ok_p (rtx []);
 extern void rs6000_expand_float128_convert (rtx, rtx, bool);
+extern void convert_float128_to_int (rtx *, enum rtx_code);
+extern void convert_int_to_float128 (rtx *, enum rtx_code);
 extern void rs6000_expand_vector_init (rtx, rtx);
 extern void paired_expand_vector_init (rtx, rtx);
 extern void rs6000_expand_vector_set (rtx, rtx, int);
@@ -87,7 +89,15 @@ extern bool direct_move_p (rtx, rtx);
 extern bool quad_load_store_p (rtx, rtx);
 extern bool fusion_gpr_load_p (rtx, rtx, rtx, rtx);
 extern void expand_fusion_gpr_load (rtx *);
+extern void emit_fusion_addis (rtx, rtx, const char *, const char *);
+extern void emit_fusion_load_store (rtx, rtx, rtx, const char *);
 extern const char *emit_fusion_gpr_load (rtx, rtx);
+extern bool fusion_p9_p (rtx, rtx, rtx, rtx);
+extern void expand_fusion_p9_load (rtx *);
+extern void expand_fusion_p9_store (rtx *);
+extern const char *emit_fusion_p9_load (rtx, rtx, rtx);
+extern const char *emit_fusion_p9_store (rtx, rtx, rtx);
+extern rtx fusion_wrap_memory_address (rtx);
 extern enum reg_class (*rs6000_preferred_reload_class_ptr) (rtx,
 							    enum reg_class);
 extern enum reg_class (*rs6000_secondary_reload_class_ptr) (enum reg_class,
@@ -127,7 +137,7 @@ extern void rs6000_expand_atomic_compare_and_swap (rtx op[]);
 extern void rs6000_expand_atomic_exchange (rtx op[]);
 extern void rs6000_expand_atomic_op (enum rtx_code, rtx, rtx, rtx, rtx, rtx);
 extern void rs6000_emit_swdiv (rtx, rtx, rtx, bool);
-extern void rs6000_emit_swrsqrt (rtx, rtx);
+extern void rs6000_emit_swsqrt (rtx, rtx, bool);
 extern void output_toc (FILE *, rtx, int, machine_mode);
 extern rtx rs6000_longcall_ref (rtx);
 extern void rs6000_fatal_bad_address (rtx);

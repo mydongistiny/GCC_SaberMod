@@ -1,5 +1,5 @@
 /* Decompose multiword subregs.
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>
 		  Ian Lance Taylor <iant@google.com>
 
@@ -23,28 +23,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
 #include "rtl.h"
+#include "tree.h"
+#include "cfghooks.h"
 #include "df.h"
-#include "alias.h"
 #include "tm_p.h"
-#include "flags.h"
+#include "expmed.h"
 #include "insn-config.h"
+#include "emit-rtl.h"
+#include "recog.h"
 #include "cfgrtl.h"
 #include "cfgbuild.h"
-#include "recog.h"
 #include "dce.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
-#include "except.h"
-#include "regs.h"
 #include "tree-pass.h"
 #include "lower-subreg.h"
 #include "rtl-iter.h"

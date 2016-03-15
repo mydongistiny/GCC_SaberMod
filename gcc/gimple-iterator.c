@@ -1,5 +1,5 @@
 /* Iterator routines for GIMPLE statements.
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez  <aldy@quesejoda.com>
 
 This file is part of GCC.
@@ -22,17 +22,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "cfghooks.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "internal-fn.h"
+#include "cgraph.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
-#include "cgraph.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
 #include "value-prof.h"

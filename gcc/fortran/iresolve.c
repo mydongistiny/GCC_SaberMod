@@ -1,5 +1,5 @@
 /* Intrinsic function resolution.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Andy Vaught & Katherine Holcomb
 
 This file is part of GCC.
@@ -29,11 +29,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "tree.h"
-#include "options.h"
-#include "stringpool.h"
 #include "gfortran.h"
+#include "stringpool.h"
 #include "intrinsic.h"
 #include "constructor.h"
 #include "arith.h"
@@ -2947,6 +2945,12 @@ gfc_resolve_atomic_ref (gfc_code *c)
   c->resolved_sym = gfc_get_intrinsic_sub_symbol (name);
 }
 
+void
+gfc_resolve_event_query (gfc_code *c)
+{
+  const char *name = "event_query";
+  c->resolved_sym = gfc_get_intrinsic_sub_symbol (name);
+}
 
 void
 gfc_resolve_mvbits (gfc_code *c)

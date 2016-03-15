@@ -1,5 +1,5 @@
 /* Machine description for AArch64 architecture.
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -132,9 +132,7 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_FL_CRC        (1 << 3)	/* Has CRC.  */
 /* ARMv8.1 architecture extensions.  */
 #define AARCH64_FL_LSE	      (1 << 4)  /* Has Large System Extensions.  */
-#define AARCH64_FL_PAN	      (1 << 5)  /* Has Privileged Access Never.  */
-#define AARCH64_FL_LOR	      (1 << 6)  /* Has Limited Ordering regions.  */
-#define AARCH64_FL_RDMA	      (1 << 7)  /* Has ARMv8.1 Adv.SIMD.  */
+#define AARCH64_FL_V8_1	      (1 << 5)  /* Has ARMv8.1 extensions.  */
 
 /* Has FP and SIMD.  */
 #define AARCH64_FL_FPSIMD     (AARCH64_FL_FP | AARCH64_FL_SIMD)
@@ -145,8 +143,7 @@ extern unsigned aarch64_architecture_version;
 /* Architecture flags that effect instruction selection.  */
 #define AARCH64_FL_FOR_ARCH8       (AARCH64_FL_FPSIMD)
 #define AARCH64_FL_FOR_ARCH8_1			       \
-  (AARCH64_FL_FOR_ARCH8 | AARCH64_FL_LSE | AARCH64_FL_PAN \
-   | AARCH64_FL_LOR | AARCH64_FL_RDMA)
+  (AARCH64_FL_FOR_ARCH8 | AARCH64_FL_LSE | AARCH64_FL_V8_1)
 
 /* Macros to test ISA flags.  */
 
@@ -155,6 +152,7 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_ISA_FP             (aarch64_isa_flags & AARCH64_FL_FP)
 #define AARCH64_ISA_SIMD           (aarch64_isa_flags & AARCH64_FL_SIMD)
 #define AARCH64_ISA_LSE		   (aarch64_isa_flags & AARCH64_FL_LSE)
+#define AARCH64_ISA_RDMA	   (aarch64_isa_flags & AARCH64_FL_V8_1)
 
 /* Crypto is an optional extension to AdvSIMD.  */
 #define TARGET_CRYPTO (TARGET_SIMD && AARCH64_ISA_CRYPTO)
@@ -178,6 +176,23 @@ extern unsigned aarch64_architecture_version;
 #define TARGET_FIX_ERR_A53_835769	\
   ((aarch64_fix_a53_err835769 == 2)	\
   ? TARGET_FIX_ERR_A53_835769_DEFAULT : aarch64_fix_a53_err835769)
+
+/* Make sure this is always defined so we don't have to check for ifdefs
+   but rather use normal ifs.  */
+#ifndef TARGET_FIX_ERR_A53_843419_DEFAULT
+#define TARGET_FIX_ERR_A53_843419_DEFAULT 0
+#else
+#undef TARGET_FIX_ERR_A53_843419_DEFAULT
+#define TARGET_FIX_ERR_A53_843419_DEFAULT 1
+#endif
+
+/* Apply the workaround for Cortex-A53 erratum 843419.  */
+#define TARGET_FIX_ERR_A53_843419	\
+  ((aarch64_fix_a53_err843419 == 2)	\
+  ? TARGET_FIX_ERR_A53_843419_DEFAULT : aarch64_fix_a53_err843419)
+
+/* ARMv8.1 Adv.SIMD support.  */
+#define TARGET_SIMD_RDMA (TARGET_SIMD && AARCH64_ISA_RDMA)
 
 /* Standard register usage.  */
 
@@ -786,11 +801,6 @@ do {									     \
 /* Jump table alignment is explicit in ASM_OUTPUT_CASE_LABEL.  */
 #define ADDR_VEC_ALIGN(JUMPTABLE) 0
 
-#define PRINT_OPERAND(STREAM, X, CODE) aarch64_print_operand (STREAM, X, CODE)
-
-#define PRINT_OPERAND_ADDRESS(STREAM, X) \
-  aarch64_print_operand_address (STREAM, X)
-
 #define MCOUNT_NAME "_mcount"
 
 #define NO_PROFILE_COUNTERS 1
@@ -826,6 +836,9 @@ do {									     \
   extern void  __aarch64_sync_cache_range (void *, void *);	\
   __aarch64_sync_cache_range (beg, end)
 
+#define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS)	\
+  aarch64_cannot_change_mode_class (FROM, TO, CLASS)
+
 #define SHIFT_COUNT_TRUNCATED !TARGET_SIMD
 
 /* Choose appropriate mode for caller saves, so we do the minimum
@@ -856,6 +869,8 @@ extern enum aarch64_code_model aarch64_cmodel;
 #define HAS_LONG_UNCOND_BRANCH				\
   (aarch64_cmodel == AARCH64_CMODEL_TINY		\
    || aarch64_cmodel == AARCH64_CMODEL_TINY_PIC)
+
+#define TARGET_SUPPORTS_WIDE_INT 1
 
 /* Modes valid for AdvSIMD D registers, i.e. that fit in half a Q register.  */
 #define AARCH64_VALID_SIMD_DREG_MODE(MODE) \

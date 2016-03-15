@@ -1,5 +1,5 @@
 /* Natural loop discovery code for GNU compiler.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,18 +21,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "cfghooks.h"
+#include "gimple-ssa.h"
+#include "diagnostic-core.h"
 #include "cfganal.h"
 #include "cfgloop.h"
-#include "diagnostic-core.h"
-#include "flags.h"
-#include "fold-const.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
-#include "gimple-ssa.h"
 #include "dumpfile.h"
 
 static void flow_loops_cfg_dump (FILE *);
@@ -916,37 +913,32 @@ get_loop_body_in_bfs_order (const struct loop *loop)
   basic_block *blocks;
   basic_block bb;
   bitmap visited;
-  unsigned int i = 0;
-  unsigned int vc = 1;
+  unsigned int i = 1;
+  unsigned int vc = 0;
 
   gcc_assert (loop->num_nodes);
   gcc_assert (loop->latch != EXIT_BLOCK_PTR_FOR_FN (cfun));
 
   blocks = XNEWVEC (basic_block, loop->num_nodes);
   visited = BITMAP_ALLOC (NULL);
-
-  bb = loop->header;
+  blocks[0] = loop->header;
+  bitmap_set_bit (visited, loop->header->index);
   while (i < loop->num_nodes)
     {
       edge e;
       edge_iterator ei;
-
-      if (bitmap_set_bit (visited, bb->index))
-	/* This basic block is now visited */
-	blocks[i++] = bb;
+      gcc_assert (i > vc);
+      bb = blocks[vc++];
 
       FOR_EACH_EDGE (e, ei, bb->succs)
 	{
 	  if (flow_bb_inside_loop_p (loop, e->dest))
 	    {
+	      /* This bb is now visited.  */
 	      if (bitmap_set_bit (visited, e->dest->index))
 		blocks[i++] = e->dest;
 	    }
 	}
-
-      gcc_assert (i > vc);
-
-      bb = blocks[vc++];
     }
 
   BITMAP_FREE (visited);
@@ -1114,12 +1106,12 @@ dump_recorded_exits (FILE *file)
 /* Releases lists of loop exits.  */
 
 void
-release_recorded_exits (void)
+release_recorded_exits (function *fn)
 {
-  gcc_assert (loops_state_satisfies_p (LOOPS_HAVE_RECORDED_EXITS));
-  current_loops->exits->empty ();
-  current_loops->exits = NULL;
-  loops_state_clear (LOOPS_HAVE_RECORDED_EXITS);
+  gcc_assert (loops_state_satisfies_p (fn, LOOPS_HAVE_RECORDED_EXITS));
+  loops_for_fn (fn)->exits->empty ();
+  loops_for_fn (fn)->exits = NULL;
+  loops_state_clear (fn, LOOPS_HAVE_RECORDED_EXITS);
 }
 
 /* Returns the list of the exit edges of a LOOP.  */

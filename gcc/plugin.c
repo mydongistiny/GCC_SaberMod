@@ -1,5 +1,5 @@
 /* Support for GCC plugin mechanism.
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -23,12 +23,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "diagnostic-core.h"
-#include "alias.h"
-#include "tree.h"
 #include "options.h"
-#include "flags.h"
 #include "tree-pass.h"
+#include "diagnostic-core.h"
+#include "flags.h"
 #include "intl.h"
 #include "plugin.h"
 

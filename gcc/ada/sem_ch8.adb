@@ -107,7 +107,7 @@ package body Sem_Ch8 is
    --  Open scopes, that is to say scopes currently being compiled, have their
    --  corresponding rows of entities in order, innermost scope first.
 
-   --  The scopes of packages that are mentioned in  context clauses appear in
+   --  The scopes of packages that are mentioned in context clauses appear in
    --  no particular order, interspersed among open scopes. This is because
    --  in the course of analyzing the context of a compilation, a package
    --  declaration is first an open scope, and subsequently an element of the
@@ -191,7 +191,7 @@ package body Sem_Ch8 is
    --  removed from visibility chains on exit from the corresponding scope.
    --  From the outside, these entities are always accessed by selected
    --  notation, and the entity chain for the record type, protected type,
-   --  etc. is traversed sequentially in  order to find the designated entity.
+   --  etc. is traversed sequentially in order to find the designated entity.
 
    --  The discriminants of a type and the operations of a protected type or
    --  task are unchained on  exit from the first view of the type, (such as
@@ -224,7 +224,7 @@ package body Sem_Ch8 is
 
    --  The Rtsfind mechanism can force a call to Semantics while another
    --  compilation is in progress. The unit retrieved by Rtsfind must be
-   --  compiled in  its own context, and has no access to the visibility of
+   --  compiled in its own context, and has no access to the visibility of
    --  the unit currently being compiled. The procedures Save_Scope_Stack and
    --  Restore_Scope_Stack make entities in current open scopes invisible
    --  before compiling the retrieved unit, and restore the compilation
@@ -597,8 +597,10 @@ package body Sem_Ch8 is
    begin
       --  If the entity pointer is already set, this is an internal node, or a
       --  node that is analyzed more than once, after a tree modification. In
-      --  such a case there is no resolution to perform, just set the type. For
-      --  completeness, analyze prefix as well.
+      --  such a case there is no resolution to perform, just set the type. In
+      --  either case, start by analyzing the prefix.
+
+      Analyze (Prefix (N));
 
       if Present (Entity (N)) then
          if Is_Type (Entity (N)) then
@@ -607,7 +609,6 @@ package body Sem_Ch8 is
             Set_Etype (N, Etype (Entity (N)));
          end if;
 
-         Analyze (Prefix (N));
          return;
       else
          Find_Expanded_Name (N);
@@ -5615,13 +5616,15 @@ package body Sem_Ch8 is
             Set_Entity_Or_Discriminal (N, E);
 
             --  The name may designate a generalized reference, in which case
-            --  the dereference interpretation will be included.
+            --  the dereference interpretation will be included. Context is
+            --  one in which a name is legal.
 
             if Ada_Version >= Ada_2012
               and then
                 (Nkind (Parent (N)) in N_Subexpr
-                  or else Nkind_In (Parent (N), N_Object_Declaration,
-                                                N_Assignment_Statement))
+                  or else Nkind_In (Parent (N), N_Assignment_Statement,
+                                                N_Object_Declaration,
+                                                N_Parameter_Association))
             then
                Check_Implicit_Dereference (N, Etype (E));
             end if;
@@ -6481,6 +6484,10 @@ package body Sem_Ch8 is
       --  This simplifies value tracing in GNATProve. For consistency, both
       --  the entity name and the subtype come from the constrained component.
 
+      --  This is only used in GNATProve mode: when generating code it may be
+      --  necessary to create an itype in the scope of use of the selected
+      --  component, e.g. in the context of a expanded record equality.
+
       function Is_Reference_In_Subunit return Boolean;
       --  In a subunit, the scope depth is not a proper measure of hiding,
       --  because the context of the proper body may itself hide entities in
@@ -6496,17 +6503,19 @@ package body Sem_Ch8 is
          Comp : Entity_Id;
 
       begin
-         Comp := First_Entity (Etype (P));
-         while Present (Comp) loop
-            if Chars (Comp) = Chars (Selector_Name (N)) then
-               Set_Etype (N, Etype (Comp));
-               Set_Entity (Selector_Name (N), Comp);
-               Set_Etype  (Selector_Name (N), Etype (Comp));
-               return True;
-            end if;
+         if GNATprove_Mode then
+            Comp := First_Entity (Etype (P));
+            while Present (Comp) loop
+               if Chars (Comp) = Chars (Selector_Name (N)) then
+                  Set_Etype  (N, Etype (Comp));
+                  Set_Entity (Selector_Name (N), Comp);
+                  Set_Etype  (Selector_Name (N), Etype (Comp));
+                  return True;
+               end if;
 
-            Next_Component (Comp);
-         end loop;
+               Next_Component (Comp);
+            end loop;
+         end if;
 
          return False;
       end Available_Subtype;
@@ -6771,7 +6780,26 @@ package body Sem_Ch8 is
             --  Prefix denotes an enclosing loop, block, or task, i.e. an
             --  enclosing construct that is not a subprogram or accept.
 
-            Find_Expanded_Name (N);
+            --  A special case: a protected body may call an operation
+            --  on an external object of the same type, in which case it
+            --  is not an expanded name. If the prefix is the type itself,
+            --  or the context is a single synchronized object it can only
+            --  be interpreted as an expanded name.
+
+            if Is_Concurrent_Type (Etype (P_Name)) then
+               if Is_Type (P_Name)
+                  or else Present (Anonymous_Object (Etype (P_Name)))
+               then
+                  Find_Expanded_Name (N);
+
+               else
+                  Analyze_Selected_Component (N);
+                  return;
+               end if;
+
+            else
+               Find_Expanded_Name (N);
+            end if;
 
          elsif Ekind (P_Name) = E_Package then
             Find_Expanded_Name (N);

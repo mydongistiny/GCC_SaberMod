@@ -1,5 +1,5 @@
 /* Pointer Bounds Checker optimization pass.
-   Copyright (C) 2014-2015 Free Software Foundation, Inc.
+   Copyright (C) 2014-2016 Free Software Foundation, Inc.
    Contributed by Ilya Enkovich (ilya.enkovich@intel.com)
 
 This file is part of GCC.
@@ -21,38 +21,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "ssa.h"
-#include "options.h"
-#include "fold-const.h"
-#include "target.h"
-#include "tree-cfg.h"
 #include "tree-pass.h"
-#include "cfgloop.h"
-#include "tree-ssa-address.h"
-#include "tree-ssa.h"
-#include "tree-ssa-loop-niter.h"
+#include "ssa.h"
 #include "gimple-pretty-print.h"
+#include "diagnostic.h"
+#include "fold-const.h"
+#include "tree-cfg.h"
+#include "tree-ssa-loop-niter.h"
 #include "gimple-iterator.h"
-#include "gimplify.h"
-#include "gimplify-me.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-chkp.h"
 #include "ipa-chkp.h"
-#include "diagnostic.h"
 
 enum check_type
 {

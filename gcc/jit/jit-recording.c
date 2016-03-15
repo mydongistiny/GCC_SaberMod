@@ -1,5 +1,5 @@
 /* Internals of libgccjit: classes for recording calls made to the JIT API.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -23,15 +23,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "pretty-print.h"
-#include "hash-map.h"
 #include "toplev.h"
-#include "timevar.h"
 
 #include <pthread.h>
 
-#include "jit-common.h"
 #include "jit-builtins.h"
-#include "jit-logging.h"
 #include "jit-recording.h"
 #include "jit-playback.h"
 

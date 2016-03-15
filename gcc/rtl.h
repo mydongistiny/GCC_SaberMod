@@ -1,5 +1,5 @@
 /* Register Transfer Language (RTL) definitions for GCC
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -828,6 +828,9 @@ struct GTY(()) rtvec_def {
 
 /* Predicate yielding nonzero iff RTX is a subreg.  */
 #define SUBREG_P(RTX) (GET_CODE (RTX) == SUBREG)
+
+/* Predicate yielding true iff RTX is a symbol ref.  */
+#define SYMBOL_REF_P(RTX) (GET_CODE (RTX) == SYMBOL_REF)
 
 template <>
 template <>
@@ -2083,6 +2086,7 @@ namespace wi
 inline unsigned int
 wi::int_traits <rtx_mode_t>::get_precision (const rtx_mode_t &x)
 {
+  gcc_checking_assert (x.second != BLKmode && x.second != VOIDmode);
   return GET_MODE_PRECISION (x.second);
 }
 
@@ -2926,6 +2930,8 @@ extern void set_insn_deleted (rtx);
 /* Functions in rtlanal.c */
 
 extern rtx single_set_2 (const rtx_insn *, const_rtx);
+extern bool contains_symbol_ref_p (const_rtx);
+extern bool contains_symbolic_reference_p (const_rtx);
 
 /* Handle the cheap and common cases inline for performance.  */
 
@@ -3586,7 +3592,7 @@ extern void init_lower_subreg (void);
 
 /* In gcse.c */
 extern bool can_copy_p (machine_mode);
-extern bool can_assign_to_reg_without_clobbers_p (rtx);
+extern bool can_assign_to_reg_without_clobbers_p (rtx, machine_mode);
 extern rtx fis_get_condition (rtx_insn *);
 
 /* In ira.c */
@@ -3652,7 +3658,6 @@ extern void init_alias_analysis (void);
 extern void end_alias_analysis (void);
 extern void vt_equate_reg_base_value (const_rtx, const_rtx);
 extern bool memory_modified_in_insn_p (const_rtx, const_rtx);
-extern bool memory_must_be_modified_in_insn_p (const_rtx, const_rtx);
 extern bool may_be_sp_based_p (rtx);
 extern rtx gen_hard_reg_clobber (machine_mode, unsigned int);
 extern rtx get_reg_known_value (unsigned int);

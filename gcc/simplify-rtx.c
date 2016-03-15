@@ -1,5 +1,5 @@
 /* RTL simplification functions for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -22,28 +22,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "rtl.h"
-#include "alias.h"
-#include "tree.h"
-#include "fold-const.h"
-#include "varasm.h"
-#include "tm_p.h"
-#include "regs.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "recog.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
-#include "expr.h"
-#include "diagnostic-core.h"
 #include "target.h"
+#include "rtl.h"
+#include "tree.h"
+#include "predict.h"
+#include "optabs.h"
+#include "emit-rtl.h"
+#include "recog.h"
+#include "diagnostic-core.h"
+#include "varasm.h"
+#include "flags.h"
 
 /* Simplification and canonicalization of RTL.  */
 
@@ -313,10 +301,11 @@ delegitimize_mem_from_attrs (rtx x)
 	  {
 	    HOST_WIDE_INT bitsize, bitpos;
 	    tree toffset;
-	    int unsignedp, volatilep = 0;
+	    int unsignedp, reversep, volatilep = 0;
 
-	    decl = get_inner_reference (decl, &bitsize, &bitpos, &toffset,
-					&mode, &unsignedp, &volatilep, false);
+	    decl
+	      = get_inner_reference (decl, &bitsize, &bitpos, &toffset, &mode,
+				     &unsignedp, &reversep, &volatilep, false);
 	    if (bitsize != GET_MODE_BITSIZE (mode)
 		|| (bitpos % BITS_PER_UNIT)
 		|| (toffset && !tree_fits_shwi_p (toffset)))
@@ -724,6 +713,34 @@ simplify_truncation (machine_mode mode, rtx op,
       && UINTVAL (XEXP (op, 1)) < precision)
     return simplify_gen_binary (ASHIFT, mode,
 				XEXP (XEXP (op, 0), 0), XEXP (op, 1));
+
+  /* Likewise (truncate:QI (and:SI (lshiftrt:SI (x:SI) C) C2)) into
+     (and:QI (lshiftrt:QI (truncate:QI (x:SI)) C) C2) for suitable C
+     and C2.  */
+  if (GET_CODE (op) == AND
+      && (GET_CODE (XEXP (op, 0)) == LSHIFTRT
+	  || GET_CODE (XEXP (op, 0)) == ASHIFTRT)
+      && CONST_INT_P (XEXP (XEXP (op, 0), 1))
+      && CONST_INT_P (XEXP (op, 1)))
+    {
+      rtx op0 = (XEXP (XEXP (op, 0), 0));
+      rtx shift_op = XEXP (XEXP (op, 0), 1);
+      rtx mask_op = XEXP (op, 1);
+      unsigned HOST_WIDE_INT shift = UINTVAL (shift_op);
+      unsigned HOST_WIDE_INT mask = UINTVAL (mask_op);
+
+      if (shift < precision
+	  /* If doing this transform works for an X with all bits set,
+	     it works for any X.  */
+	  && ((GET_MODE_MASK (mode) >> shift) & mask)
+	     == ((GET_MODE_MASK (op_mode) >> shift) & mask)
+	  && (op0 = simplify_gen_unary (TRUNCATE, mode, op0, op_mode))
+	  && (op0 = simplify_gen_binary (LSHIFTRT, mode, op0, shift_op)))
+	{
+	  mask_op = GEN_INT (trunc_int_for_mode (mask, mode));
+	  return simplify_gen_binary (AND, mode, op0, mask_op);
+	}
+    }
 
   /* Recognize a word extraction from a multi-word subreg.  */
   if ((GET_CODE (op) == LSHIFTRT
@@ -1445,6 +1462,13 @@ simplify_unary_operation_1 (enum rtx_code code, machine_mode mode, rtx op)
 	    }
 	}
 
+      /* (sign_extend:M (lshiftrt:N <X> (const_int I))) is better as
+         (zero_extend:M (lshiftrt:N <X> (const_int I))) if I is not 0.  */
+      if (GET_CODE (op) == LSHIFTRT
+	  && CONST_INT_P (XEXP (op, 1))
+	  && XEXP (op, 1) != const0_rtx)
+	return simplify_gen_unary (ZERO_EXTEND, mode, op, GET_MODE (op));
+
 #if defined(POINTERS_EXTEND_UNSIGNED)
       /* As we do not know which address space the pointer is referring to,
 	 we can do this only if the target does not support different pointer
@@ -1679,6 +1703,12 @@ simplify_const_unary_operation (enum rtx_code code, machine_mode mode,
 	}
 
       real_from_integer (&d, mode, std::make_pair (op, op_mode), SIGNED);
+
+      /* Avoid the folding if flag_signaling_nans is on and
+         operand is a signaling NaN.  */
+      if (HONOR_SNANS (mode) && REAL_VALUE_ISSIGNALING_NAN (d))
+        return 0;
+
       d = real_value_truncate (mode, d);
       return const_double_from_real_value (d, mode);
     }
@@ -1697,6 +1727,12 @@ simplify_const_unary_operation (enum rtx_code code, machine_mode mode,
 	}
 
       real_from_integer (&d, mode, std::make_pair (op, op_mode), UNSIGNED);
+
+      /* Avoid the folding if flag_signaling_nans is on and
+         operand is a signaling NaN.  */
+      if (HONOR_SNANS (mode) && REAL_VALUE_ISSIGNALING_NAN (d))
+        return 0;
+
       d = real_value_truncate (mode, d);
       return const_double_from_real_value (d, mode);
     }
@@ -1801,16 +1837,25 @@ simplify_const_unary_operation (enum rtx_code code, machine_mode mode,
 	  d = real_value_negate (&d);
 	  break;
 	case FLOAT_TRUNCATE:
-	  d = real_value_truncate (mode, d);
+	  /* Don't perform the operation if flag_signaling_nans is on
+	     and the operand is a signaling NaN.  */
+	  if (!(HONOR_SNANS (mode) && REAL_VALUE_ISSIGNALING_NAN (d)))
+	    d = real_value_truncate (mode, d);
 	  break;
 	case FLOAT_EXTEND:
 	  /* All this does is change the mode, unless changing
 	     mode class.  */
-	  if (GET_MODE_CLASS (mode) != GET_MODE_CLASS (GET_MODE (op)))
+	  /* Don't perform the operation if flag_signaling_nans is on
+	     and the operand is a signaling NaN.  */
+	  if (GET_MODE_CLASS (mode) != GET_MODE_CLASS (GET_MODE (op))
+	      && !(HONOR_SNANS (mode) && REAL_VALUE_ISSIGNALING_NAN (d)))
 	    real_convert (&d, mode, &d);
 	  break;
 	case FIX:
-	  real_arithmetic (&d, FIX_TRUNC_EXPR, &d, NULL);
+	  /* Don't perform the operation if flag_signaling_nans is on
+	     and the operand is a signaling NaN.  */
+	  if (!(HONOR_SNANS (mode) && REAL_VALUE_ISSIGNALING_NAN (d)))
+	    real_arithmetic (&d, FIX_TRUNC_EXPR, &d, NULL);
 	  break;
 	case NOT:
 	  {
@@ -2232,8 +2277,11 @@ simplify_binary_operation_1 (enum rtx_code code, machine_mode mode,
       if (!HONOR_SIGNED_ZEROS (mode) && trueop0 == CONST0_RTX (mode))
 	return simplify_gen_unary (NEG, mode, op1, mode);
 
-      /* (-1 - a) is ~a.  */
-      if (trueop0 == constm1_rtx)
+      /* (-1 - a) is ~a, unless the expression contains symbolic
+	 constants, in which case not retaining additions and
+	 subtractions could cause invalid assembly to be produced.  */
+      if (trueop0 == constm1_rtx
+	  && !contains_symbolic_reference_p (op1))
 	return simplify_gen_unary (NOT, mode, op1, mode);
 
       /* Subtracting 0 has no effect unless the mode has signed zeros
@@ -3862,14 +3910,19 @@ simplify_const_binary_operation (enum rtx_code code, machine_mode mode,
       else
 	{
 	  REAL_VALUE_TYPE f0, f1, value, result;
+	  const REAL_VALUE_TYPE *opr0, *opr1;
 	  bool inexact;
 
-	  real_convert (&f0, mode, CONST_DOUBLE_REAL_VALUE (op0));
-	  real_convert (&f1, mode, CONST_DOUBLE_REAL_VALUE (op1));
+	  opr0 = CONST_DOUBLE_REAL_VALUE (op0);
+	  opr1 = CONST_DOUBLE_REAL_VALUE (op1);
 
 	  if (HONOR_SNANS (mode)
-	      && (REAL_VALUE_ISNAN (f0) || REAL_VALUE_ISNAN (f1)))
+	      && (REAL_VALUE_ISSIGNALING_NAN (*opr0)
+	          || REAL_VALUE_ISSIGNALING_NAN (*opr1)))
 	    return 0;
+
+	  real_convert (&f0, mode, opr0);
+	  real_convert (&f1, mode, opr1);
 
 	  if (code == DIV
 	      && real_equal (&f1, &dconst0)
@@ -4368,9 +4421,26 @@ simplify_plus_minus (enum rtx_code code, machine_mode mode, rtx op0,
       n_ops = i;
     }
 
-  /* If nothing changed, fail.  */
+  /* If nothing changed, check that rematerialization of rtl instructions
+     is still required.  */
   if (!canonicalized)
-    return NULL_RTX;
+    {
+      /* Perform rematerialization if only all operands are registers and
+	 all operations are PLUS.  */
+      /* ??? Also disallow (non-global, non-frame) fixed registers to work
+	 around rs6000 and how it uses the CA register.  See PR67145.  */
+      for (i = 0; i < n_ops; i++)
+	if (ops[i].neg
+	    || !REG_P (ops[i].op)
+	    || (REGNO (ops[i].op) < FIRST_PSEUDO_REGISTER
+		&& fixed_regs[REGNO (ops[i].op)]
+		&& !global_regs[REGNO (ops[i].op)]
+		&& ops[i].op != frame_pointer_rtx
+		&& ops[i].op != arg_pointer_rtx
+		&& ops[i].op != stack_pointer_rtx))
+	  return NULL_RTX;
+      goto gen_result;
+    }
 
   /* Create (minus -C X) instead of (neg (const (plus X C))).  */
   if (n_ops == 2
@@ -4412,6 +4482,7 @@ simplify_plus_minus (enum rtx_code code, machine_mode mode, rtx op0,
     }
 
   /* Now make the result by performing the requested operations.  */
+ gen_result:
   result = ops[0].op;
   for (i = 1; i < n_ops; i++)
     result = gen_rtx_fmt_ee (ops[i].neg ? MINUS : PLUS,

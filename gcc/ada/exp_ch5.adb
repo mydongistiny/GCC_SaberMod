@@ -3864,10 +3864,14 @@ package body Exp_Ch5 is
             Set_Debug_Info_Needed (Id);
 
             --  If the container does not have a variable indexing aspect,
-            --  the element is a constant in the loop.
+            --  the element is a constant in the loop. The container itself
+            --  may be constant, in which case the element is a constant as
+            --  well. The container has been rewritten as a call to Iterate,
+            --  so examine original node.
 
             if No (Find_Value_Of_Aspect
                      (Container_Typ, Aspect_Variable_Indexing))
+              or else not Is_Variable (Original_Node (Container))
             then
                Set_Ekind (Id, E_Constant);
             end if;
@@ -4281,7 +4285,7 @@ package body Exp_Ch5 is
          --  with element iterators, where debug information must be generated
          --  for the temporary that holds the element value. These temporaries
          --  are created within a transient block whose local declarations are
-         --  transferred to the loop, which now has non-trivial local objects.
+         --  transferred to the loop, which now has nontrivial local objects.
 
          if Nkind (N) = N_Loop_Statement
            and then Present (Identifier (N))

@@ -1,5 +1,5 @@
 /* Output Go language descriptions of types.
-   Copyright (C) 2008-2015 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Written by Ian Lance Taylor <iant@google.com>.
 
 This file is part of GCC.
@@ -30,15 +30,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "diagnostic-core.h"
-#include "alias.h"
 #include "tree.h"
-#include "options.h"
-#include "obstack.h"
-#include "debug.h"
 #include "wide-int-print.h"
+#include "diagnostic-core.h"
+#include "debug.h"
 #include "stor-layout.h"
-#include "defaults.h"
 
 /* We dump this information from the debug hooks.  This gives us a
    stable and maintainable API to hook into.  In order to work

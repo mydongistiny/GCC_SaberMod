@@ -1,5 +1,5 @@
 /* Register to Stack convert for GNU compiler.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -153,25 +153,21 @@
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
 #include "df.h"
-#include "alias.h"
+#include "insn-config.h"
+#include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
+#include "recog.h"
 #include "varasm.h"
 #include "rtl-error.h"
-#include "tm_p.h"
-#include "insn-config.h"
-#include "regs.h"
-#include "flags.h"
-#include "recog.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
 #include "reload.h"
 #include "tree-pass.h"
-#include "target.h"
-#include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
 #include "rtl-iter.h"
 
 #ifdef STACK_REGS

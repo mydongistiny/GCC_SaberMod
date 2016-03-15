@@ -1,5 +1,5 @@
 /* Forward propagation of expressions for single use variables.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,45 +21,29 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "expmed.h"
+#include "optabs-query.h"
+#include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "tm_p.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
 #include "tree-cfg.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
 #include "tree-dfa.h"
-#include "tree-pass.h"
-#include "langhooks.h"
-#include "diagnostic.h"
-#include "cfgloop.h"
-#include "insn-codes.h"
-#include "optabs-query.h"
 #include "tree-ssa-propagate.h"
 #include "tree-ssa-dom.h"
 #include "builtins.h"
 #include "tree-cfgcleanup.h"
-#include "tree-into-ssa.h"
 #include "cfganal.h"
 
 /* This pass propagates the RHS of assignment statements into use
@@ -1493,7 +1477,7 @@ defcodefor_name (tree name, enum tree_code *code, tree *arg1, tree *arg2)
 	   || GIMPLE_BINARY_RHS
 	   || GIMPLE_UNARY_RHS
 	   || GIMPLE_SINGLE_RHS)
-    extract_ops_from_tree_1 (name, &code1, &arg11, &arg21, &arg31);
+    extract_ops_from_tree (name, &code1, &arg11, &arg21, &arg31);
 
   *code = code1;
   *arg1 = arg11;

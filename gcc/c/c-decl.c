@@ -1,5 +1,5 @@
 /* Process declarations and variables for C compiler.
-   Copyright (C) 1988-2015 Free Software Foundation, Inc.
+   Copyright (C) 1988-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,39 +27,26 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "target.h"
+#include "function.h"
+#include "c-tree.h"
+#include "timevar.h"
+#include "stringpool.h"
+#include "cgraph.h"
 #include "intl.h"
-#include "tree.h"
-#include "alias.h"
-#include "fold-const.h"
 #include "print-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
 #include "attribs.h"
-#include "stringpool.h"
-#include "tree-inline.h"
-#include "flags.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "c-tree.h"
 #include "toplev.h"
-#include "tm_p.h"
-#include "cpplib.h"
-#include "target.h"
 #include "debug.h"
-#include "opts.h"
-#include "timevar.h"
-#include "c-family/c-common.h"
 #include "c-family/c-objc.h"
 #include "c-family/c-pragma.h"
 #include "c-family/c-ubsan.h"
 #include "c-lang.h"
 #include "langhooks.h"
 #include "tree-iterator.h"
-#include "diagnostic-core.h"
 #include "dumpfile.h"
-#include "cgraph.h"
-#include "langhooks-def.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
 #include "cilk.h"
@@ -3061,8 +3048,7 @@ pushdecl (tree x)
 	element = TREE_TYPE (element);
       element = TYPE_MAIN_VARIANT (element);
 
-      if ((TREE_CODE (element) == RECORD_TYPE
-	   || TREE_CODE (element) == UNION_TYPE)
+      if (RECORD_OR_UNION_TYPE_P (element)
 	  && (TREE_CODE (x) != TYPE_DECL
 	      || TREE_CODE (TREE_TYPE (x)) == ARRAY_TYPE)
 	  && !COMPLETE_TYPE_P (element))
@@ -4417,13 +4403,7 @@ c_decl_attributes (tree *node, tree attributes, int flags)
 	  || TREE_CODE (*node) == FUNCTION_DECL))
     {
       if (VAR_P (*node)
-	  && ((DECL_CONTEXT (*node)
-	       && TREE_CODE (DECL_CONTEXT (*node)) == FUNCTION_DECL)
-	      || (current_function_decl && !DECL_EXTERNAL (*node))))
-	error ("%q+D in block scope inside of declare target directive",
-	       *node);
-      else if (VAR_P (*node)
-	       && !lang_hooks.types.omp_mappable_type (TREE_TYPE (*node)))
+	  && !lang_hooks.types.omp_mappable_type (TREE_TYPE (*node)))
 	error ("%q+D in declare target directive does not have mappable type",
 	       *node);
       else
@@ -4662,8 +4642,7 @@ diagnose_uninitialized_cst_member (tree decl, tree type)
 	  inform (DECL_SOURCE_LOCATION (field), "%qD should be initialized", field);
 	}
 
-      if (TREE_CODE (field_type) == RECORD_TYPE
-	  || TREE_CODE (field_type) == UNION_TYPE)
+      if (RECORD_OR_UNION_TYPE_P (field_type))
 	diagnose_uninitialized_cst_member (decl, field_type);
     }
 }
@@ -4764,7 +4743,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	      struct c_binding *b_ext = I_SYMBOL_BINDING (DECL_NAME (decl));
 	      while (b_ext && !B_IN_EXTERNAL_SCOPE (b_ext))
 		b_ext = b_ext->shadowed;
-	      if (b_ext)
+	      if (b_ext && TREE_CODE (decl) == TREE_CODE (b_ext->decl))
 		{
 		  if (b_ext->u.type && comptypes (b_ext->u.type, type))
 		    b_ext->u.type = composite_type (b_ext->u.type, type);
@@ -4811,6 +4790,12 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	   error ("storage size of %q+D isn%'t known", decl);
 	   TREE_TYPE (decl) = error_mark_node;
 	 }
+
+      if ((RECORD_OR_UNION_TYPE_P (TREE_TYPE (decl))
+	  || TREE_CODE (TREE_TYPE (decl)) == ENUMERAL_TYPE)
+	  && DECL_SIZE (decl) == NULL_TREE
+	  && TREE_STATIC (decl))
+	incomplete_record_decls.safe_push (decl);
 
       if (is_global_var (decl) && DECL_SIZE (decl) != 0)
 	{
@@ -4985,8 +4970,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
       if (TREE_READONLY (decl))
 	warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wc___compat,
 		    "uninitialized const %qD is invalid in C++", decl);
-      else if ((TREE_CODE (type) == RECORD_TYPE
-	      	|| TREE_CODE (type) == UNION_TYPE)
+      else if (RECORD_OR_UNION_TYPE_P (type)
 	       && C_TYPE_FIELDS_READONLY (type))
 	diagnose_uninitialized_cst_member (decl, type);
     }
@@ -5297,9 +5281,10 @@ warn_defaults_to (location_t location, int opt, const char *gmsgid, ...)
 {
   diagnostic_info diagnostic;
   va_list ap;
+  rich_location richloc (line_table, location);
 
   va_start (ap, gmsgid);
-  diagnostic_set_info (&diagnostic, gmsgid, &ap, location,
+  diagnostic_set_info (&diagnostic, gmsgid, &ap, &richloc,
                        flag_isoc99 ? DK_PEDWARN : DK_WARNING);
   diagnostic.option_index = opt;
   report_diagnostic (&diagnostic);
@@ -5372,6 +5357,8 @@ grokdeclarator (const struct c_declarator *declarator,
   tree returned_attrs = NULL_TREE;
   bool bitfield = width != NULL;
   tree element_type;
+  tree orig_qual_type = NULL;
+  size_t orig_qual_indirect = 0;
   struct c_arg_info *arg_info = 0;
   addr_space_t as1, as2, address_space;
   location_t loc = UNKNOWN_LOCATION;
@@ -5410,9 +5397,9 @@ grokdeclarator (const struct c_declarator *declarator,
 	case cdk_function:
 	case cdk_pointer:
 	  funcdef_syntax = (decl->kind == cdk_function);
-	  decl = decl->declarator;
 	  if (first_non_attr_kind == cdk_attrs)
 	    first_non_attr_kind = decl->kind;
+	  decl = decl->declarator;
 	  break;
 
 	case cdk_attrs:
@@ -5534,12 +5521,17 @@ grokdeclarator (const struct c_declarator *declarator,
   if ((TREE_CODE (type) == ARRAY_TYPE
        || first_non_attr_kind == cdk_array)
       && TYPE_QUALS (element_type))
-    type = TYPE_MAIN_VARIANT (type);
+    {
+      orig_qual_type = type;
+      type = TYPE_MAIN_VARIANT (type);
+    }
   type_quals = ((constp ? TYPE_QUAL_CONST : 0)
 		| (restrictp ? TYPE_QUAL_RESTRICT : 0)
 		| (volatilep ? TYPE_QUAL_VOLATILE : 0)
 		| (atomicp ? TYPE_QUAL_ATOMIC : 0)
 		| ENCODE_QUAL_ADDR_SPACE (address_space));
+  if (type_quals != TYPE_QUALS (element_type))
+    orig_qual_type = NULL_TREE;
 
   /* Applying the _Atomic qualifier to an array type (through the use
      of typedefs or typeof) must be detected here.  If the qualifier
@@ -5965,6 +5957,18 @@ grokdeclarator (const struct c_declarator *declarator,
 	      {
 		error_at (loc, "array type has incomplete element type %qT",
 			  type);
+		/* See if we can be more helpful.  */
+		if (TREE_CODE (type) == ARRAY_TYPE)
+		  {
+		    if (name)
+		      inform (loc, "declaration of %qE as multidimensional "
+			      "array must have bounds for all dimensions "
+			      "except the first", name);
+		    else
+		      inform (loc, "declaration of multidimensional array "
+			      "must have bounds for all dimensions except "
+			      "the first");
+		  }
 		type = error_mark_node;
 	      }
 	    else
@@ -6018,6 +6022,9 @@ grokdeclarator (const struct c_declarator *declarator,
 		    TYPE_SIZE_UNIT (type) = size_zero_node;
 		    SET_TYPE_STRUCTURAL_EQUALITY (type);
 		  }
+
+		if (!valid_array_size_p (loc, type, name))
+		  type = error_mark_node;
 	      }
 
 	    if (decl_context != PARM
@@ -6025,11 +6032,13 @@ grokdeclarator (const struct c_declarator *declarator,
 		    || array_ptr_attrs != NULL_TREE
 		    || array_parm_static))
 	      {
-		error_at (loc, "static or type qualifiers in non-parameter array declarator");
+		error_at (loc, "static or type qualifiers in non-parameter "
+			  "array declarator");
 		array_ptr_quals = TYPE_UNQUALIFIED;
 		array_ptr_attrs = NULL_TREE;
 		array_parm_static = 0;
 	      }
+	    orig_qual_indirect++;
 	    break;
 	  }
 	case cdk_function:
@@ -6039,6 +6048,7 @@ grokdeclarator (const struct c_declarator *declarator,
 	       attributes.  */
 	    bool really_funcdef = false;
 	    tree arg_types;
+	    orig_qual_type = NULL_TREE;
 	    if (funcdef_flag)
 	      {
 		const struct c_declarator *t = declarator->declarator;
@@ -6139,7 +6149,9 @@ grokdeclarator (const struct c_declarator *declarator,
 	      pedwarn (loc, OPT_Wpedantic,
 		       "ISO C forbids qualified function types");
 	    if (type_quals)
-	      type = c_build_qualified_type (type, type_quals);
+	      type = c_build_qualified_type (type, type_quals, orig_qual_type,
+					     orig_qual_indirect);
+	    orig_qual_type = NULL_TREE;
 	    size_varies = false;
 
 	    /* When the pointed-to type involves components of variable size,
@@ -6304,22 +6316,6 @@ grokdeclarator (const struct c_declarator *declarator,
 	}
     }
 
-  /* Did array size calculations overflow or does the array cover more
-     than half of the address-space?  */
-  if (TREE_CODE (type) == ARRAY_TYPE
-      && COMPLETE_TYPE_P (type)
-      && TREE_CODE (TYPE_SIZE_UNIT (type)) == INTEGER_CST
-      && ! valid_constant_size_p (TYPE_SIZE_UNIT (type)))
-    {
-      if (name)
-	error_at (loc, "size of array %qE is too large", name);
-      else
-	error_at (loc, "size of unnamed array is too large");
-      /* If we proceed with the array type as it is, we'll eventually
-	 crash in tree_to_[su]hwi().  */
-      type = error_mark_node;
-    }
-
   /* If this is declaring a typedef name, return a TYPE_DECL.  */
 
   if (storage_class == csc_typedef)
@@ -6337,7 +6333,8 @@ grokdeclarator (const struct c_declarator *declarator,
 	pedwarn (loc, OPT_Wpedantic,
 		 "ISO C forbids qualified function types");
       if (type_quals)
-	type = c_build_qualified_type (type, type_quals);
+	type = c_build_qualified_type (type, type_quals, orig_qual_type,
+				       orig_qual_indirect);
       decl = build_decl (declarator->id_loc,
 			 TYPE_DECL, declarator->u.id, type);
       if (declspecs->explicit_signed_p)
@@ -6390,7 +6387,8 @@ grokdeclarator (const struct c_declarator *declarator,
 	pedwarn (loc, OPT_Wpedantic,
 		 "ISO C forbids const or volatile function types");
       if (type_quals)
-	type = c_build_qualified_type (type, type_quals);
+	type = c_build_qualified_type (type, type_quals, orig_qual_type,
+				       orig_qual_indirect);
       return type;
     }
 
@@ -6437,8 +6435,16 @@ grokdeclarator (const struct c_declarator *declarator,
 	  {
 	    /* Transfer const-ness of array into that of type pointed to.  */
 	    type = TREE_TYPE (type);
+	    if (orig_qual_type != NULL_TREE)
+	      {
+		if (orig_qual_indirect == 0)
+		  orig_qual_type = TREE_TYPE (orig_qual_type);
+		else
+		  orig_qual_indirect--;
+	      }
 	    if (type_quals)
-	      type = c_build_qualified_type (type, type_quals);
+	      type = c_build_qualified_type (type, type_quals, orig_qual_type,
+					     orig_qual_indirect);
 	    type = c_build_pointer_type (type);
 	    type_quals = array_ptr_quals;
 	    if (type_quals)
@@ -6529,7 +6535,8 @@ grokdeclarator (const struct c_declarator *declarator,
 	    TYPE_DOMAIN (type) = build_range_type (sizetype, size_zero_node,
 						   NULL_TREE);
 	  }
-	type = c_build_qualified_type (type, type_quals);
+	type = c_build_qualified_type (type, type_quals, orig_qual_type,
+				       orig_qual_indirect);
 	decl = build_decl (declarator->id_loc,
 			   FIELD_DECL, declarator->u.id, type);
 	DECL_NONADDRESSABLE_P (decl) = bitfield;
@@ -6641,7 +6648,8 @@ grokdeclarator (const struct c_declarator *declarator,
 	/* An uninitialized decl with `extern' is a reference.  */
 	int extern_ref = !initialized && storage_class == csc_extern;
 
-	type = c_build_qualified_type (type, type_quals);
+	type = c_build_qualified_type (type, type_quals, orig_qual_type,
+				       orig_qual_indirect);
 
 	/* C99 6.2.2p7: It is invalid (compile-time undefined
 	   behavior) to create an 'extern' declaration for a
@@ -6756,8 +6764,7 @@ grokdeclarator (const struct c_declarator *declarator,
 	&& VAR_P (decl)
 	&& TREE_PUBLIC (decl)
 	&& TREE_STATIC (decl)
-	&& (TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
-	    || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE
+	&& (RECORD_OR_UNION_TYPE_P (TREE_TYPE (decl))
 	    || TREE_CODE (TREE_TYPE (decl)) == ENUMERAL_TYPE)
 	&& TYPE_NAME (TREE_TYPE (decl)) == NULL_TREE)
       warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wc___compat,
@@ -6947,11 +6954,11 @@ get_parm_info (bool ellipsis, tree expr)
     {
       if (TYPE_QUALS (TREE_TYPE (b->decl)) != TYPE_UNQUALIFIED
 	  || C_DECL_REGISTER (b->decl))
-	error ("%<void%> as only parameter may not be qualified");
+	error_at (b->locus, "%<void%> as only parameter may not be qualified");
 
       /* There cannot be an ellipsis.  */
       if (ellipsis)
-	error ("%<void%> must be the only parameter");
+	error_at (b->locus, "%<void%> must be the only parameter");
 
       arg_info->types = void_list_node;
       return arg_info;
@@ -6980,13 +6987,14 @@ get_parm_info (bool ellipsis, tree expr)
 
 	  /* Check for forward decls that never got their actual decl.  */
 	  if (TREE_ASM_WRITTEN (decl))
-	    error ("parameter %q+D has just a forward declaration", decl);
+	    error_at (b->locus,
+		      "parameter %q+D has just a forward declaration", decl);
 	  /* Check for (..., void, ...) and issue an error.  */
 	  else if (VOID_TYPE_P (type) && !DECL_NAME (decl))
 	    {
 	      if (!gave_void_only_once_err)
 		{
-		  error ("%<void%> must be the only parameter");
+		  error_at (b->locus, "%<void%> must be the only parameter");
 		  gave_void_only_once_err = true;
 		}
 	    }
@@ -7025,13 +7033,13 @@ get_parm_info (bool ellipsis, tree expr)
 	    {
 	      if (b->id)
 		/* The %s will be one of 'struct', 'union', or 'enum'.  */
-		warning_at (input_location, 0,
+		warning_at (b->locus, 0,
 			    "%<%s %E%> declared inside parameter list"
 			    " will not be visible outside of this definition or"
 			    " declaration", keyword, b->id);
 	      else
 		/* The %s will be one of 'struct', 'union', or 'enum'.  */
-		warning_at (input_location, 0,
+		warning_at (b->locus, 0,
 			    "anonymous %s declared inside parameter list"
 			    " will not be visible outside of this definition or"
 			    " declaration", keyword);
@@ -7042,25 +7050,28 @@ get_parm_info (bool ellipsis, tree expr)
 	  vec_safe_push (tags, tag);
 	  break;
 
+	case FUNCTION_DECL:
+	  /*  FUNCTION_DECLs appear when there is an implicit function
+	      declaration in the parameter list.  */
+	  gcc_assert (b->nested);
+	  goto set_shadowed;
+
 	case CONST_DECL:
 	case TYPE_DECL:
-	case FUNCTION_DECL:
 	  /* CONST_DECLs appear here when we have an embedded enum,
 	     and TYPE_DECLs appear here when we have an embedded struct
 	     or union.  No warnings for this - we already warned about the
-	     type itself.  FUNCTION_DECLs appear when there is an implicit
-	     function declaration in the parameter list.  */
+	     type itself.  */
 
 	  /* When we reinsert this decl in the function body, we need
 	     to reconstruct whether it was marked as nested.  */
-	  gcc_assert (TREE_CODE (decl) == FUNCTION_DECL
-		      ? b->nested
-		      : !b->nested);
+	  gcc_assert (!b->nested);
 	  DECL_CHAIN (decl) = others;
 	  others = decl;
 	  /* fall through */
 
 	case ERROR_MARK:
+	set_shadowed:
 	  /* error_mark_node appears here when we have an undeclared
 	     variable.  Just throw it away.  */
 	  if (b->id)
@@ -7247,7 +7258,8 @@ start_struct (location_t loc, enum tree_code code, tree name,
     }
 
   C_TYPE_BEING_DEFINED (ref) = 1;
-  TYPE_PACKED (ref) = flag_pack_struct;
+  for (tree v = TYPE_MAIN_VARIANT (ref); v; v = TYPE_NEXT_VARIANT (v))
+    TYPE_PACKED (v) = flag_pack_struct;
 
   *enclosing_struct_parse_info = struct_parse_info;
   struct_parse_info = XNEW (struct c_struct_parse_info);
@@ -7312,8 +7324,7 @@ grokfield (location_t loc,
 	 that took root before someone noticed the bug...  */
 
       tree type = declspecs->type;
-      bool type_ok = (TREE_CODE (type) == RECORD_TYPE
-		      || TREE_CODE (type) == UNION_TYPE);
+      bool type_ok = RECORD_OR_UNION_TYPE_P (type);
       bool ok = false;
 
       if (type_ok
@@ -7389,7 +7400,7 @@ is_duplicate_field (tree x, tree y)
       xt = TREE_TYPE (x);
       if (DECL_NAME (x) != NULL_TREE)
 	xn = DECL_NAME (x);
-      else if ((TREE_CODE (xt) == RECORD_TYPE || TREE_CODE (xt) == UNION_TYPE)
+      else if (RECORD_OR_UNION_TYPE_P (xt)
 	       && TYPE_NAME (xt) != NULL_TREE
 	       && TREE_CODE (TYPE_NAME (xt)) == TYPE_DECL)
 	xn = DECL_NAME (TYPE_NAME (xt));
@@ -7399,7 +7410,7 @@ is_duplicate_field (tree x, tree y)
       yt = TREE_TYPE (y);
       if (DECL_NAME (y) != NULL_TREE)
 	yn = DECL_NAME (y);
-      else if ((TREE_CODE (yt) == RECORD_TYPE || TREE_CODE (yt) == UNION_TYPE)
+      else if (RECORD_OR_UNION_TYPE_P (yt)
 	       && TYPE_NAME (yt) != NULL_TREE
 	       && TREE_CODE (TYPE_NAME (yt)) == TYPE_DECL)
 	yn = DECL_NAME (TYPE_NAME (yt));
@@ -7434,8 +7445,7 @@ detect_field_duplicates_hash (tree fieldlist,
 	  }
 	*slot = y;
       }
-    else if (TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
-	     || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE)
+    else if (RECORD_OR_UNION_TYPE_P (TREE_TYPE (x)))
       {
 	detect_field_duplicates_hash (TYPE_FIELDS (TREE_TYPE (x)), htab);
 
@@ -7486,8 +7496,7 @@ detect_field_duplicates (tree fieldlist)
   do {
     timeout--;
     if (DECL_NAME (x) == NULL_TREE
-	&& (TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
-	    || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE))
+	&& RECORD_OR_UNION_TYPE_P (TREE_TYPE (x)))
       timeout = 0;
     x = DECL_CHAIN (x);
   } while (timeout > 0 && x);
@@ -7503,8 +7512,7 @@ detect_field_duplicates (tree fieldlist)
 	if (DECL_NAME (x)
 	    || (flag_plan9_extensions
 		&& DECL_NAME (x) == NULL_TREE
-		&& (TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
-		    || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE)
+		&& RECORD_OR_UNION_TYPE_P (TREE_TYPE (x))
 		&& TYPE_NAME (TREE_TYPE (x)) != NULL_TREE
 		&& TREE_CODE (TYPE_NAME (TREE_TYPE (x))) == TYPE_DECL))
 	  {
@@ -7617,9 +7625,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 	{
 	  if (DECL_NAME (x) != 0)
 	    break;
-	  if (flag_isoc11
-	      && (TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
-		  || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE))
+	  if (flag_isoc11 && RECORD_OR_UNION_TYPE_P (TREE_TYPE (x)))
 	    break;
 	}
 
@@ -7664,8 +7670,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 	{
 	  /* A field that is pseudo-const makes the structure likewise.  */
 	  tree t1 = strip_array_types (TREE_TYPE (x));
-	  if ((TREE_CODE (t1) == RECORD_TYPE || TREE_CODE (t1) == UNION_TYPE)
-	      && C_TYPE_FIELDS_READONLY (t1))
+	  if (RECORD_OR_UNION_TYPE_P (t1) && C_TYPE_FIELDS_READONLY (t1))
 	    C_TYPE_FIELDS_READONLY (t) = 1;
 	}
 
@@ -7723,8 +7728,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 		 "invalid use of structure with flexible array member");
 
       if (DECL_NAME (x)
-	  || TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
-	  || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE)
+	  || RECORD_OR_UNION_TYPE_P (TREE_TYPE (x)))
 	saw_named_field = 1;
     }
 
@@ -7735,6 +7739,8 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 
   TYPE_FIELDS (t) = fieldlist;
 
+  maybe_apply_pragma_scalar_storage_order (t);
+
   layout_type (t);
 
   if (TYPE_SIZE_UNIT (t)
@@ -7743,27 +7749,45 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
       && !valid_constant_size_p (TYPE_SIZE_UNIT (t)))
     error ("type %qT is too large", t);
 
-  /* Give bit-fields their proper types.  */
-  {
-    tree *fieldlistp = &fieldlist;
-    while (*fieldlistp)
-      if (TREE_CODE (*fieldlistp) == FIELD_DECL && DECL_INITIAL (*fieldlistp)
-	  && TREE_TYPE (*fieldlistp) != error_mark_node)
+  /* Give bit-fields their proper types and rewrite the type of array fields
+     with scalar component if the enclosing type has reverse storage order.  */
+  for (tree field = fieldlist; field; field = DECL_CHAIN (field))
+    {
+      if (TREE_CODE (field) == FIELD_DECL
+	  && DECL_INITIAL (field)
+	  && TREE_TYPE (field) != error_mark_node)
 	{
 	  unsigned HOST_WIDE_INT width
-	    = tree_to_uhwi (DECL_INITIAL (*fieldlistp));
-	  tree type = TREE_TYPE (*fieldlistp);
+	    = tree_to_uhwi (DECL_INITIAL (field));
+	  tree type = TREE_TYPE (field);
 	  if (width != TYPE_PRECISION (type))
 	    {
-	      TREE_TYPE (*fieldlistp)
+	      TREE_TYPE (field)
 		= c_build_bitfield_integer_type (width, TYPE_UNSIGNED (type));
-	      DECL_MODE (*fieldlistp) = TYPE_MODE (TREE_TYPE (*fieldlistp));
+	      DECL_MODE (field) = TYPE_MODE (TREE_TYPE (field));
 	    }
-	  DECL_INITIAL (*fieldlistp) = 0;
+	  DECL_INITIAL (field) = 0;
 	}
-      else
-	fieldlistp = &DECL_CHAIN (*fieldlistp);
-  }
+      else if (TYPE_REVERSE_STORAGE_ORDER (t)
+	       && TREE_CODE (field) == FIELD_DECL
+	       && TREE_CODE (TREE_TYPE (field)) == ARRAY_TYPE)
+	{
+	  tree ftype = TREE_TYPE (field);
+	  tree ctype = strip_array_types (ftype);
+	  if (!RECORD_OR_UNION_TYPE_P (ctype) && TYPE_MODE (ctype) != QImode)
+	    {
+	      tree fmain_type = TYPE_MAIN_VARIANT (ftype);
+	      tree *typep = &fmain_type;
+	      do {
+		*typep = build_distinct_type_copy (*typep);
+		TYPE_REVERSE_STORAGE_ORDER (*typep) = 1;
+		typep = &TREE_TYPE (*typep);
+	      } while (TREE_CODE (*typep) == ARRAY_TYPE);
+	      TREE_TYPE (field)
+		= c_build_qualified_type (fmain_type, TYPE_QUALS (ftype));
+	    }
+	}
+    }
 
   /* Now we have the truly final field list.
      Store it in this type and in the variants.  */
@@ -7821,6 +7845,14 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
       }
   }
 
+  /* Note: C_TYPE_INCOMPLETE_VARS overloads TYPE_VFIELD which is used
+     in dwarf2out via rest_of_decl_compilation below and means
+     something totally different.  Since we will be clearing
+     C_TYPE_INCOMPLETE_VARS shortly after we iterate through them,
+     clear it ahead of time and avoid problems in dwarf2out.  Ideally,
+     C_TYPE_INCOMPLETE_VARS should use some language specific
+     node.  */
+  tree incomplete_vars = C_TYPE_INCOMPLETE_VARS (TYPE_MAIN_VARIANT (t));
   for (x = TYPE_MAIN_VARIANT (t); x; x = TYPE_NEXT_VARIANT (x))
     {
       TYPE_FIELDS (x) = TYPE_FIELDS (t);
@@ -7828,6 +7860,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
       C_TYPE_FIELDS_READONLY (x) = C_TYPE_FIELDS_READONLY (t);
       C_TYPE_FIELDS_VOLATILE (x) = C_TYPE_FIELDS_VOLATILE (t);
       C_TYPE_VARIABLE_SIZE (x) = C_TYPE_VARIABLE_SIZE (t);
+      C_TYPE_INCOMPLETE_VARS (x) = NULL_TREE;
     }
 
   /* If this was supposed to be a transparent union, but we can't
@@ -7841,17 +7874,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
     }
 
   /* If this structure or union completes the type of any previous
-     variable declaration, lay it out and output its rtl.
-
-     Note: C_TYPE_INCOMPLETE_VARS overloads TYPE_VFIELD which is used
-     in dwarf2out via rest_of_decl_compilation below and means
-     something totally different.  Since we will be clearing
-     C_TYPE_INCOMPLETE_VARS shortly after we iterate through them,
-     clear it ahead of time and avoid problems in dwarf2out.  Ideally,
-     C_TYPE_INCOMPLETE_VARS should use some language specific
-     node.  */
-  tree incomplete_vars = C_TYPE_INCOMPLETE_VARS (TYPE_MAIN_VARIANT (t));
-  C_TYPE_INCOMPLETE_VARS (TYPE_MAIN_VARIANT (t)) = 0;
+     variable declaration, lay it out and output its rtl.  */
   for (x = incomplete_vars; x; x = TREE_CHAIN (x))
     {
       tree decl = TREE_VALUE (x);
@@ -8017,7 +8040,24 @@ finish_enum (tree enumtype, tree values, tree attributes)
   precision = MAX (tree_int_cst_min_precision (minnode, sign),
 		   tree_int_cst_min_precision (maxnode, sign));
 
-  if (TYPE_PACKED (enumtype) || precision > TYPE_PRECISION (integer_type_node))
+  /* If the precision of the type was specified with an attribute and it
+     was too small, give an error.  Otherwise, use it.  */
+  if (TYPE_PRECISION (enumtype) && lookup_attribute ("mode", attributes))
+    {
+      if (precision > TYPE_PRECISION (enumtype))
+	{
+	  TYPE_PRECISION (enumtype) = 0;
+	  error ("specified mode too small for enumeral values");
+	}
+      else
+	precision = TYPE_PRECISION (enumtype);
+    }
+  else
+    TYPE_PRECISION (enumtype) = 0;
+
+  if (TYPE_PACKED (enumtype)
+      || precision > TYPE_PRECISION (integer_type_node)
+      || TYPE_PRECISION (enumtype))
     {
       tem = c_common_type_for_size (precision, sign == UNSIGNED ? 1 : 0);
       if (tem == NULL)
@@ -8034,17 +8074,7 @@ finish_enum (tree enumtype, tree values, tree attributes)
   TYPE_UNSIGNED (enumtype) = TYPE_UNSIGNED (tem);
   TYPE_ALIGN (enumtype) = TYPE_ALIGN (tem);
   TYPE_SIZE (enumtype) = 0;
-
-  /* If the precision of the type was specified with an attribute and it
-     was too small, give an error.  Otherwise, use it.  */
-  if (TYPE_PRECISION (enumtype)
-      && lookup_attribute ("mode", attributes))
-    {
-      if (precision > TYPE_PRECISION (enumtype))
-	error ("specified mode too small for enumeral values");
-    }
-  else
-    TYPE_PRECISION (enumtype) = TYPE_PRECISION (tem);
+  TYPE_PRECISION (enumtype) = TYPE_PRECISION (tem);
 
   layout_type (enumtype);
 
@@ -9433,38 +9463,12 @@ struct c_declspecs *
 build_null_declspecs (void)
 {
   struct c_declspecs *ret = XOBNEW (&parser_obstack, struct c_declspecs);
-  memset (&ret->locations, 0, cdw_number_of_elements);
-  ret->type = 0;
-  ret->expr = 0;
-  ret->decl_attr = 0;
-  ret->attrs = 0;
+  memset (ret, 0, sizeof *ret);
   ret->align_log = -1;
   ret->typespec_word = cts_none;
   ret->storage_class = csc_none;
   ret->expr_const_operands = true;
-  ret->declspecs_seen_p = false;
   ret->typespec_kind = ctsk_none;
-  ret->non_sc_seen_p = false;
-  ret->typedef_p = false;
-  ret->explicit_signed_p = false;
-  ret->deprecated_p = false;
-  ret->default_int_p = false;
-  ret->long_p = false;
-  ret->long_long_p = false;
-  ret->short_p = false;
-  ret->signed_p = false;
-  ret->unsigned_p = false;
-  ret->complex_p = false;
-  ret->inline_p = false;
-  ret->noreturn_p = false;
-  ret->thread_p = false;
-  ret->thread_gnu_p = false;
-  ret->const_p = false;
-  ret->volatile_p = false;
-  ret->atomic_p = false;
-  ret->restrict_p = false;
-  ret->saturating_p = false;
-  ret->alignas_p = false;
   ret->address_space = ADDR_SPACE_GENERIC;
   return ret;
 }
@@ -10720,11 +10724,22 @@ c_write_global_declarations_1 (tree globals)
       if (TREE_CODE (decl) == FUNCTION_DECL
 	  && DECL_INITIAL (decl) == 0
 	  && DECL_EXTERNAL (decl)
-	  && !TREE_PUBLIC (decl)
-	  && C_DECL_USED (decl))
+	  && !TREE_PUBLIC (decl))
 	{
-	  pedwarn (input_location, 0, "%q+F used but never defined", decl);
-	  TREE_NO_WARNING (decl) = 1;
+	  if (C_DECL_USED (decl))
+	    {
+	      pedwarn (input_location, 0, "%q+F used but never defined", decl);
+	      TREE_NO_WARNING (decl) = 1;
+	    }
+	  /* For -Wunused-function warn about unused static prototypes.  */
+	  else if (warn_unused_function
+		   && ! DECL_ARTIFICIAL (decl)
+		   && ! TREE_NO_WARNING (decl))
+	    {
+	      warning (OPT_Wunused_function,
+		       "%q+F declared %<static%> but never defined", decl);
+	      TREE_NO_WARNING (decl) = 1;
+	    }
 	}
 
       wrapup_global_declaration_1 (decl);

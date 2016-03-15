@@ -1,5 +1,5 @@
 /* jit-builtins.c -- Handling of builtin functions during JIT-compilation.
-   Copyright (C) 2014-2015 Free Software Foundation, Inc.
+   Copyright (C) 2014-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,14 +20,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "vec.h"
 #include "target.h"
+#include "jit-playback.h"
 #include "stringpool.h"
 
-#include "jit-common.h"
 #include "jit-builtins.h"
-#include "jit-recording.h"
-#include "jit-playback.h"
 
 namespace gcc {
 
@@ -63,7 +60,6 @@ static const struct builtin_data builtin_data[] =
 {
 #include "builtins.def"
 };
-#undef DEF_BUILTIN
 
 /* Helper function for find_builtin_by_name.  */
 

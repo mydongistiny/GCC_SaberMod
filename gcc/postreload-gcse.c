@@ -1,5 +1,5 @@
 /* Post reload partially redundant load elimination
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,32 +21,20 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
-#include "diagnostic-core.h"
-
-#include "alias.h"
 #include "tm_p.h"
-#include "regs.h"
-#include "flags.h"
 #include "insn-config.h"
+#include "emit-rtl.h"
 #include "recog.h"
+
 #include "cfgrtl.h"
 #include "profile.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
-#include "except.h"
-#include "intl.h"
 #include "params.h"
-#include "target.h"
 #include "tree-pass.h"
 #include "dbgcnt.h"
 #include "gcse-common.h"
@@ -360,6 +348,8 @@ free_mem (void)
   BITMAP_FREE (blocks_with_calls);
   BITMAP_FREE (modify_mem_list_set);
   free (reg_avail_info);
+  free (modify_mem_list);
+  free (canon_modify_mem_list);
 }
 
 

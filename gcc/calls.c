@@ -1,5 +1,5 @@
 /* Convert function calls to rtl insns, for GNU C compiler.
-   Copyright (C) 1989-2015 Free Software Foundation, Inc.
+   Copyright (C) 1989-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,37 +21,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "alias.h"
+#include "predict.h"
+#include "tm_p.h"
+#include "stringpool.h"
+#include "expmed.h"
+#include "optabs.h"
+#include "emit-rtl.h"
+#include "cgraph.h"
+#include "diagnostic-core.h"
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "stringpool.h"
-#include "attribs.h"
 #include "internal-fn.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
 #include "expr.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "libfuncs.h"
-#include "regs.h"
-#include "diagnostic-core.h"
 #include "output.h"
-#include "tm_p.h"
-#include "timevar.h"
 #include "langhooks.h"
-#include "target.h"
-#include "cgraph.h"
 #include "except.h"
 #include "dbgcnt.h"
 #include "rtl-iter.h"
@@ -203,18 +194,6 @@ prepare_call_address (tree fndecl_or_type, rtx funexp, rtx static_chain_value,
 	       && targetm.small_register_classes_for_mode_p (FUNCTION_MODE))
 	      ? force_not_mem (memory_address (FUNCTION_MODE, funexp))
 	      : memory_address (FUNCTION_MODE, funexp));
-  else if (flag_pic
-	   && fndecl_or_type
-	   && TREE_CODE (fndecl_or_type) == FUNCTION_DECL
-	   && (!flag_plt
-	       || lookup_attribute ("noplt", DECL_ATTRIBUTES (fndecl_or_type)))
-	   && !targetm.binds_local_p (fndecl_or_type))
-    {
-      /* This is done only for PIC code.  There is no easy interface to force the
-	 function address into GOT for non-PIC case.  non-PIC case needs to be
-	 handled specially by the backend.  */
-      funexp = force_reg (Pmode, funexp);
-    }
   else if (! sibcallp)
     {
       if (!NO_FUNCTION_CSE && optimize && ! flag_no_function_cse)
@@ -293,12 +272,19 @@ emit_call_1 (rtx funexp, tree fntree ATTRIBUTE_UNUSED, tree fndecl ATTRIBUTE_UNU
   rtx rounded_stack_size_rtx = GEN_INT (rounded_stack_size);
   rtx call, funmem, pat;
   int already_popped = 0;
-  HOST_WIDE_INT n_popped
-    = targetm.calls.return_pops_args (fndecl, funtype, stack_size);
+  HOST_WIDE_INT n_popped = 0;
+
+  /* Sibling call patterns never pop arguments (no sibcall(_value)_pop
+     patterns exist).  Any popping that the callee does on return will
+     be from our caller's frame rather than ours.  */
+  if (!(ecf_flags & ECF_SIBCALL))
+    {
+      n_popped += targetm.calls.return_pops_args (fndecl, funtype, stack_size);
 
 #ifdef CALL_POPS_ARGS
-  n_popped += CALL_POPS_ARGS (*get_cumulative_args (args_so_far));
+      n_popped += CALL_POPS_ARGS (*get_cumulative_args (args_so_far));
 #endif
+    }
 
   /* Ensure address is valid.  SYMBOL_REF is already valid, so no need,
      and we don't want to load it into a register as an optimization,
@@ -523,12 +509,9 @@ special_function_p (const_tree fndecl, int flags)
       /* We assume that alloca will always be called by name.  It
 	 makes no sense to pass it as a pointer-to-function to
 	 anything that does not understand its behavior.  */
-      if (((IDENTIFIER_LENGTH (name_decl) == 6
-	    && name[0] == 'a'
-	    && ! strcmp (name, "alloca"))
-	   || (IDENTIFIER_LENGTH (name_decl) == 16
-	       && name[0] == '_'
-	       && ! strcmp (name, "__builtin_alloca"))))
+      if (IDENTIFIER_LENGTH (name_decl) == 6
+	  && name[0] == 'a'
+	  && ! strcmp (name, "alloca"))
 	flags |= ECF_MAY_BE_ALLOCA;
 
       /* Disregard prefix _, __, __x or __builtin_.  */
@@ -573,6 +556,17 @@ special_function_p (const_tree fndecl, int flags)
 	       && ! strcmp (tname, "longjmp"))
 	flags |= ECF_NORETURN;
     }
+
+  if (DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL)
+    switch (DECL_FUNCTION_CODE (fndecl))
+      {
+      case BUILT_IN_ALLOCA:
+      case BUILT_IN_ALLOCA_WITH_ALIGN:
+	flags |= ECF_MAY_BE_ALLOCA;
+	break;
+      default:
+	break;
+      }
 
   return flags;
 }
@@ -1086,7 +1080,7 @@ store_unaligned_arguments_into_pseudos (struct arg_data *args, int num_actuals)
 
 	    args[i].aligned_regs[j] = reg;
 	    word = extract_bit_field (word, bitsize, 0, 1, NULL_RTX,
-				      word_mode, word_mode);
+				      word_mode, word_mode, false);
 
 	    /* There is no need to restrict this code to loading items
 	       in TYPE_ALIGN sized hunks.  The bitfield instructions can
@@ -1103,7 +1097,7 @@ store_unaligned_arguments_into_pseudos (struct arg_data *args, int num_actuals)
 
 	    bytes -= bitsize / BITS_PER_UNIT;
 	    store_bit_field (reg, bitsize, endian_correction, 0, 0,
-			     word_mode, word);
+			     word_mode, word, false);
 	  }
       }
 }
@@ -1384,7 +1378,7 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 	      else
 		copy = assign_temp (type, 1, 0);
 
-	      store_expr (args[i].tree_value, copy, 0, false);
+	      store_expr (args[i].tree_value, copy, 0, false, false);
 
 	      /* Just change the const function to pure and then let
 		 the next test clear the pure based on
@@ -2105,8 +2099,8 @@ load_register_parameters (struct arg_data *args, int num_actuals,
 		  rtx dest = gen_rtx_REG (word_mode, REGNO (reg) + nregs - 1);
 		  unsigned int bitoff = (nregs - 1) * BITS_PER_WORD;
 		  unsigned int bitsize = size * BITS_PER_UNIT - bitoff;
-		  rtx x = extract_bit_field (mem, bitsize, bitoff, 1,
-					     dest, word_mode, word_mode);
+		  rtx x = extract_bit_field (mem, bitsize, bitoff, 1, dest,
+					     word_mode, word_mode, false);
 		  if (BYTES_BIG_ENDIAN)
 		    x = expand_shift (LSHIFT_EXPR, word_mode, x,
 				      BITS_PER_WORD - bitsize, dest, 1);
@@ -3858,7 +3852,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
   reg_parm_stack_space = REG_PARM_STACK_SPACE ((tree) 0);
 #endif
 
-  /* By default, library functions can not throw.  */
+  /* By default, library functions cannot throw.  */
   flags = ECF_NOTHROW;
 
   switch (fn_type)
@@ -3875,7 +3869,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
       flags |= ECF_NORETURN;
       break;
     case LCT_THROW:
-      flags = ECF_NORETURN;
+      flags &= ~ECF_NOTHROW;
       break;
     case LCT_RETURNS_TWICE:
       flags = ECF_RETURNS_TWICE;
@@ -4959,6 +4953,13 @@ store_one_arg (struct arg_data *arg, rtx argblock, int flags,
 	    {
 	      if (XEXP (x, 0) != crtl->args.internal_arg_pointer)
 		i = INTVAL (XEXP (XEXP (x, 0), 1));
+
+	      /* arg.locate doesn't contain the pretend_args_size offset,
+		 it's part of argblock.  Ensure we don't count it in I.  */
+	      if (STACK_GROWS_DOWNWARD)
+		i -= crtl->args.pretend_args_size;
+	      else
+		i += crtl->args.pretend_args_size;
 
 	      /* expand_call should ensure this.  */
 	      gcc_assert (!arg->locate.offset.var

@@ -1,5 +1,5 @@
 /* Pass computing data for optimizing stdarg functions.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>
 
 This file is part of GCC.
@@ -22,23 +22,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "langhooks.h"
-#include "gimple-pretty-print.h"
-#include "target.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
 #include "gimplify.h"
 #include "tree-into-ssa.h"
 #include "tree-cfg.h"
-#include "tree-pass.h"
 #include "tree-stdarg.h"
+#include "tree-chkp.h"
 
 /* A simple pass that attempts to optimize stdarg functions on architectures
    that need to save register arguments to stack on entry to stdarg functions.
@@ -1020,7 +1018,7 @@ expand_ifn_va_arg_1 (function *fun)
     for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
       {
 	gimple *stmt = gsi_stmt (i);
-	tree ap, expr, lhs, type;
+	tree ap, aptype, expr, lhs, type;
 	gimple_seq pre = NULL, post = NULL;
 
 	if (!gimple_call_ifn_va_arg_p (stmt))
@@ -1030,9 +1028,12 @@ expand_ifn_va_arg_1 (function *fun)
 
 	type = TREE_TYPE (TREE_TYPE (gimple_call_arg (stmt, 1)));
 	ap = gimple_call_arg (stmt, 0);
+	aptype = TREE_TYPE (gimple_call_arg (stmt, 2));
+	gcc_assert (POINTER_TYPE_P (aptype));
 
 	/* Balanced out the &ap, usually added by build_va_arg.  */
-	ap = build_fold_indirect_ref (ap);
+	ap = build2 (MEM_REF, TREE_TYPE (aptype), ap,
+		     build_int_cst (aptype, 0));
 
 	push_gimplify_context (false);
 	saved_location = input_location;
@@ -1050,7 +1051,12 @@ expand_ifn_va_arg_1 (function *fun)
 	    unsigned int nargs = gimple_call_num_args (stmt);
 	    gcc_assert (useless_type_conversion_p (TREE_TYPE (lhs), type));
 
-	    if (nargs == 3)
+	    /* We replace call with a new expr.  This may require
+	       corresponding bndret call fixup.  */
+	    if (chkp_function_instrumented_p (fun->decl))
+	      chkp_fixup_inlined_call (lhs, expr);
+
+	    if (nargs == 4)
 	      {
 		/* We've transported the size of with WITH_SIZE_EXPR here as
 		   the last argument of the internal fn call.  Now reinstate
@@ -1107,13 +1113,14 @@ expand_ifn_va_arg (function *fun)
   if ((fun->curr_properties & PROP_gimple_lva) == 0)
     expand_ifn_va_arg_1 (fun);
 
-#if ENABLE_CHECKING
-  basic_block bb;
-  gimple_stmt_iterator i;
-  FOR_EACH_BB_FN (bb, fun)
-    for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
-      gcc_assert (!gimple_call_ifn_va_arg_p (gsi_stmt (i)));
-#endif
+  if (flag_checking)
+    {
+      basic_block bb;
+      gimple_stmt_iterator i;
+      FOR_EACH_BB_FN (bb, fun)
+	for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
+	  gcc_assert (!gimple_call_ifn_va_arg_p (gsi_stmt (i)));
+    }
 }
 
 namespace {

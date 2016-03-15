@@ -1,5 +1,5 @@
 /* Generic routines for manipulating PHIs
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -23,14 +23,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
 #include "ssa.h"
-#include "alias.h"
 #include "fold-const.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "tree-ssa.h"
-#include "diagnostic-core.h"
 
 /* Rewriting a function into SSA form can create a huge number of PHIs
    many of which may be thrown away shortly after their creation if jumps

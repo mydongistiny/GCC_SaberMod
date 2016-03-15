@@ -1,5 +1,5 @@
 /* Definitions for transformations based on profile information for values.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -90,7 +90,7 @@ void gimple_duplicate_stmt_histograms (struct function *, gimple *,
 				       struct function *, gimple *);
 void gimple_move_stmt_histograms (struct function *, gimple *, gimple *);
 void verify_histograms (void);
-void free_histograms (void);
+void free_histograms (function *);
 void stringop_block_profile (gimple *, unsigned int *, HOST_WIDE_INT *);
 gcall *gimple_ic (gcall *, struct cgraph_node *, int, gcov_type,
 		  gcov_type);

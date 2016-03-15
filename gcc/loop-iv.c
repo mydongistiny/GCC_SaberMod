@@ -1,5 +1,5 @@
 /* Rtl-level induction variable analysis.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -51,23 +51,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "tree.h"
 #include "rtl.h"
 #include "df.h"
-#include "cfgloop.h"
-#include "flags.h"
-#include "alias.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
 #include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "intl.h"
 #include "diagnostic-core.h"
+#include "cfgloop.h"
+#include "intl.h"
 #include "dumpfile.h"
 #include "rtl-iter.h"
 
@@ -3065,7 +3054,7 @@ get_simple_loop_desc (struct loop *loop)
 	    }
 	}
 
-      if (flag_unsafe_loop_optimizations)
+      if (flag_unsafe_loop_optimizations && single_exit (loop))
 	{
 	  desc->assumptions = NULL_RTX;
 	  desc->infinite = NULL_RTX;

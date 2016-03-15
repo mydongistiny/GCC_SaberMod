@@ -3510,6 +3510,7 @@ package body Ch3 is
       end if;
 
       Ident_Sloc := Token_Ptr;
+      Check_Bad_Layout;
       Idents (1) := P_Defining_Identifier (C_Comma_Colon);
       Num_Idents := 1;
 
@@ -4440,13 +4441,13 @@ package body Ch3 is
 
                else
                   Error_Msg_SC ("aspect specifications not allowed here");
-
-                  --  Assume that this is a misplaced aspect specification
-                  --  within a declarative list. After discarding the
-                  --  misplaced aspects we can continue the scan.
-
-                  Done := False;
                end if;
+
+               --  Assume that this is a misplaced aspect specification within
+               --  a declarative list. After discarding the misplaced aspects
+               --  we can continue the scan.
+
+               Done := False;
 
                declare
                   Dummy_Node : constant Node_Id :=
@@ -4559,6 +4560,11 @@ package body Ch3 is
                Scan; -- past RECORD
                TF_Semicolon;
 
+               --  This might happen because of misplaced aspect specification.
+               --  After discarding the misplaced aspects we can continue the
+               --  scan.
+
+               Done := False;
             else
                Restore_Scan_State (Scan_State); -- to END
                Done := True;

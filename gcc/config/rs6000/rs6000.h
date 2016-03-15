@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for IBM RS/6000.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
    This file is part of GCC.
@@ -95,6 +95,12 @@
 #define ASM_CPU_POWER8_SPEC ASM_CPU_POWER7_SPEC
 #endif
 
+#ifdef HAVE_AS_POWER9
+#define ASM_CPU_POWER9_SPEC "-mpower9"
+#else
+#define ASM_CPU_POWER9_SPEC ASM_CPU_POWER8_SPEC
+#endif
+
 #ifdef HAVE_AS_DCI
 #define ASM_CPU_476_SPEC "-m476"
 #else
@@ -119,8 +125,10 @@
 %{mcpu=power6x: %(asm_cpu_power6) -maltivec} \
 %{mcpu=power7: %(asm_cpu_power7)} \
 %{mcpu=power8: %(asm_cpu_power8)} \
+%{mcpu=power9: %(asm_cpu_power9)} \
 %{mcpu=a2: -ma2} \
 %{mcpu=powerpc: -mppc} \
+%{mcpu=powerpc64le: %(asm_cpu_power8)} \
 %{mcpu=rs64a: -mppc64} \
 %{mcpu=401: -mppc} \
 %{mcpu=403: -m403} \
@@ -193,6 +201,7 @@
   { "asm_cpu_power6",		ASM_CPU_POWER6_SPEC },			\
   { "asm_cpu_power7",		ASM_CPU_POWER7_SPEC },			\
   { "asm_cpu_power8",		ASM_CPU_POWER8_SPEC },			\
+  { "asm_cpu_power9",		ASM_CPU_POWER9_SPEC },			\
   { "asm_cpu_476",		ASM_CPU_476_SPEC },			\
   SUBTARGET_EXTRA_SPECS
 
@@ -508,6 +517,10 @@ extern int rs6000_vector_align[];
    with scalar instructions.  */
 #define VECTOR_ELEMENT_SCALAR_64BIT	((BYTES_BIG_ENDIAN) ? 0 : 1)
 
+/* Element number of the 64-bit value in a 128-bit vector that can be accessed
+   with the ISA 3.0 MFVSRLD instructions.  */
+#define VECTOR_ELEMENT_MFVSRLD_64BIT	((BYTES_BIG_ENDIAN) ? 1 : 0)
+
 /* Alignment options for fields in structures for sub-targets following
    AIX-like ABI.
    ALIGN_POWER word-aligns FP doubles (default AIX ABI).
@@ -557,10 +570,15 @@ extern int rs6000_vector_align[];
 #define TARGET_FCFIDUS	TARGET_POPCNTD
 #define TARGET_FCTIDUZ	TARGET_POPCNTD
 #define TARGET_FCTIWUZ	TARGET_POPCNTD
+#define TARGET_CTZ	TARGET_MODULO
+#define TARGET_EXTSWSLI	(TARGET_MODULO && TARGET_POWERPC64)
+#define TARGET_MADDLD	(TARGET_MODULO && TARGET_POWERPC64)
 
 #define TARGET_XSCVDPSPN	(TARGET_DIRECT_MOVE || TARGET_P8_VECTOR)
 #define TARGET_XSCVSPDPN	(TARGET_DIRECT_MOVE || TARGET_P8_VECTOR)
 #define TARGET_VADDUQM		(TARGET_P8_VECTOR && TARGET_POWERPC64)
+#define TARGET_DIRECT_MOVE_128	(TARGET_P9_VECTOR && TARGET_DIRECT_MOVE \
+				 && TARGET_POWERPC64)
 
 /* Byte/char syncs were added as phased in for ISA 2.06B, but are not present
    in power7, so conditionalize them on p8 features.  TImode syncs need quad
@@ -692,6 +710,22 @@ extern int rs6000_vector_align[];
 #define TARGET_FRSQRTE	(TARGET_HARD_FLOAT && TARGET_FPRS \
 			 && TARGET_DOUBLE_FLOAT \
 			 && (TARGET_PPC_GFXOPT || VECTOR_UNIT_VSX_P (DFmode)))
+
+/* Conditions to allow TOC fusion for loading/storing integers.  */
+#define TARGET_TOC_FUSION_INT	(TARGET_P8_FUSION			\
+				 && TARGET_TOC_FUSION			\
+				 && (TARGET_CMODEL != CMODEL_SMALL)	\
+				 && TARGET_POWERPC64)
+
+/* Conditions to allow TOC fusion for loading/storing floating point.  */
+#define TARGET_TOC_FUSION_FP	(TARGET_P9_FUSION			\
+				 && TARGET_TOC_FUSION			\
+				 && (TARGET_CMODEL != CMODEL_SMALL)	\
+				 && TARGET_POWERPC64			\
+				 && TARGET_HARD_FLOAT			\
+				 && TARGET_FPRS				\
+				 && TARGET_SINGLE_FLOAT			\
+				 && TARGET_DOUBLE_FLOAT)
 
 /* Whether the various reciprocal divide/square root estimate instructions
    exist, and whether we should automatically generate code for the instruction
@@ -1217,11 +1251,16 @@ enum data_align { align_abi, align_opt, align_both };
 	 ((MODE) == V4SFmode		\
 	  || (MODE) == V2DFmode)	\
 
-#define ALTIVEC_VECTOR_MODE(MODE)	\
-	 ((MODE) == V16QImode		\
-	  || (MODE) == V8HImode		\
-	  || (MODE) == V4SFmode		\
-	  || (MODE) == V4SImode)
+/* Note KFmode and possibly TFmode (i.e. IEEE 128-bit floating point) are not
+   really a vector, but we want to treat it as a vector for moves, and
+   such.  */
+
+#define ALTIVEC_VECTOR_MODE(MODE)					\
+  ((MODE) == V16QImode							\
+   || (MODE) == V8HImode						\
+   || (MODE) == V4SFmode						\
+   || (MODE) == V4SImode						\
+   || FLOAT128_VECTOR_P (MODE))
 
 #define ALTIVEC_OR_VSX_VECTOR_MODE(MODE)				\
   (ALTIVEC_VECTOR_MODE (MODE) || VSX_VECTOR_MODE (MODE)			\
@@ -1248,11 +1287,18 @@ enum data_align { align_abi, align_opt, align_both };
 
    PTImode cannot tie with other modes because PTImode is restricted to even
    GPR registers, and TImode can go in any GPR as well as VSX registers (PR
-   57744).  */
+   57744).
+
+   Altivec/VSX vector tests were moved ahead of scalar float mode, so that IEEE
+   128-bit floating point on VSX systems ties with other vectors.  */
 #define MODES_TIEABLE_P(MODE1, MODE2)		\
   ((MODE1) == PTImode				\
    ? (MODE2) == PTImode				\
    : (MODE2) == PTImode				\
+   ? 0						\
+   : ALTIVEC_OR_VSX_VECTOR_MODE (MODE1)		\
+   ? ALTIVEC_OR_VSX_VECTOR_MODE (MODE2)		\
+   : ALTIVEC_OR_VSX_VECTOR_MODE (MODE2)		\
    ? 0						\
    : SCALAR_FLOAT_MODE_P (MODE1)		\
    ? SCALAR_FLOAT_MODE_P (MODE2)		\
@@ -1265,10 +1311,6 @@ enum data_align { align_abi, align_opt, align_both };
    : SPE_VECTOR_MODE (MODE1)			\
    ? SPE_VECTOR_MODE (MODE2)			\
    : SPE_VECTOR_MODE (MODE2)			\
-   ? 0						\
-   : ALTIVEC_OR_VSX_VECTOR_MODE (MODE1)		\
-   ? ALTIVEC_OR_VSX_VECTOR_MODE (MODE2)		\
-   : ALTIVEC_OR_VSX_VECTOR_MODE (MODE2)		\
    ? 0						\
    : 1)
 
@@ -1318,6 +1360,9 @@ enum data_align { align_abi, align_opt, align_both };
 
 /* Place to put static chain when calling a function that requires it.  */
 #define STATIC_CHAIN_REGNUM 11
+
+/* Base register for access to thread local storage variables.  */
+#define TLS_REGNUM ((TARGET_64BIT) ? 13 : 2)
 
 
 /* Define the classes of registers for register constraints in the
@@ -1471,14 +1516,9 @@ enum reg_class
 
 extern enum reg_class rs6000_regno_regclass[FIRST_PSEUDO_REGISTER];
 
-#if ENABLE_CHECKING
 #define REGNO_REG_CLASS(REGNO) 						\
-  (gcc_assert (IN_RANGE ((REGNO), 0, FIRST_PSEUDO_REGISTER-1)),		\
+  (gcc_checking_assert (IN_RANGE ((REGNO), 0, FIRST_PSEUDO_REGISTER-1)),\
    rs6000_regno_regclass[(REGNO)])
-
-#else
-#define REGNO_REG_CLASS(REGNO) rs6000_regno_regclass[(REGNO)]
-#endif
 
 /* Register classes for various constraints that are based on the target
    switches.  */
@@ -1487,7 +1527,9 @@ enum r6000_reg_class_enum {
   RS6000_CONSTRAINT_f,		/* fpr registers for single values */
   RS6000_CONSTRAINT_v,		/* Altivec registers */
   RS6000_CONSTRAINT_wa,		/* Any VSX register */
+  RS6000_CONSTRAINT_wb,		/* Altivec register if ISA 3.0 vector. */
   RS6000_CONSTRAINT_wd,		/* VSX register for V2DF */
+  RS6000_CONSTRAINT_we,		/* VSX register if ISA 3.0 vector. */
   RS6000_CONSTRAINT_wf,		/* VSX register for V4SF */
   RS6000_CONSTRAINT_wg,		/* FPR register for -mmfpgpr */
   RS6000_CONSTRAINT_wh,		/* FPR register for direct moves.  */
@@ -1496,6 +1538,7 @@ enum r6000_reg_class_enum {
   RS6000_CONSTRAINT_wk,		/* FPR/VSX register for DFmode direct moves. */
   RS6000_CONSTRAINT_wl,		/* FPR register for LFIWAX */
   RS6000_CONSTRAINT_wm,		/* VSX register for direct move */
+  RS6000_CONSTRAINT_wo,		/* VSX register for power9 vector.  */
   RS6000_CONSTRAINT_wp,		/* VSX reg for IEEE 128-bit fp TFmode. */
   RS6000_CONSTRAINT_wq,		/* VSX reg for IEEE 128-bit fp KFmode.  */
   RS6000_CONSTRAINT_wr,		/* GPR register if 64-bit  */
@@ -1801,6 +1844,7 @@ typedef struct rs6000_args
 				   GPR space (darwin64) */
   int named;			/* false for varargs params */
   int escapes;			/* if function visible outside tu */
+  int libcall;			/* If this is a compiler generated call.  */
 } CUMULATIVE_ARGS;
 
 /* Initialize a variable CUM of type CUMULATIVE_ARGS
@@ -2083,8 +2127,12 @@ do {									     \
 #define CLZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE) \
   ((VALUE) = ((MODE) == SImode ? 32 : 64), 1)
 
-/* The CTZ patterns return -1 for input of zero.  */
-#define CTZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE) ((VALUE) = -1, 1)
+/* The CTZ patterns that are implemented in terms of CLZ return -1 for input of
+   zero.  The hardware instructions added in Power9 return 32 or 64.  */
+#define CTZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE)				\
+  ((!TARGET_CTZ)							\
+   ? ((VALUE) = -1, 1)							\
+   : ((VALUE) = ((MODE) == SImode ? 32 : 64), 1))
 
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction

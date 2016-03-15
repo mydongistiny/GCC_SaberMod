@@ -1,5 +1,5 @@
 /* Partial redundancy elimination / Hoisting for RTL.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -136,39 +136,26 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
-#include "diagnostic-core.h"
-#include "toplev.h"
-#include "alias.h"
 #include "tm_p.h"
+#include "insn-config.h"
 #include "regs.h"
 #include "ira.h"
-#include "flags.h"
-#include "insn-config.h"
 #include "recog.h"
+#include "diagnostic-core.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "lcm.h"
 #include "cfgcleanup.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
-#include "except.h"
 #include "params.h"
-#include "alloc-pool.h"
-#include "cselib.h"
 #include "intl.h"
 #include "tree-pass.h"
 #include "dbgcnt.h"
-#include "target.h"
 #include "gcse.h"
 #include "gcse-common.h"
 
@@ -523,7 +510,6 @@ static void trim_ld_motion_mems (void);
 static void update_ld_motion_stores (struct gcse_expr *);
 static void clear_modify_mem_tables (void);
 static void free_modify_mem_tables (void);
-static bool is_too_expensive (const char *);
 
 #define GNEW(T)			((T *) gmalloc (sizeof (T)))
 #define GCNEW(T)		((T *) gcalloc (1, sizeof (T)))
@@ -824,7 +810,7 @@ want_to_gcse_p (rtx x, machine_mode mode, int *max_distance_ptr)
 	    *max_distance_ptr = max_distance;
 	}
 
-      return can_assign_to_reg_without_clobbers_p (x);
+      return can_assign_to_reg_without_clobbers_p (x, mode);
     }
 }
 
@@ -832,9 +818,9 @@ want_to_gcse_p (rtx x, machine_mode mode, int *max_distance_ptr)
 
 static GTY(()) rtx_insn *test_insn;
 
-/* Return true if we can assign X to a pseudo register such that the
-   resulting insn does not result in clobbering a hard register as a
-   side-effect.
+/* Return true if we can assign X to a pseudo register of mode MODE
+   such that the resulting insn does not result in clobbering a hard
+   register as a side-effect.
 
    Additionally, if the target requires it, check that the resulting insn
    can be copied.  If it cannot, this means that X is special and probably
@@ -845,14 +831,14 @@ static GTY(()) rtx_insn *test_insn;
    maybe live hard regs.  */
 
 bool
-can_assign_to_reg_without_clobbers_p (rtx x)
+can_assign_to_reg_without_clobbers_p (rtx x, machine_mode mode)
 {
   int num_clobbers = 0;
   int icode;
   bool can_assign = false;
 
   /* If this is a valid operand, we are OK.  If it's VOIDmode, we aren't.  */
-  if (general_operand (x, GET_MODE (x)))
+  if (general_operand (x, mode))
     return 1;
   else if (GET_MODE (x) == VOIDmode)
     return 0;
@@ -871,7 +857,7 @@ can_assign_to_reg_without_clobbers_p (rtx x)
 
   /* Now make an insn like the one we would make when GCSE'ing and see if
      valid.  */
-  PUT_MODE (SET_DEST (PATTERN (test_insn)), GET_MODE (x));
+  PUT_MODE (SET_DEST (PATTERN (test_insn)), mode);
   SET_SRC (PATTERN (test_insn)) = x;
 
   icode = recog (PATTERN (test_insn), test_insn, &num_clobbers);
@@ -2578,7 +2564,7 @@ one_pre_gcse_pass (void)
 
   /* Return if there's nothing to do, or it is too expensive.  */
   if (n_basic_blocks_for_fn (cfun) <= NUM_FIXED_BLOCKS + 1
-      || is_too_expensive (_("PRE disabled")))
+      || gcse_or_cprop_is_too_expensive (_("PRE disabled")))
     return 0;
 
   /* We need alias.  */
@@ -3506,7 +3492,7 @@ one_code_hoisting_pass (void)
 
   /* Return if there's nothing to do, or it is too expensive.  */
   if (n_basic_blocks_for_fn (cfun) <= NUM_FIXED_BLOCKS + 1
-      || is_too_expensive (_("GCSE disabled")))
+      || gcse_or_cprop_is_too_expensive (_("GCSE disabled")))
     return 0;
 
   doing_code_hoisting_p = true;
@@ -3810,10 +3796,8 @@ compute_ld_motion_mems (void)
 		{
 		  rtx src = SET_SRC (PATTERN (insn));
 		  rtx dest = SET_DEST (PATTERN (insn));
-		  rtx note = find_reg_equal_equiv_note (insn);
-		  rtx src_eq;
 
-		  /* Check for a simple LOAD...  */
+		  /* Check for a simple load.  */
 		  if (MEM_P (src) && simple_mem (src))
 		    {
 		      ptr = ldst_entry (src);
@@ -3828,12 +3812,11 @@ compute_ld_motion_mems (void)
 		      invalidate_any_buried_refs (src);
 		    }
 
-		  if (note != 0 && REG_NOTE_KIND (note) == REG_EQUAL)
-		    src_eq = XEXP (note, 0);
-		  else
-		    src_eq = NULL_RTX;
-
-		  if (src_eq != NULL_RTX
+		  /* Check for a simple load through a REG_EQUAL note.  */
+		  rtx note = find_reg_equal_equiv_note (insn), src_eq;
+		  if (note
+		      && REG_NOTE_KIND (note) == REG_EQUAL
+		      && (src_eq = XEXP (note, 0))
 		      && !(MEM_P (src_eq) && simple_mem (src_eq)))
 		    invalidate_any_buried_refs (src_eq);
 
@@ -3844,19 +3827,30 @@ compute_ld_motion_mems (void)
 		  if (MEM_P (dest) && simple_mem (dest))
 		    {
 		      ptr = ldst_entry (dest);
-
+		      machine_mode src_mode = GET_MODE (src);
 		      if (! MEM_P (src)
 			  && GET_CODE (src) != ASM_OPERANDS
 			  /* Check for REG manually since want_to_gcse_p
 			     returns 0 for all REGs.  */
-			  && can_assign_to_reg_without_clobbers_p (src))
+			  && can_assign_to_reg_without_clobbers_p (src,
+								    src_mode))
 			ptr->stores = alloc_INSN_LIST (insn, ptr->stores);
 		      else
 			ptr->invalid = 1;
 		    }
 		}
 	      else
-		invalidate_any_buried_refs (PATTERN (insn));
+		{
+		  /* Invalidate all MEMs in the pattern and...  */
+		  invalidate_any_buried_refs (PATTERN (insn));
+
+		  /* ...in REG_EQUAL notes for PARALLELs with single SET.  */
+		  rtx note = find_reg_equal_equiv_note (insn), src_eq;
+		  if (note
+		      && REG_NOTE_KIND (note) == REG_EQUAL
+		      && (src_eq = XEXP (note, 0)))
+		    invalidate_any_buried_refs (src_eq);
+		}
 	    }
 	}
     }
@@ -3970,9 +3964,13 @@ update_ld_motion_stores (struct gcse_expr * expr)
 /* Return true if the graph is too expensive to optimize. PASS is the
    optimization about to be performed.  */
 
-static bool
-is_too_expensive (const char *pass)
+bool
+gcse_or_cprop_is_too_expensive (const char *pass)
 {
+  unsigned int memory_request = (n_basic_blocks_for_fn (cfun)
+				 * SBITMAP_SET_SIZE (max_reg_num ())
+				 * sizeof (SBITMAP_ELT_TYPE));
+  
   /* Trying to perform global optimizations on flow graphs which have
      a high connectivity will take a long time and is unlikely to be
      particularly useful.
@@ -3994,13 +3992,12 @@ is_too_expensive (const char *pass)
 
   /* If allocating memory for the dataflow bitmaps would take up too much
      storage it's better just to disable the optimization.  */
-  if ((n_basic_blocks_for_fn (cfun)
-       * SBITMAP_SET_SIZE (max_reg_num ())
-       * sizeof (SBITMAP_ELT_TYPE)) > MAX_GCSE_MEMORY)
+  if (memory_request > MAX_GCSE_MEMORY)
     {
       warning (OPT_Wdisabled_optimization,
-	       "%s: %d basic blocks and %d registers",
-	       pass, n_basic_blocks_for_fn (cfun), max_reg_num ());
+	       "%s: %d basic blocks and %d registers; increase --param max-gcse-memory above %d",
+	       pass, n_basic_blocks_for_fn (cfun), max_reg_num (),
+	       memory_request);
 
       return true;
     }

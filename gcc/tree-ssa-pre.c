@@ -1,5 +1,5 @@
 /* SSA-PRE for trees.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org> and Steven Bosscher
    <stevenb@suse.de>
 
@@ -23,53 +23,36 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "predict.h"
+#include "alloc-pool.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "cgraph.h"
+#include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "cfganal.h"
-#include "gimple-pretty-print.h"
-#include "tree-inline.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
-#include "gimplify-me.h"
 #include "tree-cfg.h"
 #include "tree-ssa-loop.h"
 #include "tree-into-ssa.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
-#include "tree-iterator.h"
-#include "alloc-pool.h"
-#include "tree-pass.h"
-#include "langhooks.h"
 #include "cfgloop.h"
 #include "tree-ssa-sccvn.h"
 #include "tree-scalar-evolution.h"
 #include "params.h"
 #include "dbgcnt.h"
 #include "domwalk.h"
-#include "cgraph.h"
-#include "symbol-summary.h"
-#include "ipa-prop.h"
 #include "tree-ssa-propagate.h"
 #include "ipa-utils.h"
 #include "tree-cfgcleanup.h"
+#include "langhooks.h"
 
 /* TODO:
 
@@ -2499,6 +2482,7 @@ create_component_ref_by_pieces_1 (basic_block block, vn_reference_t ref,
 	genop = build2 (MEM_REF, currop->type, baseop, offset);
 	MR_DEPENDENCE_CLIQUE (genop) = currop->clique;
 	MR_DEPENDENCE_BASE (genop) = currop->base;
+	REF_REVERSE_STORAGE_ORDER (genop) = currop->reverse;
 	return genop;
       }
 
@@ -2568,7 +2552,9 @@ create_component_ref_by_pieces_1 (basic_block block, vn_reference_t ref,
 	  return NULL_TREE;
 	tree op1 = currop->op0;
 	tree op2 = currop->op1;
-	return fold_build3 (BIT_FIELD_REF, currop->type, genop0, op1, op2);
+	tree t = build3 (BIT_FIELD_REF, currop->type, genop0, op1, op2);
+	REF_REVERSE_STORAGE_ORDER (t) = currop->reverse;
+	return fold (t);
       }
 
       /* For array ref vn_reference_op's, operand 1 of the array ref
@@ -3759,7 +3745,7 @@ compute_avail (void)
 		      vn_reference_t ref;
 		      vn_reference_lookup (gimple_assign_rhs1 (stmt),
 					   gimple_vuse (stmt),
-					   VN_WALK, &ref);
+					   VN_WALK, &ref, true);
 		      if (!ref)
 			continue;
 
@@ -3921,7 +3907,7 @@ public:
   eliminate_dom_walker (cdi_direction direction, bool do_pre_)
       : dom_walker (direction), do_pre (do_pre_) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
   virtual void after_dom_children (basic_block);
 
   bool do_pre;
@@ -3929,7 +3915,7 @@ public:
 
 /* Perform elimination for the basic-block B during the domwalk.  */
 
-void
+edge
 eliminate_dom_walker::before_dom_children (basic_block b)
 {
   /* Mark new bb.  */
@@ -4047,22 +4033,22 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 	    {
 	      basic_block sprime_b = gimple_bb (SSA_NAME_DEF_STMT (sprime));
 	      if (POINTER_TYPE_P (TREE_TYPE (lhs))
-		  && SSA_NAME_PTR_INFO (lhs)
-		  && !SSA_NAME_PTR_INFO (sprime))
+		  && VN_INFO_PTR_INFO (lhs)
+		  && ! VN_INFO_PTR_INFO (sprime))
 		{
 		  duplicate_ssa_name_ptr_info (sprime,
-					       SSA_NAME_PTR_INFO (lhs));
+					       VN_INFO_PTR_INFO (lhs));
 		  if (b != sprime_b)
 		    mark_ptr_info_alignment_unknown
 			(SSA_NAME_PTR_INFO (sprime));
 		}
-	      else if (!POINTER_TYPE_P (TREE_TYPE (lhs))
-		       && SSA_NAME_RANGE_INFO (lhs)
-		       && !SSA_NAME_RANGE_INFO (sprime)
+	      else if (INTEGRAL_TYPE_P (TREE_TYPE (lhs))
+		       && VN_INFO_RANGE_INFO (lhs)
+		       && ! VN_INFO_RANGE_INFO (sprime)
 		       && b == sprime_b)
 		duplicate_ssa_name_range_info (sprime,
-					       SSA_NAME_RANGE_TYPE (lhs),
-					       SSA_NAME_RANGE_INFO (lhs));
+					       VN_INFO_RANGE_TYPE (lhs),
+					       VN_INFO_RANGE_INFO (lhs));
 	    }
 
 	  /* Inhibit the use of an inserted PHI on a loop header when
@@ -4082,8 +4068,9 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 	      gimple *def_stmt = SSA_NAME_DEF_STMT (sprime);
 	      basic_block def_bb = gimple_bb (def_stmt);
 	      if (gimple_code (def_stmt) == GIMPLE_PHI
-		  && b->loop_father->header == def_bb)
+		  && def_bb->loop_father->header == def_bb)
 		{
+		  loop_p loop = def_bb->loop_father;
 		  ssa_op_iter iter;
 		  tree op;
 		  bool found = false;
@@ -4092,9 +4079,8 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 		      affine_iv iv;
 		      def_bb = gimple_bb (SSA_NAME_DEF_STMT (op));
 		      if (def_bb
-			  && flow_bb_inside_loop_p (b->loop_father, def_bb)
-			  && simple_iv (b->loop_father,
-					b->loop_father, op, &iv, true))
+			  && flow_bb_inside_loop_p (loop, def_bb)
+			  && simple_iv (loop, loop, op, &iv, true))
 			{
 			  found = true;
 			  break;
@@ -4110,7 +4096,7 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 			  print_generic_expr (dump_file, sprime, 0);
 			  fprintf (dump_file, " which would add a loop"
 				   " carried dependence to loop %d\n",
-				   b->loop_father->num);
+				   loop->num);
 			}
 		      /* Don't keep sprime available.  */
 		      sprime = NULL_TREE;
@@ -4222,7 +4208,7 @@ eliminate_dom_walker::before_dom_children (basic_block b)
           tree val;
 	  tree rhs = gimple_assign_rhs1 (stmt);
           val = vn_reference_lookup (gimple_assign_lhs (stmt),
-                                     gimple_vuse (stmt), VN_WALK, NULL);
+                                     gimple_vuse (stmt), VN_WALK, NULL, false);
           if (TREE_CODE (rhs) == SSA_NAME)
             rhs = VN_INFO (rhs)->valnum;
           if (val
@@ -4343,7 +4329,7 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 		      dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, loc,
 				       "converting indirect call to "
 				       "function %s\n",
-				       cgraph_node::get (fn)->name ());
+				       lang_hooks.decl_printable_name (fn, 2));
 		    }
 		  gimple_call_set_fndecl (call_stmt, fn);
 		  maybe_remove_unused_call_args (cfun, call_stmt);
@@ -4438,6 +4424,7 @@ eliminate_dom_walker::before_dom_children (basic_block b)
 	    }
 	}
     }
+  return NULL;
 }
 
 /* Make no longer available leaders no longer available.  */
@@ -4513,6 +4500,8 @@ eliminate (bool do_pre)
 	  unlink_stmt_vdef (stmt);
 	  if (gsi_remove (&gsi, true))
 	    bitmap_set_bit (need_eh_cleanup, bb->index);
+	  if (is_gimple_call (stmt) && stmt_can_make_abnormal_goto (stmt))
+	    bitmap_set_bit (need_ab_cleanup, bb->index);
 	  release_defs (stmt);
 	}
 

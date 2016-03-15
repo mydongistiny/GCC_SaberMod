@@ -1,5 +1,5 @@
 /* Standard problems for dataflow support routines.
-   Copyright (C) 1999-2015 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Originally contributed by Michael P. Hayes
              (m.hayes@elec.canterbury.ac.nz, mhayes@redhat.com)
    Major rewrite contributed by Danny Berlin (dberlin@dberlin.org)
@@ -25,18 +25,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
 #include "rtl.h"
 #include "df.h"
 #include "tm_p.h"
 #include "insn-config.h"
-#include "recog.h"
-#include "regs.h"
-#include "alloc-pool.h"
-#include "flags.h"
 #include "cfganal.h"
-#include "target.h"
-#include "timevar.h"
-#include "except.h"
 #include "dce.h"
 #include "valtrack.h"
 #include "dumpfile.h"
@@ -523,10 +517,7 @@ df_rd_transfer_function (int bb_index)
       bitmap_ior_into (&tmp, gen);
       changed = !bitmap_equal_p (&tmp, out);
       if (changed)
-	{
-	  bitmap_clear (out);
-	  bb_info->out = tmp;
-	}
+	bitmap_move (out, &tmp);
       else
 	bitmap_clear (&tmp);
     }

@@ -1,6 +1,6 @@
 ; Options for the Synopsys DesignWare ARC port of the compiler
 ;
-; Copyright (C) 2005-2015 Free Software Foundation, Inc.
+; Copyright (C) 2005-2016 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -52,6 +52,18 @@ Generate ARCompact 32-bit code for ARC700 processor.
 mARC700
 Target Report
 Same as -mA7.
+
+mmpy-option=
+Target RejectNegative Joined UInteger Var(arc_mpy_option) Init(2)
+-mmpy-option={0,1,2,3,4,5,6,7,8,9} Compile ARCv2 code with a multiplier design option.  Option 2 is default on.
+
+mdiv-rem
+Target Report Mask(DIVREM)
+Enable DIV-REM instructions for ARCv2.
+
+mcode-density
+Target Report Mask(CODE_DENSITY)
+Enable code density instructions for ARCv2.
 
 mmixed-code
 Target Report Mask(MIXED_CODE_SET)
@@ -162,10 +174,31 @@ EnumValue
 Enum(processor_type) String(ARC600) Value(PROCESSOR_ARC600)
 
 EnumValue
+Enum(processor_type) String(arc600) Value(PROCESSOR_ARC600)
+
+EnumValue
 Enum(processor_type) String(ARC601) Value(PROCESSOR_ARC601)
 
 EnumValue
+Enum(processor_type) String(arc601) Value(PROCESSOR_ARC601)
+
+EnumValue
 Enum(processor_type) String(ARC700) Value(PROCESSOR_ARC700)
+
+EnumValue
+Enum(processor_type) String(arc700) Value(PROCESSOR_ARC700)
+
+EnumValue
+Enum(processor_type) String(ARCEM) Value(PROCESSOR_ARCEM)
+
+EnumValue
+Enum(processor_type) String(arcem) Value(PROCESSOR_ARCEM)
+
+EnumValue
+Enum(processor_type) String(ARCHS) Value(PROCESSOR_ARCHS)
+
+EnumValue
+Enum(processor_type) String(archs) Value(PROCESSOR_ARCHS)
 
 msize-level=
 Target RejectNegative Joined UInteger Var(arc_size_opt_level) Init(-1)
@@ -307,14 +340,6 @@ mrtsc
 Target Report
 Enable 64-bit Time-Stamp Counter extension instruction.
 
-mno-epilogue-cfi
-Target Report RejectNegative InverseMask(EPILOGUE_CFI)
-Disable generation of cfi for epilogues.
-
-mepilogue-cfi
-Target RejectNegative Mask(EPILOGUE_CFI)
-Enable generation of cfi for epilogues.
-
 EB
 Target
 Pass -EB option through to linker.
@@ -381,3 +406,53 @@ Target Joined
 mmac_
 Target Joined
 
+matomic
+Target Report Mask(ATOMIC)
+Enable atomic instructions.
+
+mll64
+Target Report Mask(LL64)
+Enable double load/store instructions for ARC HS.
+
+mfpu=
+Target RejectNegative Joined Enum(arc_fpu) Var(arc_fpu_build) Init(0)
+Specify the name of the target floating point configuration.
+
+Enum
+Name(arc_fpu) Type(int)
+
+EnumValue
+Enum(arc_fpu) String(fpus) Value(FPU_SP | FPU_SC)
+
+EnumValue
+Enum(arc_fpu) String(fpud) Value(FPU_SP | FPU_SC | FPU_DP | FPU_DC)
+
+EnumValue
+Enum(arc_fpu) String(fpuda) Value(FPU_SP | FPU_SC | FPX_DP)
+
+EnumValue
+Enum(arc_fpu) String(fpuda_div) Value(FPU_SP | FPU_SC | FPU_SD | FPX_DP)
+
+EnumValue
+Enum(arc_fpu) String(fpuda_fma) Value(FPU_SP | FPU_SC | FPU_SF | FPX_DP)
+
+EnumValue
+Enum(arc_fpu) String(fpuda_all) Value(FPU_SP | FPU_SC | FPU_SF | FPU_SD | FPX_DP)
+
+EnumValue
+Enum(arc_fpu) String(fpus_div) Value(FPU_SP | FPU_SC | FPU_SD)
+
+EnumValue
+Enum(arc_fpu) String(fpud_div) Value(FPU_SP | FPU_SC | FPU_SD | FPU_DP | FPU_DC | FPU_DD)
+
+EnumValue
+Enum(arc_fpu) String(fpus_fma) Value(FPU_SP | FPU_SC | FPU_SF)
+
+EnumValue
+Enum(arc_fpu) String(fpud_fma) Value(FPU_SP | FPU_SC | FPU_SF | FPU_DP | FPU_DC | FPU_DF)
+
+EnumValue
+Enum(arc_fpu) String(fpus_all) Value(FPU_SP | FPU_SC | FPU_SF | FPU_SD)
+
+EnumValue
+Enum(arc_fpu) String(fpud_all) Value(FPU_SP | FPU_SC | FPU_SF | FPU_SD | FPU_DP | FPU_DC | FPU_DF | FPU_DD)

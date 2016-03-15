@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2015 Free Software Foundation, Inc.
+/* Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
    This file is part of libgcj.
 
@@ -14,11 +14,8 @@ details.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-
-#include "alias.h"
-#include "symtab.h"
-#include "options.h"
 #include "verify.h"
+
 
 /* Hack to work around namespace pollution from java-tree.h.  */
 #undef current_class

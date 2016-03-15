@@ -1,5 +1,5 @@
 /* Common subexpression elimination for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,31 +21,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "cfghooks.h"
 #include "df.h"
 #include "tm_p.h"
+#include "insn-config.h"
 #include "regs.h"
+#include "emit-rtl.h"
+#include "recog.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "cfgcleanup.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "recog.h"
 #include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "diagnostic-core.h"
 #include "toplev.h"
-#include "except.h"
-#include "target.h"
 #include "params.h"
 #include "rtlhooks-def.h"
 #include "tree-pass.h"
@@ -3884,6 +3874,13 @@ record_jump_equiv (rtx_insn *insn, bool taken)
   op0 = fold_rtx (XEXP (XEXP (SET_SRC (set), 0), 0), insn);
   op1 = fold_rtx (XEXP (XEXP (SET_SRC (set), 0), 1), insn);
 
+  /* On a cc0 target the cc0-setter and cc0-user may end up in different
+     blocks.  When that happens the tracking of the cc0-setter via
+     PREV_INSN_CC0 is spoiled.  That means that fold_rtx may return
+     NULL_RTX.  In those cases, there's nothing to record.  */
+  if (op0 == NULL_RTX || op1 == NULL_RTX)
+    return;
+
   code = find_comparison_args (code, &op0, &op1, &mode0, &mode1);
   if (! cond_known_true)
     {
@@ -4639,7 +4636,7 @@ cse_insn (rtx_insn *insn)
 
       /* Simplify and foldable subexpressions in SRC.  Then get the fully-
 	 simplified result, which may not necessarily be valid.  */
-      src_folded = fold_rtx (src, insn);
+      src_folded = fold_rtx (src, NULL);
 
 #if 0
       /* ??? This caused bad code to be generated for the m68k port with -O2.

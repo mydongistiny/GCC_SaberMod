@@ -1,5 +1,5 @@
 /* Subroutines common to both C and C++ pretty-printers.
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -21,18 +21,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
+#include "c-pretty-print.h"
+#include "diagnostic.h"
 #include "stor-layout.h"
 #include "attribs.h"
 #include "intl.h"
-#include "c-pretty-print.h"
 #include "tree-pretty-print.h"
-#include "tree-iterator.h"
-#include "diagnostic.h"
-#include "wide-int-print.h"
 
 /* The pretty-printer code is primarily designed to closely follow
    (GNU) C and C++ grammars.  That is to be contrasted with spaghetti

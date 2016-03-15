@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 architecture.
-;; Copyright (C) 2009-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2016 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -239,6 +239,7 @@
     UNSPEC_SQDMULH	; Used in aarch64-simd.md.
     UNSPEC_SQRDMULH	; Used in aarch64-simd.md.
     UNSPEC_PMUL		; Used in aarch64-simd.md.
+    UNSPEC_FMULX	; Used in aarch64-simd.md.
     UNSPEC_USQADD	; Used in aarch64-simd.md.
     UNSPEC_SUQADD	; Used in aarch64-simd.md.
     UNSPEC_SQXTUN	; Used in aarch64-simd.md.
@@ -303,6 +304,33 @@
     UNSPEC_PMULL2       ; Used in aarch64-simd.md.
     UNSPEC_REV_REGLIST  ; Used in aarch64-simd.md.
     UNSPEC_VEC_SHR      ; Used in aarch64-simd.md.
+    UNSPEC_SQRDMLAH     ; Used in aarch64-simd.md.
+    UNSPEC_SQRDMLSH     ; Used in aarch64-simd.md.
+    UNSPEC_FMAXNM       ; Used in aarch64-simd.md.
+    UNSPEC_FMINNM       ; Used in aarch64-simd.md.
+])
+
+;; ------------------------------------------------------------------
+;; Unspec enumerations for Atomics.  They are here so that they can be
+;; used in the int_iterators for atomic operations.
+;; ------------------------------------------------------------------
+
+(define_c_enum "unspecv"
+ [
+    UNSPECV_LX			; Represent a load-exclusive.
+    UNSPECV_SX			; Represent a store-exclusive.
+    UNSPECV_LDA			; Represent an atomic load or load-acquire.
+    UNSPECV_STL			; Represent an atomic store or store-release.
+    UNSPECV_ATOMIC_CMPSW	; Represent an atomic compare swap.
+    UNSPECV_ATOMIC_EXCHG	; Represent an atomic exchange.
+    UNSPECV_ATOMIC_CAS		; Represent an atomic CAS.
+    UNSPECV_ATOMIC_SWP		; Represent an atomic SWP.
+    UNSPECV_ATOMIC_OP		; Represent an atomic operation.
+    UNSPECV_ATOMIC_LDOP		; Represent an atomic load-operation
+    UNSPECV_ATOMIC_LDOP_OR	; Represent an atomic load-or
+    UNSPECV_ATOMIC_LDOP_BIC	; Represent an atomic load-bic
+    UNSPECV_ATOMIC_LDOP_XOR	; Represent an atomic load-xor
+    UNSPECV_ATOMIC_LDOP_PLUS	; Represent an atomic load-add
 ])
 
 ;; -------------------------------------------------------------------
@@ -317,8 +345,13 @@
 (define_mode_attr w1 [(SF "w") (DF "x")])
 (define_mode_attr w2 [(SF "x") (DF "w")])
 
+(define_mode_attr short_mask [(HI "65535") (QI "255")])
+
 ;; For constraints used in scalar immediate vector moves
 (define_mode_attr hq [(HI "h") (QI "q")])
+
+;; For doubling width of an integer mode
+(define_mode_attr DWI [(QI "HI") (HI "SI") (SI "DI") (DI "TI")])
 
 ;; For scalar usage of vector/FP registers
 (define_mode_attr v [(QI "b") (HI "h") (SI "s") (DI "d")
@@ -455,6 +488,13 @@
 			 (V4SF "V2SF")  (V4HF "V2HF")
 			 (V8HF "V4HF")  (V2DF  "DF")])
 
+;; Half modes of all vector modes, in lower-case.
+(define_mode_attr Vhalf [(V8QI "v4qi")  (V16QI "v8qi")
+			 (V4HI "v2hi")  (V8HI  "v4hi")
+			 (V2SI "si")    (V4SI  "v2si")
+			 (V2DI "di")    (V2SF  "sf")
+			 (V4SF "v2sf")  (V2DF  "df")])
+
 ;; Double modes of vector modes.
 (define_mode_attr VDBL [(V8QI "V16QI") (V4HI "V8HI")
 			(V4HF "V8HF")
@@ -471,6 +511,11 @@
 			(V2SI "v4si")  (V2SF "v4sf")
 			(SI   "v2si")  (DI   "v2di")
 			(DF   "v2df")])
+
+;; Modes with double-width elements.
+(define_mode_attr VDBLW [(V8QI "V4HI") (V16QI "V8HI")
+                  (V4HI "V2SI") (V8HI "V4SI")
+                  (V2SI "DI")   (V4SI "V2DI")])
 
 ;; Narrowed modes for VDN.
 (define_mode_attr VNARROWD [(V4HI "V8QI") (V2SI "V4HI")
@@ -692,6 +737,9 @@
 ;; Code iterator for logical operations whose :nlogical works on SIMD registers.
 (define_code_iterator NLOGICAL [and ior])
 
+;; Code iterator for unary negate and bitwise complement.
+(define_code_iterator NEG_NOT [neg not])
+
 ;; Code iterator for sign/zero extension
 (define_code_iterator ANY_EXTEND [sign_extend zero_extend])
 
@@ -797,7 +845,8 @@
 			   (ltu "1") (leu "1") (geu "2") (gtu "2")])
 
 (define_code_attr CMP [(lt "LT") (le "LE") (eq "EQ") (ge "GE") (gt "GT")
-			   (ltu "LTU") (leu "LEU") (geu "GEU") (gtu "GTU")])
+			(ltu "LTU") (leu "LEU") (ne "NE") (geu "GEU")
+			(gtu "GTU")])
 
 (define_code_attr fix_trunc_optab [(fix "fix_trunc")
 				   (unsigned_fix "fixuns_trunc")])
@@ -820,6 +869,9 @@
 
 ;; Logical operator instruction mnemonics
 (define_code_attr logical [(and "and") (ior "orr") (xor "eor")])
+
+;; Operation names for negate and bitwise complement.
+(define_code_attr neg_not_op [(neg "neg") (not "not")])
 
 ;; Similar, but when not(op)
 (define_code_attr nlogical [(and "bic") (ior "orn") (xor "eon")])
@@ -903,6 +955,8 @@
 
 (define_int_iterator FMAXMIN_UNS [UNSPEC_FMAX UNSPEC_FMIN])
 
+(define_int_iterator FMAXMIN [UNSPEC_FMAXNM UNSPEC_FMINNM])
+
 (define_int_iterator VQDMULH [UNSPEC_SQDMULH UNSPEC_SQRDMULH])
 
 (define_int_iterator USSUQADD [UNSPEC_SUQADD UNSPEC_USQADD])
@@ -932,6 +986,8 @@
                                UNSPEC_SQSHRN UNSPEC_UQSHRN
                                UNSPEC_SQRSHRN UNSPEC_UQRSHRN])
 
+(define_int_iterator SQRDMLH_AS [UNSPEC_SQRDMLAH UNSPEC_SQRDMLSH])
+
 (define_int_iterator PERMUTE [UNSPEC_ZIP1 UNSPEC_ZIP2
 			      UNSPEC_TRN1 UNSPEC_TRN2
 			      UNSPEC_UZP1 UNSPEC_UZP2])
@@ -958,6 +1014,16 @@
 
 (define_int_iterator CRYPTO_SHA256 [UNSPEC_SHA256H UNSPEC_SHA256H2])
 
+;; Iterators for atomic operations.
+
+(define_int_iterator ATOMIC_LDOP
+ [UNSPECV_ATOMIC_LDOP_OR UNSPECV_ATOMIC_LDOP_BIC
+  UNSPECV_ATOMIC_LDOP_XOR UNSPECV_ATOMIC_LDOP_PLUS])
+
+(define_int_attr atomic_ldop
+ [(UNSPECV_ATOMIC_LDOP_OR "set") (UNSPECV_ATOMIC_LDOP_BIC "clr")
+  (UNSPECV_ATOMIC_LDOP_XOR "eor") (UNSPECV_ATOMIC_LDOP_PLUS "add")])
+
 ;; -------------------------------------------------------------------
 ;; Int Iterators Attributes.
 ;; -------------------------------------------------------------------
@@ -982,6 +1048,12 @@
 				 (UNSPEC_FMIN "fmin")
 				 (UNSPEC_FMINNMV "fminnm")
 				 (UNSPEC_FMINV "fmin")])
+
+(define_int_attr fmaxmin [(UNSPEC_FMAXNM "fmax")
+			  (UNSPEC_FMINNM "fmin")])
+
+(define_int_attr fmaxmin_op [(UNSPEC_FMAXNM "fmaxnm")
+			     (UNSPEC_FMINNM "fminnm")])
 
 (define_int_attr sur [(UNSPEC_SHADD "s") (UNSPEC_UHADD "u")
 		      (UNSPEC_SRHADD "sr") (UNSPEC_URHADD "ur")
@@ -1096,3 +1168,5 @@
 			  (UNSPEC_SHA1M "m")])
 
 (define_int_attr sha256_op [(UNSPEC_SHA256H "") (UNSPEC_SHA256H2 "2")])
+
+(define_int_attr rdma_as [(UNSPEC_SQRDMLAH "a") (UNSPEC_SQRDMLSH "s")])

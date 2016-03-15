@@ -1,6 +1,6 @@
 // Heap implementation -*- C++ -*-
 
-// Copyright (C) 2001-2015 Free Software Foundation, Inc.
+// Copyright (C) 2001-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -264,13 +264,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     inline void
     pop_heap(_RandomAccessIterator __first, _RandomAccessIterator __last)
     {
-      typedef typename iterator_traits<_RandomAccessIterator>::value_type
-	_ValueType;
-
       // concept requirements
       __glibcxx_function_requires(_Mutable_RandomAccessIteratorConcept<
 	    _RandomAccessIterator>)
-      __glibcxx_function_requires(_LessThanComparableConcept<_ValueType>)
+      __glibcxx_function_requires(_LessThanComparableConcept<
+	typename iterator_traits<_RandomAccessIterator>::value_type>)
       __glibcxx_requires_non_empty_range(__first, __last);
       __glibcxx_requires_valid_range(__first, __last);
       __glibcxx_requires_irreflexive(__first, __last);

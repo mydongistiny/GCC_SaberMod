@@ -1,4 +1,4 @@
-@c Copyright (C) 1988-2015 Free Software Foundation, Inc.
+@c Copyright (C) 1988-2016 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -373,6 +373,11 @@ the argument @option{-lgcc} to tell the linker to do the search.
 @defmac LINK_GCC_C_SEQUENCE_SPEC
 The sequence in which libgcc and libc are specified to the linker.
 By default this is @code{%G %L %G}.
+@end defmac
+
+@defmac POST_LINK_SPEC
+Define this macro to add additional steps to be executed after linker.
+The default value of this macro is empty string.
 @end defmac
 
 @defmac LINK_COMMAND_SPEC
@@ -2461,8 +2466,8 @@ in the reload pass.
 If defined, a C expression that returns nonzero for a @var{class} for which
 a change from mode @var{from} to mode @var{to} is invalid.
 
-For the example, loading 32-bit integer or floating-point objects into
-floating-point registers on the Alpha extends them to 64 bits.
+For example, loading 32-bit integer or floating-point objects into
+floating-point registers on Alpha extends them to 64 bits.
 Therefore loading a 64-bit object and then storing it as a 32-bit object
 does not store the low-order 32 bits, as would be the case for a normal
 register.  Therefore, @file{alpha.h} defines @code{CANNOT_CHANGE_MODE_CLASS}
@@ -2473,6 +2478,17 @@ as below:
   (GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO) \
    ? reg_classes_intersect_p (FLOAT_REGS, (CLASS)) : 0)
 @end smallexample
+
+Even if storing from a register in mode @var{to} would be valid,
+if both @var{from} and @code{raw_reg_mode} for @var{class} are wider
+than @code{word_mode}, then we must prevent @var{to} narrowing the
+mode.  This happens when the middle-end assumes that it can load
+or store pieces of an @var{N}-word pseudo, and that the pseudo will
+eventually be allocated to @var{N} @code{word_mode} hard registers.
+Failure to prevent this kind of mode change will result in the
+entire @code{raw_reg_mode} being modified instead of the partial
+value that the middle-end intended.
+
 @end defmac
 
 @hook TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS
@@ -4219,6 +4235,8 @@ address;  but often a machine-dependent strategy can generate better code.
 
 @hook TARGET_VECTORIZE_BUILTIN_VECTORIZED_FUNCTION
 
+@hook TARGET_VECTORIZE_BUILTIN_MD_VECTORIZED_FUNCTION
+
 @hook TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT
 
 @hook TARGET_VECTORIZE_PREFERRED_SIMD_MODE
@@ -4235,10 +4253,6 @@ address;  but often a machine-dependent strategy can generate better code.
 
 @hook TARGET_VECTORIZE_DESTROY_COST_DATA
 
-@hook TARGET_VECTORIZE_BUILTIN_TM_LOAD
-
-@hook TARGET_VECTORIZE_BUILTIN_TM_STORE
-
 @hook TARGET_VECTORIZE_BUILTIN_GATHER
 
 @hook TARGET_VECTORIZE_BUILTIN_SCATTER
@@ -4250,6 +4264,12 @@ address;  but often a machine-dependent strategy can generate better code.
 @hook TARGET_SIMD_CLONE_USABLE
 
 @hook TARGET_GOACC_VALIDATE_DIMS
+
+@hook TARGET_GOACC_DIM_LIMIT
+
+@hook TARGET_GOACC_FORK_JOIN
+
+@hook TARGET_GOACC_REDUCTION
 
 @node Anchored Addresses
 @section Anchored Addresses
@@ -4722,9 +4742,13 @@ Define this macro if a non-short-circuit operation produced by
 @code{BRANCH_COST} is greater than or equal to the value 2.
 @end defmac
 
+@hook TARGET_OPTAB_SUPPORTED_P
+
 @hook TARGET_RTX_COSTS
 
 @hook TARGET_ADDRESS_COST
+
+@hook TARGET_NO_SPECULATION_IN_DELAY_SLOTS_P
 
 @node Scheduling
 @section Adjusting the Instruction Scheduler
@@ -6973,7 +6997,7 @@ whose value is the highest absolute text address in the file.
 Here are macros for SDB and DWARF output.
 
 @defmac SDB_DEBUGGING_INFO
-Define this macro if GCC should produce COFF-style debugging output
+Define this macro to 1 if GCC should produce COFF-style debugging output
 for SDB in response to the @option{-g} option.
 @end defmac
 
@@ -7436,7 +7460,11 @@ c_register_addr_space ("__ea", ADDR_SPACE_EA);
 
 @hook TARGET_ADDR_SPACE_SUBSET_P
 
+@hook TARGET_ADDR_SPACE_ZERO_ADDRESS_VALID
+
 @hook TARGET_ADDR_SPACE_CONVERT
+
+@hook TARGET_ADDR_SPACE_DEBUG
 
 @node Misc
 @section Miscellaneous Parameters

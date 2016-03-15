@@ -605,27 +605,6 @@ long __gnat_invalid_tzoff = 259273;
 
 #if defined (__MINGW32__)
 
-#ifdef CERT
-
-/* For the Cert run times on native Windows we use dummy functions
-   for locking and unlocking tasks since we do not support multiple
-   threads on this configuration (Cert run time on native Windows). */
-
-void dummy (void) {}
-
-void (*Lock_Task) ()   = &dummy;
-void (*Unlock_Task) () = &dummy;
-
-#else
-
-#define Lock_Task system__soft_links__lock_task
-extern void (*Lock_Task) (void);
-
-#define Unlock_Task system__soft_links__unlock_task
-extern void (*Unlock_Task) (void);
-
-#endif
-
 /* Reentrant localtime for Windows. */
 
 extern void
@@ -638,8 +617,6 @@ __gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
   TIME_ZONE_INFORMATION tzi;
 
   DWORD tzi_status;
-
-  (*Lock_Task) ();
 
   tzi_status = GetTimeZoneInformation (&tzi);
 
@@ -712,8 +689,6 @@ __gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
       }
     }
   }
-
-  (*Unlock_Task) ();
 }
 
 #elif defined (__Lynx__)
@@ -865,10 +840,23 @@ __gnat_get_task_options (void)
 
   /* Mask those bits that are not under user control */
 #ifdef VX_USR_TASK_OPTIONS
-  return options & VX_USR_TASK_OPTIONS;
-#else
-  return options;
+  /* O810-007, TSR 00043679:
+     Workaround a bug in Vx-7 where VX_DEALLOC_TCB == VX_PRIVATE_UMASK and:
+     - VX_DEALLOC_TCB is an internal option not to be used by users
+     - VX_PRIVATE_UMASK as a user-definable option
+     This leads to VX_USR_TASK_OPTIONS allowing 0x8000 as VX_PRIVATE_UMASK but
+     taskCreate refusing this option (VX_DEALLOC_TCB is not allowed)
+
+     Note that the same error occurs in both RTP and Kernel mode, but
+     VX_DEALLOC_TCB is not defined in the RTP headers, so we need to
+     explicitely check if VX_PRIVATE_UMASK has value 0x8000
+  */
+# if defined (VX_PRIVATE_UMASK) && (0x8000 == VX_PRIVATE_UMASK)
+  options &= ~VX_PRIVATE_UMASK;
+# endif
+  options &= VX_USR_TASK_OPTIONS;
 #endif
+  return options;
 }
 
 #endif

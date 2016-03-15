@@ -1,3 +1,60 @@
+2016-03-07  Martin Sebor  <msebor@redhat.com>
+
+	* check_GNU_style.sh (color): New global variable.
+	Add checks for trailing operators and spaces before left brackets.
+	Tightened up a check for a trailing left curly brace.
+	(g, ag, vg): Use color.
+	(col): Don't complain about excessively long lines with DejaGnu
+	directives.
+
+2016-03-06  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* mklog: Look for the ChangeLog file in $cwd.
+
+2016-02-26  Joel Sherrill <joel@rtems.org>
+
+	* config-list.mk: Add aarch64-rtems and x86_64-rtems
+
+2016-01-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	* uninclude: Fix third argument to gensub.
+
+2016-01-04  Jakub Jelinek  <jakub@redhat.com>
+
+	* update-copyright.py (GCCCopyright): Add NVIDIA Corporation
+	as external author.
+
+2015-12-17  Jan-Benedict Glaw  <jbglaw@lug-owl.de>
+
+	* config-list.mk (LIST): Add --enable-obsolete to recently obsoleted
+	targets x86_64-knetbsd-gnu, i686-knetbsd-gnu and i686-openbsd3.0 .
+
+2015-12-06  Tobias Burnus  <burnus@net-b.de>
+
+	* download_prerequisites: Download ISL 0.15 instead of 0.14.
+
+2015-11-20  Martin Liska  <mliska@suse.cz>
+
+	* clang-format: Split content of a list to multiple
+	lines.
+
+2015-11-19  Martin Liska  <mliska@suse.cz>
+
+	* clang-format: Enhance list of FOR_EACH macros.
+
+2015-11-19  Martin Liska  <mliska@suse.cz>
+
+	* clang-format: New file.
+
+2015-11-11  Andrew MacLeod  <amacleod@redhat.com>
+
+	* header-tools: New.  Directory containing a set of tools for
+	manipulating header files.
+
+2015-10-30  Nathan Sidwell  <nathan@acm.org>
+
+	* config-list.mk (nvptx-none): Add it.
+
 2015-09-11  Markus Trippelsdorf  <markus@trippelsdorf.de>
 
 	* download_prerequisites: Make sure that script is run from

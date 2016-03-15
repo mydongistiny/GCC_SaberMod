@@ -1,5 +1,5 @@
 /* IRA processing allocno lives to build allocno live ranges.
-   Copyright (C) 2006-2015 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -22,22 +22,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "rtl.h"
-#include "df.h"
-#include "regs.h"
-#include "tm_p.h"
 #include "target.h"
-#include "flags.h"
-#include "except.h"
+#include "rtl.h"
+#include "predict.h"
+#include "df.h"
+#include "tm_p.h"
 #include "insn-config.h"
-#include "diagnostic-core.h"
-#include "params.h"
-#include "sparseset.h"
-#include "cfgloop.h"
+#include "regs.h"
 #include "ira.h"
-#include "alloc-pool.h"
 #include "ira-int.h"
+#include "sparseset.h"
 
 /* The code in this file is similar to one in global but the code
    works on the allocno basis and creates live ranges instead of
@@ -780,6 +774,7 @@ single_reg_class (const char *constraints, rtx op, rtx equiv_const)
 	  /* ??? Is this the best way to handle memory constraints?  */
 	  cn = lookup_constraint (constraints);
 	  if (insn_extra_memory_constraint (cn)
+	      || insn_extra_special_memory_constraint (cn)
 	      || insn_extra_address_constraint (cn))
 	    return NO_REGS;
 	  if (constraint_satisfied_p (op, cn)

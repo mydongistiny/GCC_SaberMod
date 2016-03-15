@@ -1,5 +1,5 @@
 /* Top-level LTO routines.
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
@@ -21,34 +21,25 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "opts.h"
-#include "toplev.h"
-#include "alias.h"
 #include "tm.h"
 #include "function.h"
 #include "bitmap.h"
-#include "cfghooks.h"
 #include "basic-block.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
-#include "options.h"
-#include "fold-const.h"
-#include "stor-layout.h"
-#include "diagnostic-core.h"
-#include "cgraph.h"
-#include "tree-ssa-operands.h"
-#include "tree-pass.h"
-#include "langhooks.h"
+#include "cfghooks.h"
 #include "alloc-pool.h"
+#include "tree-pass.h"
+#include "tree-streamer.h"
+#include "cgraph.h"
+#include "opts.h"
+#include "toplev.h"
+#include "stor-layout.h"
 #include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "common.h"
 #include "debug.h"
-#include "internal-fn.h"
 #include "lto.h"
-#include "lto-tree.h"
-#include "tree-streamer.h"
 #include "lto-section-names.h"
 #include "splay-tree.h"
 #include "lto-partition.h"
@@ -58,6 +49,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "params.h"
 #include "ipa-utils.h"
 #include "gomp-constants.h"
+#include "lto-symtab.h"
+#include "stringpool.h"
+#include "fold-const.h"
 
 
 /* Number of parallel tasks to run, -1 if we want to use GNU Make jobserver.  */
@@ -242,6 +236,8 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
   uint32_t i, j;
 
   ix = *data++;
+  state->compressed = ix & 1;
+  ix /= 2;
   decl = streamer_tree_cache_get_tree (data_in->reader_cache, ix);
   if (!VAR_OR_FUNCTION_DECL_P (decl))
     {
@@ -397,8 +393,11 @@ iterative_hash_canonical_type (tree type, inchash::hash &hstate)
 
   /* All type variants have same TYPE_CANONICAL.  */
   type = TYPE_MAIN_VARIANT (type);
+
+  if (!canonical_type_used_p (type))
+    v = hash_canonical_type (type);
   /* An already processed type.  */
-  if (TYPE_CANONICAL (type))
+  else if (TYPE_CANONICAL (type))
     {
       type = TYPE_CANONICAL (type);
       v = gimple_canonical_type_hash (type);
@@ -446,7 +445,9 @@ gimple_register_canonical_type_1 (tree t, hashval_t hash)
 {
   void **slot;
 
-  gcc_checking_assert (TYPE_P (t) && !TYPE_CANONICAL (t));
+  gcc_checking_assert (TYPE_P (t) && !TYPE_CANONICAL (t)
+		       && type_with_alias_set_p (t)
+		       && canonical_type_used_p (t));
 
   slot = htab_find_slot_with_hash (gimple_canonical_types, t, hash, INSERT);
   if (*slot)
@@ -479,7 +480,8 @@ gimple_register_canonical_type_1 (tree t, hashval_t hash)
 static void
 gimple_register_canonical_type (tree t)
 {
-  if (TYPE_CANONICAL (t) || !type_with_alias_set_p (t))
+  if (TYPE_CANONICAL (t) || !type_with_alias_set_p (t)
+      || !canonical_type_used_p (t))
     return;
 
   /* Canonical types are same among all complete variants.  */
@@ -1022,7 +1024,10 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
   compare_values (TREE_DEPRECATED);
   if (TYPE_P (t1))
     {
-      compare_values (TYPE_SATURATING);
+      if (AGGREGATE_TYPE_P (t1))
+	compare_values (TYPE_REVERSE_STORAGE_ORDER);
+      else
+	compare_values (TYPE_SATURATING);
       compare_values (TYPE_ADDR_SPACE);
     }
   else if (code == SSA_NAME)
@@ -1166,7 +1171,9 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       compare_values (TYPE_READONLY);
       compare_values (TYPE_PRECISION);
       compare_values (TYPE_ALIGN);
-      compare_values (TYPE_ALIAS_SET);
+      /* Do not compare TYPE_ALIAS_SET.  Doing so introduce ordering issues
+         with calls to get_alias_set which may initialize it for streamed
+ 	 in types.  */
     }
 
   /* We don't want to compare locations, so there is nothing do compare
@@ -1586,19 +1593,18 @@ unify_scc (struct data_in *data_in, unsigned from,
 	  num_sccs_merged++;
 	  total_scc_size_merged += len;
 
-#ifdef ENABLE_CHECKING
-	  for (unsigned i = 0; i < len; ++i)
-	    {
-	      tree t = map[2*i+1];
-	      enum tree_code code = TREE_CODE (t);
-	      /* IDENTIFIER_NODEs should be singletons and are merged by the
-		 streamer.  The others should be singletons, too, and we
-		 should not merge them in any way.  */
-	      gcc_assert (code != TRANSLATION_UNIT_DECL
-			  && code != IDENTIFIER_NODE
-			  && !streamer_handle_as_builtin_p (t));
-	    }
-#endif
+	  if (flag_checking)
+	    for (unsigned i = 0; i < len; ++i)
+	      {
+		tree t = map[2*i+1];
+		enum tree_code code = TREE_CODE (t);
+		/* IDENTIFIER_NODEs should be singletons and are merged by the
+		   streamer.  The others should be singletons, too, and we
+		   should not merge them in any way.  */
+		gcc_assert (code != TRANSLATION_UNIT_DECL
+			    && code != IDENTIFIER_NODE
+			    && !streamer_handle_as_builtin_p (t));
+	      }
 
 	  /* Fixup the streamer cache with the prevailing nodes according
 	     to the tree node mapping computed by compare_tree_sccs.  */
@@ -1623,13 +1629,9 @@ unify_scc (struct data_in *data_in, unsigned from,
 	  data_in->location_cache.revert_location_cache ();
 	  for (unsigned i = 0; i < len; ++i)
 	    {
-	      enum tree_code code;
 	      if (TYPE_P (scc->entries[i]))
 		num_merged_types++;
-	      code = TREE_CODE (scc->entries[i]);
-	      if (CODE_CONTAINS_STRUCT (code, TS_CONSTRUCTOR))
-		vec_free (CONSTRUCTOR_ELTS (scc->entries[i]));
-	      ggc_free (scc->entries[i]);
+	      free_node (scc->entries[i]);
 	    }
 
 	  break;
@@ -2519,7 +2521,7 @@ lto_wpa_write_files (void)
 
 /* Ensure that TT isn't a replacable var of function decl.  */
 #define LTO_NO_PREVAIL(tt) \
-  gcc_assert (!(tt) || !VAR_OR_FUNCTION_DECL_P (tt))
+  gcc_checking_assert (!(tt) || !VAR_OR_FUNCTION_DECL_P (tt))
 
 /* Given a tree T replace all fields referring to variables or functions
    with their prevailing variant.  */
@@ -2531,7 +2533,10 @@ lto_fixup_prevailing_decls (tree t)
 
   gcc_checking_assert (code != TREE_BINFO);
   LTO_NO_PREVAIL (TREE_TYPE (t));
-  if (CODE_CONTAINS_STRUCT (code, TS_COMMON))
+  if (CODE_CONTAINS_STRUCT (code, TS_COMMON)
+      /* lto_symtab_prevail_decl use TREE_CHAIN to link to the prevailing decl.
+	 in the case T is a prevailed declaration we would ICE here. */
+      && !VAR_OR_FUNCTION_DECL_P (t))
     LTO_NO_PREVAIL (TREE_CHAIN (t));
   if (DECL_P (t))
     {
@@ -2636,10 +2641,8 @@ lto_fixup_state (struct lto_in_decl_state *state)
       for (i = 0; i < vec_safe_length (trees); i++)
 	{
 	  tree t = (*trees)[i];
-#ifdef ENABLE_CHECKING
-	  if (TYPE_P (t))
+	  if (flag_checking && TYPE_P (t))
 	    verify_type (t);
-#endif
 	  if (VAR_OR_FUNCTION_DECL_P (t)
 	      && (TREE_PUBLIC (t) || DECL_EXTERNAL (t)))
 	    (*trees)[i] = lto_symtab_prevailing_decl (t);
@@ -2852,7 +2855,7 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
   /* Read the symtab.  */
   input_symtab ();
 
-  input_offload_tables ();
+  input_offload_tables (!flag_ltrans);
 
   /* Store resolutions into the symbol table.  */
 
@@ -3101,9 +3104,8 @@ do_whole_program_analysis (void)
       fprintf (symtab->dump_file, "Optimized ");
       symtab_node::dump_table (symtab->dump_file);
     }
-#ifdef ENABLE_CHECKING
-  symtab_node::verify_symtab_nodes ();
-#endif
+
+  symtab_node::checking_verify_symtab_nodes ();
   bitmap_obstack_release (NULL);
 
   /* We are about to launch the final LTRANS phase, stop the WPA timer.  */
@@ -3226,6 +3228,37 @@ lto_init (void)
 #endif
 }
 
+/* Create artificial pointers for "omp declare target link" vars.  */
+
+static void
+offload_handle_link_vars (void)
+{
+#ifdef ACCEL_COMPILER
+  varpool_node *var;
+  FOR_EACH_VARIABLE (var)
+    if (lookup_attribute ("omp declare target link",
+			  DECL_ATTRIBUTES (var->decl)))
+      {
+	tree type = build_pointer_type (TREE_TYPE (var->decl));
+	tree link_ptr_var = make_node (VAR_DECL);
+	TREE_TYPE (link_ptr_var) = type;
+	TREE_USED (link_ptr_var) = 1;
+	TREE_STATIC (link_ptr_var) = 1;
+	DECL_MODE (link_ptr_var) = TYPE_MODE (type);
+	DECL_SIZE (link_ptr_var) = TYPE_SIZE (type);
+	DECL_SIZE_UNIT (link_ptr_var) = TYPE_SIZE_UNIT (type);
+	DECL_ARTIFICIAL (link_ptr_var) = 1;
+	tree var_name = DECL_ASSEMBLER_NAME (var->decl);
+	char *new_name
+	  = ACONCAT ((IDENTIFIER_POINTER (var_name), "_linkptr", NULL));
+	DECL_NAME (link_ptr_var) = get_identifier (new_name);
+	SET_DECL_ASSEMBLER_NAME (link_ptr_var, DECL_NAME (link_ptr_var));
+	SET_DECL_VALUE_EXPR (var->decl, build_simple_mem_ref (link_ptr_var));
+	DECL_HAS_VALUE_EXPR_P (var->decl) = 1;
+      }
+#endif
+}
+
 
 /* Main entry point for the GIMPLE front end.  This front end has
    three main personalities:
@@ -3274,6 +3307,8 @@ lto_main (void)
 
   if (!seen_error ())
     {
+      offload_handle_link_vars ();
+
       /* If WPA is enabled analyze the whole call graph and create an
 	 optimization plan.  Otherwise, read in all the function
 	 bodies and continue with optimization.  */

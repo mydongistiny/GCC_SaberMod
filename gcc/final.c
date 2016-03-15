@@ -1,5 +1,5 @@
 /* Convert RTL to assembler code and output it, for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -43,20 +43,24 @@ along with GCC; see the file COPYING3.  If not see
    function_epilogue.  Those instructions never exist as rtl.  */
 
 #include "config.h"
+#define INCLUDE_ALGORITHM /* reverse */
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "cfghooks.h"
 #include "df.h"
-#include "alias.h"
-#include "varasm.h"
 #include "tm_p.h"
-#include "regs.h"
 #include "insn-config.h"
-#include "insn-attr.h"
+#include "regs.h"
+#include "emit-rtl.h"
 #include "recog.h"
+#include "cgraph.h"
+#include "tree-pretty-print.h" /* for dump_function_header */
+#include "varasm.h"
+#include "insn-attr.h"
 #include "conditions.h"
 #include "flags.h"
 #include "output.h"
@@ -66,31 +70,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "reload.h"
 #include "intl.h"
 #include "cfgrtl.h"
-#include "target.h"
-#include "targhooks.h"
 #include "debug.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-pass.h"
-#include "cgraph.h"
 #include "tree-ssa.h"
-#include "coverage.h"
 #include "cfgloop.h"
 #include "params.h"
-#include "tree-pretty-print.h" /* for dump_function_header */
 #include "asan.h"
-#include "wide-int-print.h"
 #include "rtl-iter.h"
 #include "print-rtl.h"
 
 #ifdef XCOFF_DEBUGGING_INFO
-#include "xcoffout.h"		/* Needed for external data
-				   declarations for e.g. AIX 4.x.  */
+#include "xcoffout.h"		/* Needed for external data declarations.  */
 #endif
 
 #include "dwarf2out.h"
@@ -99,9 +89,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "dbxout.h"
 #endif
 
-#ifdef SDB_DEBUGGING_INFO
 #include "sdbout.h"
-#endif
 
 /* Most ports that aren't using cc0 don't need to define CC_STATUS_INIT.
    So define a null default for it to save conditionalization later.  */
@@ -1170,7 +1158,7 @@ shorten_branches (rtx_insn *first)
 	      int inner_uid = INSN_UID (inner_insn);
 	      int inner_length;
 
-	      if (GET_CODE (body) == ASM_INPUT
+	      if (GET_CODE (PATTERN (inner_insn)) == ASM_INPUT
 		  || asm_noperands (PATTERN (inner_insn)) >= 0)
 		inner_length = (asm_insn_count (PATTERN (inner_insn))
 				* insn_default_length (inner_insn));
@@ -3008,7 +2996,8 @@ final_scan_insn (rtx_insn *insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 	    && targetm.asm_out.unwind_emit)
 	  targetm.asm_out.unwind_emit (asm_out_file, insn);
 
-	if (rtx_call_insn *call_insn = dyn_cast <rtx_call_insn *> (insn))
+	rtx_call_insn *call_insn = dyn_cast <rtx_call_insn *> (insn);
+	if (call_insn != NULL)
 	  {
 	    rtx x = call_from_call_insn (call_insn);
 	    x = XEXP (x, 0);
@@ -3020,8 +3009,6 @@ final_scan_insn (rtx_insn *insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 		if (t)
 		  assemble_external (t);
 	      }
-	    if (!DECL_IGNORED_P (current_function_decl))
-	      debug_hooks->var_location (insn);
 	  }
 
 	/* Output assembler code from the template.  */
@@ -3036,6 +3023,12 @@ final_scan_insn (rtx_insn *insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 	if (!targetm.asm_out.unwind_emit_before_insn
 	    && targetm.asm_out.unwind_emit)
 	  targetm.asm_out.unwind_emit (asm_out_file, insn);
+
+	/* Let the debug info back-end know about this call.  We do this only
+	   after the instruction has been emitted because labels that may be
+	   created to reference the call instruction must appear after it.  */
+	if (call_insn != NULL && !DECL_IGNORED_P (current_function_decl))
+	  debug_hooks->var_location (insn);
 
 	current_output_insn = debug_insn = 0;
       }
@@ -3724,7 +3717,7 @@ output_asm_insn (const char *templ, rtx *operands)
 	    else if (letter == 'l')
 	      output_asm_label (operands[opnum]);
 	    else if (letter == 'a')
-	      output_address (operands[opnum]);
+	      output_address (VOIDmode, operands[opnum]);
 	    else if (letter == 'c')
 	      {
 		if (CONSTANT_ADDRESS_P (operands[opnum]))
@@ -3859,11 +3852,11 @@ output_operand (rtx x, int code ATTRIBUTE_UNUSED)
    machine-dependent assembler syntax.  */
 
 void
-output_address (rtx x)
+output_address (machine_mode mode, rtx x)
 {
   bool changed = false;
   walk_alter_subreg (&x, &changed);
-  targetm.asm_out.print_operand_address (asm_out_file, x);
+  targetm.asm_out.print_operand_address (asm_out_file, mode, x);
 }
 
 /* Print an integer constant expression in assembler syntax.
@@ -4655,10 +4648,8 @@ rest_of_clean_state (void)
   /* In case the function was not output,
      don't leave any temporary anonymous types
      queued up for sdb output.  */
-#ifdef SDB_DEBUGGING_INFO
-  if (write_symbols == SDB_DEBUG)
+  if (SDB_DEBUGGING_INFO && write_symbols == SDB_DEBUG)
     sdbout_types (NULL_TREE);
-#endif
 
   flag_rerun_cse_after_global_opts = 0;
   reload_completed = 0;
@@ -4676,7 +4667,7 @@ rest_of_clean_state (void)
 
   free_bb_for_insn ();
 
-  delete_tree_ssa ();
+  delete_tree_ssa (cfun);
 
   /* We can reduce stack alignment on call site only when we are sure that
      the function body just produced will be actually used in the final

@@ -1,5 +1,5 @@
 /* Functions to support a pool of allocatable objects
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@cgsoftware.com>
 
 This file is part of GCC.
@@ -21,8 +21,12 @@ along with GCC; see the file COPYING3.  If not see
 #define ALLOC_POOL_H
 
 #include "memory-block.h"
+#include "options.h"	    // for flag_checking
 
 extern void dump_alloc_pool_statistics (void);
+
+/* Flag indicates whether memory statistics are gathered any longer.  */
+extern bool after_memory_report;
 
 typedef unsigned long ALLOC_POOL_ID_TYPE;
 
@@ -155,8 +159,10 @@ private:
 
   struct allocation_object
   {
+#if CHECKING_P
     /* The ID of alloc pool which the object was allocated from.  */
     ALLOC_POOL_ID_TYPE id;
+#endif
 
     union
       {
@@ -171,6 +177,7 @@ private:
 	int64_t align_i;
       } u;
 
+#if CHECKING_P
     static inline allocation_object*
     get_instance (void *data_ptr)
     {
@@ -178,6 +185,7 @@ private:
 				      - offsetof (allocation_object,
 						  u.data));
     }
+#endif
 
     static inline void*
     get_data (void *instance_ptr)
@@ -275,7 +283,6 @@ base_pool_allocator <TBlockAllocator>::initialize ()
   m_elts_per_block = (TBlockAllocator::block_size - header_size) / size;
   gcc_checking_assert (m_elts_per_block != 0);
 
-#ifdef ENABLE_CHECKING
   /* Increase the last used ID and use it for this pool.
      ID == 0 is used for free elements of pool so skip it.  */
   last_id++;
@@ -283,7 +290,6 @@ base_pool_allocator <TBlockAllocator>::initialize ()
     last_id++;
 
   m_id = last_id;
-#endif
 }
 
 /* Free all memory allocated for the given memory pool.  */
@@ -303,7 +309,7 @@ base_pool_allocator <TBlockAllocator>::release ()
       TBlockAllocator::release (block);
     }
 
-  if (GATHER_STATISTICS)
+  if (GATHER_STATISTICS && !after_memory_report)
     {
       pool_allocator_usage.release_instance_overhead
 	(this, (m_elts_allocated - m_elts_free) * m_elt_size);
@@ -364,7 +370,7 @@ base_pool_allocator <TBlockAllocator>::allocate ()
 
 	  /* Make the block.  */
 	  block = reinterpret_cast<char *> (TBlockAllocator::allocate ());
-	  block_header = (allocation_pool_list*) block;
+	  block_header = new (block) allocation_pool_list;
 	  block += align_eight (sizeof (allocation_pool_list));
 
 	  /* Throw it on the block list.  */
@@ -387,8 +393,9 @@ base_pool_allocator <TBlockAllocator>::allocate ()
       block = m_virgin_free_list;
       header = (allocation_pool_list*) allocation_object::get_data (block);
       header->next = NULL;
-#ifdef ENABLE_CHECKING
+
       /* Mark the element to be free.  */
+#if CHECKING_P
       ((allocation_object*) block)->id = 0;
 #endif
       VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (header,size));
@@ -404,8 +411,8 @@ base_pool_allocator <TBlockAllocator>::allocate ()
   m_returned_free_list = header->next;
   m_elts_free--;
 
-#ifdef ENABLE_CHECKING
   /* Set the ID for element.  */
+#if CHECKING_P
   allocation_object::get_instance (header)->id = m_id;
 #endif
   VALGRIND_DISCARD (VALGRIND_MAKE_MEM_UNDEFINED (header, size));
@@ -418,26 +425,28 @@ template <typename TBlockAllocator>
 inline void
 base_pool_allocator <TBlockAllocator>::remove (void *object)
 {
-  gcc_checking_assert (m_initialized);
+  int size = m_elt_size - offsetof (allocation_object, u.data);
 
-  allocation_pool_list *header;
-  int size ATTRIBUTE_UNUSED;
-  size = m_elt_size - offsetof (allocation_object, u.data);
+  if (flag_checking)
+    {
+      gcc_assert (m_initialized);
+      gcc_assert (object
+		  /* Check if we free more than we allocated.  */
+		  && m_elts_free < m_elts_allocated);
+#if CHECKING_P
+      /* Check whether the PTR was allocated from POOL.  */
+      gcc_assert (m_id == allocation_object::get_instance (object)->id);
+#endif
 
-#ifdef ENABLE_CHECKING
-  gcc_assert (object
-	      /* Check if we free more than we allocated, which is Bad (TM).  */
-	      && m_elts_free < m_elts_allocated
-	      /* Check whether the PTR was allocated from POOL.  */
-	      && m_id == allocation_object::get_instance (object)->id);
+      memset (object, 0xaf, size);
+    }
 
-  memset (object, 0xaf, size);
-
+#if CHECKING_P 
   /* Mark the element to be free.  */
   allocation_object::get_instance (object)->id = 0;
 #endif
 
-  header = (allocation_pool_list*) object;
+  allocation_pool_list *header = new (object) allocation_pool_list;
   header->next = m_returned_free_list;
   m_returned_free_list = header;
   VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (object, size));
@@ -483,10 +492,23 @@ public:
     m_allocator.release_if_empty ();
   }
 
+
+  /* Allocate memory for instance of type T and call a default constructor.  */
+
   inline T *
   allocate () ATTRIBUTE_MALLOC
   {
-    return ::new (m_allocator.allocate ()) T ();
+    return ::new (m_allocator.allocate ()) T;
+  }
+
+  /* Allocate memory for instance of type T and return void * that
+     could be used in situations where a default constructor is not provided
+     by the class T.  */
+
+  inline void *
+  allocate_raw () ATTRIBUTE_MALLOC
+  {
+    return m_allocator.allocate ();
   }
 
   inline void
@@ -534,7 +556,7 @@ template <typename T>
 inline void *
 operator new (size_t, object_allocator<T> &a)
 {
-  return a.allocate ();
+  return a.allocate_raw ();
 }
 
 /* Hashtable mapping alloc_pool names to descriptors.  */

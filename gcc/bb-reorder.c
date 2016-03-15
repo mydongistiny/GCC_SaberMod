@@ -1,5 +1,5 @@
 /* Basic block reordering routines for the GNU compiler.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -91,31 +91,21 @@
 */
 
 #include "config.h"
+#define INCLUDE_ALGORITHM /* stable_sort */
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
-#include "tree.h"
-#include "rtl.h"
-#include "df.h"
-#include "alias.h"
-#include "regs.h"
-#include "flags.h"
-#include "output.h"
 #include "target.h"
-#include "tm_p.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
+#include "rtl.h"
+#include "tree.h"
+#include "cfghooks.h"
+#include "df.h"
 #include "optabs.h"
+#include "regs.h"
+#include "emit-rtl.h"
+#include "output.h"
+#include "expr.h"
 #include "params.h"
-#include "diagnostic-core.h"
 #include "toplev.h" /* user_defined_section_attribute */
 #include "tree-pass.h"
 #include "cfgrtl.h"
@@ -123,7 +113,6 @@
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
 #include "bb-reorder.h"
-#include "cgraph.h"
 #include "except.h"
 #include "fibonacci_heap.h"
 
@@ -167,6 +156,10 @@ struct bbro_basic_block_data
 
   /* Which trace was this bb visited in?  */
   int visited;
+
+  /* Cached maximum frequency of interesting incoming edges.
+     Minus one means not yet computed.  */
+  int priority;
 
   /* Which heap is BB in (if any)?  */
   bb_heap_t *heap;
@@ -786,7 +779,15 @@ find_traces_1_round (int branch_th, int exec_th, gcov_type count_th,
       while (best_edge);
       trace->last = bb;
       bbd[trace->first->index].start_of_trace = *n_traces - 1;
-      bbd[trace->last->index].end_of_trace = *n_traces - 1;
+      if (bbd[trace->last->index].end_of_trace != *n_traces - 1)
+	{
+	  bbd[trace->last->index].end_of_trace = *n_traces - 1;
+	  /* Update the cached maximum frequency for interesting predecessor
+	     edges for successors of the new trace end.  */
+	  FOR_EACH_EDGE (e, ei, trace->last->succs)
+	    if (EDGE_FREQUENCY (e) > bbd[e->dest->index].priority)
+	      bbd[e->dest->index].priority = EDGE_FREQUENCY (e);
+	}
 
       /* The trace is terminated so we have to recount the keys in heap
 	 (some block can have a lower key because now one of its predecessors
@@ -856,6 +857,7 @@ copy_bb (basic_block old_bb, edge e, basic_block bb, int trace)
 	  bbd[i].end_of_trace = -1;
 	  bbd[i].in_trace = -1;
 	  bbd[i].visited = 0;
+	  bbd[i].priority = -1;
 	  bbd[i].heap = NULL;
 	  bbd[i].node = NULL;
 	}
@@ -886,7 +888,6 @@ bb_to_key (basic_block bb)
 {
   edge e;
   edge_iterator ei;
-  int priority = 0;
 
   /* Use index as key to align with its original order.  */
   if (optimize_function_for_size_p (cfun))
@@ -900,17 +901,23 @@ bb_to_key (basic_block bb)
 
   /* Prefer blocks whose predecessor is an end of some trace
      or whose predecessor edge is EDGE_DFS_BACK.  */
-  FOR_EACH_EDGE (e, ei, bb->preds)
+  int priority = bbd[bb->index].priority;
+  if (priority == -1)
     {
-      if ((e->src != ENTRY_BLOCK_PTR_FOR_FN (cfun)
-	   && bbd[e->src->index].end_of_trace >= 0)
-	  || (e->flags & EDGE_DFS_BACK))
+      priority = 0;
+      FOR_EACH_EDGE (e, ei, bb->preds)
 	{
-	  int edge_freq = EDGE_FREQUENCY (e);
+	  if ((e->src != ENTRY_BLOCK_PTR_FOR_FN (cfun)
+	       && bbd[e->src->index].end_of_trace >= 0)
+	      || (e->flags & EDGE_DFS_BACK))
+	    {
+	      int edge_freq = EDGE_FREQUENCY (e);
 
-	  if (edge_freq > priority)
-	    priority = edge_freq;
+	      if (edge_freq > priority)
+		priority = edge_freq;
+	    }
 	}
+      bbd[bb->index].priority = priority;
     }
 
   if (priority)
@@ -2264,6 +2271,7 @@ reorder_basic_blocks_software_trace_cache (void)
       bbd[i].end_of_trace = -1;
       bbd[i].in_trace = -1;
       bbd[i].visited = 0;
+      bbd[i].priority = -1;
       bbd[i].heap = NULL;
       bbd[i].node = NULL;
     }
@@ -2316,7 +2324,9 @@ reorder_basic_blocks_simple (void)
       if (JUMP_P (end) && extract_asm_operands (end))
 	continue;
 
-      if (any_condjump_p (end))
+      if (single_succ_p (bb))
+	edges[n++] = EDGE_SUCC (bb, 0);
+      else if (any_condjump_p (end))
 	{
 	  edge e0 = EDGE_SUCC (bb, 0);
 	  edge e1 = EDGE_SUCC (bb, 1);
@@ -2327,8 +2337,6 @@ reorder_basic_blocks_simple (void)
 	  edges[n++] = e0;
 	  edges[n++] = e1;
 	}
-      else if (single_succ_p (bb))
-	edges[n++] = EDGE_SUCC (bb, 0);
     }
 
   /* Sort the edges, the most desirable first.  When optimizing for size

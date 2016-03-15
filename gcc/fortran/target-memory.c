@@ -1,5 +1,5 @@
 /* Simulate storage of variables into target memory.
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Paul Thomas and Brooks Moses
 
 This file is part of GCC.
@@ -21,14 +21,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "tree.h"
+#include "gfortran.h"
+#include "trans.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "gfortran.h"
 #include "arith.h"
 #include "constructor.h"
-#include "trans.h"
 #include "trans-const.h"
 #include "trans-types.h"
 #include "target-memory.h"

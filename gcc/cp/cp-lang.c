@@ -1,5 +1,5 @@
 /* Language-dependent hooks for C++.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva  <aoliva@redhat.com>
 
 This file is part of GCC.
@@ -21,18 +21,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "stor-layout.h"
 #include "cp-tree.h"
-#include "c-family/c-common.h"
+#include "stor-layout.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "debug.h"
 #include "cp-objcp-common.h"
-#include "target.h"
-#include "parser.h"
 
 enum c_language_kind c_language = clk_cxx;
 static void cp_init_ts (void);

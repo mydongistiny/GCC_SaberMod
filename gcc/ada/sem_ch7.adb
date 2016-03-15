@@ -543,7 +543,8 @@ package body Sem_Ch7 is
 
    begin
       --  A [generic] package body "freezes" the contract of the nearest
-      --  enclosing package body:
+      --  enclosing package body and all other contracts encountered in the
+      --  same declarative part up to and excluding the package body:
 
       --    package body Nearest_Enclosing_Package
       --      with Refined_State => (State => Constit)
@@ -564,7 +565,11 @@ package body Sem_Ch7 is
       --  Freeze_xxx mechanism because it must also work in the context of
       --  generics where normal freezing is disabled.
 
-      Analyze_Enclosing_Package_Body_Contract (N);
+      --  Only bodies coming from source should cause this type of "freezing"
+
+      if Comes_From_Source (N) then
+         Analyze_Previous_Contracts (N);
+      end if;
 
       --  Find corresponding package specification, and establish the current
       --  scope. The visible defining entity for the package is the defining
@@ -714,15 +719,9 @@ package body Sem_Ch7 is
       --  Set SPARK_Mode only for non-generic package
 
       if Ekind (Spec_Id) = E_Package then
-
-         --  Set SPARK_Mode from context
-
-         Set_SPARK_Pragma (Body_Id, SPARK_Mode_Pragma);
-         Set_SPARK_Pragma_Inherited (Body_Id);
-
-         --  Set elaboration code SPARK mode the same for now
-
-         Set_SPARK_Aux_Pragma (Body_Id, SPARK_Pragma (Body_Id));
+         Set_SPARK_Pragma               (Body_Id, SPARK_Mode_Pragma);
+         Set_SPARK_Aux_Pragma           (Body_Id, SPARK_Mode_Pragma);
+         Set_SPARK_Pragma_Inherited     (Body_Id);
          Set_SPARK_Aux_Pragma_Inherited (Body_Id);
       end if;
 
@@ -764,6 +763,10 @@ package body Sem_Ch7 is
       then
          Declare_Inherited_Private_Subprograms (Spec_Id);
       end if;
+
+      --  A package body "freezes" the contract of its initial declaration.
+      --  This analysis depends on attribute Corresponding_Spec being set. Only
+      --  bodies coming from source shuld cause this type of "freezing".
 
       if Present (Declarations (N)) then
          Analyze_Declarations (Declarations (N));
@@ -2669,10 +2672,13 @@ package body Sem_Ch7 is
          --  If this is a private type with a full view (for example a local
          --  subtype of a private type declared elsewhere), ensure that the
          --  full view is also removed from visibility: it may be exposed when
-         --  swapping views in an instantiation.
+         --  swapping views in an instantiation. Similarly, ensure that the
+         --  use-visibility is properly set on both views.
 
          if Is_Type (Id) and then Present (Full_View (Id)) then
-            Set_Is_Immediately_Visible (Full_View (Id), False);
+            Set_Is_Immediately_Visible     (Full_View (Id), False);
+            Set_Is_Potentially_Use_Visible (Full_View (Id),
+              Is_Potentially_Use_Visible (Id));
          end if;
 
          if Is_Tagged_Type (Id) and then Ekind (Id) = E_Record_Type then

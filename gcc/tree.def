@@ -1,6 +1,6 @@
 /* This file contains the definitions and documentation for the
    tree codes used in GCC.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -303,7 +303,7 @@ DEFTREECODE (FIXED_CST, "fixed_cst", tcc_constant, 0)
    whose contents are other constant nodes.  */
 DEFTREECODE (COMPLEX_CST, "complex_cst", tcc_constant, 0)
 
-/* Contents are in TREE_VECTOR_CST_ELTS field.  */
+/* Contents are in VECTOR_CST_ELTS field.  */
 DEFTREECODE (VECTOR_CST, "vector_cst", tcc_constant, 0)
 
 /* Contents are TREE_STRING_LENGTH and the actual contents of the string.  */
@@ -1047,14 +1047,14 @@ DEFTREECODE (MEM_REF, "mem_ref", tcc_reference, 2)
    not change the ordering of these codes.  */
 
 /* OpenACC - #pragma acc parallel [clause1 ... clauseN]
-   Operand 0: OACC_PARALLEL_BODY: Code to be executed in parallel.
-   Operand 1: OACC_PARALLEL_CLAUSES: List of clauses.  */
+   Operand 0: OMP_BODY: Code to be executed in parallel.
+   Operand 1: OMP_CLAUSES: List of clauses.  */
 
 DEFTREECODE (OACC_PARALLEL, "oacc_parallel", tcc_statement, 2)
 
 /* OpenACC - #pragma acc kernels [clause1 ... clauseN]
-   Operand 0: OACC_KERNELS_BODY: Sequence of kernels.
-   Operand 1: OACC_KERNELS_CLAUSES: List of clauses.  */
+   Operand 0: OMP_BODY: Sequence of kernels.
+   Operand 1: OMP_CLAUSES: List of clauses.  */
 
 DEFTREECODE (OACC_KERNELS, "oacc_kernels", tcc_statement, 2)
 
@@ -1109,28 +1109,28 @@ DEFTREECODE (OMP_TASK, "omp_task", tcc_statement, 2)
 DEFTREECODE (OMP_FOR, "omp_for", tcc_statement, 7)
 
 /* OpenMP - #pragma omp simd [clause1 ... clauseN]
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (OMP_SIMD, "omp_simd", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (OMP_SIMD, "omp_simd", tcc_statement, 7)
 
 /* Cilk Plus - #pragma simd [clause1 ... clauseN]
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (CILK_SIMD, "cilk_simd", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (CILK_SIMD, "cilk_simd", tcc_statement, 7)
 
 /* Cilk Plus - _Cilk_for (..)
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (CILK_FOR, "cilk_for", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (CILK_FOR, "cilk_for", tcc_statement, 7)
 
 /* OpenMP - #pragma omp distribute [clause1 ... clauseN]
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (OMP_DISTRIBUTE, "omp_distribute", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (OMP_DISTRIBUTE, "omp_distribute", tcc_statement, 7)
 
 /* OpenMP - #pragma omp taskloop [clause1 ... clauseN]
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (OMP_TASKLOOP, "omp_taskloop", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (OMP_TASKLOOP, "omp_taskloop", tcc_statement, 7)
 
 /* OpenMP - #pragma acc loop [clause1 ... clauseN]
-   Operands like operands 1-6 of OMP_FOR.  */
-DEFTREECODE (OACC_LOOP, "oacc_loop", tcc_statement, 6)
+   Operands like for OMP_FOR.  */
+DEFTREECODE (OACC_LOOP, "oacc_loop", tcc_statement, 7)
 
 /* OpenMP - #pragma omp teams [clause1 ... clauseN]
    Operand 0: OMP_TEAMS_BODY: Teams body.

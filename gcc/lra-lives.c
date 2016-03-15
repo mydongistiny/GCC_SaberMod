@@ -1,5 +1,5 @@
 /* Build live ranges for pseudos.
-   Copyright (C) 2010-2015 Free Software Foundation, Inc.
+   Copyright (C) 2010-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -29,32 +29,17 @@ along with GCC; see the file COPYING3.	If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
 #include "rtl.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
 #include "tm_p.h"
 #include "insn-config.h"
-#include "recog.h"
-#include "output.h"
 #include "regs.h"
-#include "flags.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "cfganal.h"
-#include "except.h"
 #include "ira.h"
+#include "recog.h"
+#include "cfganal.h"
 #include "sparseset.h"
-#include "lra.h"
-#include "insn-attr.h"
-#include "insn-codes.h"
 #include "lra-int.h"
 
 /* Program points are enumerated by numbers from range
@@ -118,7 +103,7 @@ free_live_range_list (lra_live_range_t lr)
   while (lr != NULL)
     {
       next = lr->next;
-      delete lr;
+      lra_live_range_pool.remove (lr);
       lr = next;
     }
 }
@@ -127,7 +112,7 @@ free_live_range_list (lra_live_range_t lr)
 static lra_live_range_t
 create_live_range (int regno, int start, int finish, lra_live_range_t next)
 {
-  lra_live_range_t p = new lra_live_range;
+  lra_live_range_t p = lra_live_range_pool.allocate ();
   p->regno = regno;
   p->start = start;
   p->finish = finish;
@@ -139,7 +124,7 @@ create_live_range (int regno, int start, int finish, lra_live_range_t next)
 static lra_live_range_t
 copy_live_range (lra_live_range_t r)
 {
-  return new lra_live_range (*r);
+  return new (lra_live_range_pool) lra_live_range (*r);
 }
 
 /* Copy live range list given by its head R and return the result.  */
@@ -182,7 +167,7 @@ lra_merge_live_ranges (lra_live_range_t r1, lra_live_range_t r2)
 	  r1->start = r2->start;
 	  lra_live_range_t temp = r2;
 	  r2 = r2->next;
-	  delete temp;
+	  lra_live_range_pool.remove (temp);
 	}
       else
 	{
@@ -590,9 +575,7 @@ check_pseudos_live_through_calls (int regno)
   for (hr = 0; hr < FIRST_PSEUDO_REGISTER; hr++)
     if (HARD_REGNO_CALL_PART_CLOBBERED (hr, PSEUDO_REGNO_MODE (regno)))
       SET_HARD_REG_BIT (lra_reg_info[regno].conflict_hard_regs, hr);
-#ifdef ENABLE_CHECKING
   lra_reg_info[regno].call_p = true;
-#endif
   if (! sparseset_bit_p (pseudos_live_through_setjumps, regno))
     return;
   sparseset_clear_bit (pseudos_live_through_setjumps, regno);
@@ -717,12 +700,13 @@ process_bb_lives (basic_block bb, int &curr_point, bool dead_insn_p)
 
       /* Update max ref width and hard reg usage.  */
       for (reg = curr_id->regs; reg != NULL; reg = reg->next)
-	if (reg->regno >= FIRST_PSEUDO_REGISTER
-	    && (GET_MODE_SIZE (reg->biggest_mode)
-		> GET_MODE_SIZE (lra_reg_info[reg->regno].biggest_mode)))
-	  lra_reg_info[reg->regno].biggest_mode = reg->biggest_mode;
-	else if (reg->regno < FIRST_PSEUDO_REGISTER)
-	  lra_hard_reg_usage[reg->regno] += freq;
+	{
+	  if (GET_MODE_SIZE (reg->biggest_mode)
+	      > GET_MODE_SIZE (lra_reg_info[reg->regno].biggest_mode))
+	    lra_reg_info[reg->regno].biggest_mode = reg->biggest_mode;
+	  if (reg->regno < FIRST_PSEUDO_REGISTER)
+	    lra_hard_reg_usage[reg->regno] += freq;
+	}
 
       call_p = CALL_P (curr_insn);
       src_regno = (set != NULL_RTX && REG_P (SET_SRC (set))
@@ -1098,7 +1082,7 @@ remove_some_program_points_and_update_live_ranges (void)
 		}
 	      prev_r->start = r->start;
 	      prev_r->next = next_r;
-	      delete r;
+	      lra_live_range_pool.remove (r);
 	    }
 	}
     }
@@ -1225,13 +1209,11 @@ lra_create_live_ranges_1 (bool all_p, bool dead_insn_p)
 	 conservative because of recent transformation.  Here in this
 	 file we recalculate it again as it costs practically
 	 nothing.  */
-      if (regno_reg_rtx[i] != NULL_RTX)
+      if (i >= FIRST_PSEUDO_REGISTER && regno_reg_rtx[i] != NULL_RTX)
 	lra_reg_info[i].biggest_mode = GET_MODE (regno_reg_rtx[i]);
       else
 	lra_reg_info[i].biggest_mode = VOIDmode;
-#ifdef ENABLE_CHECKING
       lra_reg_info[i].call_p = false;
-#endif
       if (i >= FIRST_PSEUDO_REGISTER
 	  && lra_reg_info[i].nrefs != 0)
 	{
@@ -1259,7 +1241,9 @@ lra_create_live_ranges_1 (bool all_p, bool dead_insn_p)
   dead_set = sparseset_alloc (max_regno);
   unused_set = sparseset_alloc (max_regno);
   curr_point = 0;
-  point_freq_vec.create (get_max_uid () * 2);
+  unsigned new_length = get_max_uid () * 2;
+  point_freq_vec.truncate (0);
+  point_freq_vec.reserve_exact (new_length);
   lra_point_freq = point_freq_vec.address ();
   int *post_order_rev_cfg = XNEWVEC (int, last_basic_block_for_fn (cfun));
   int n_blocks_inverted = inverted_post_order_compute (post_order_rev_cfg);

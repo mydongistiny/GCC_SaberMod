@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for ATMEL AVR micro controllers
-   Copyright (C) 1998-2015 Free Software Foundation, Inc.
+   Copyright (C) 1998-2016 Free Software Foundation, Inc.
    Contributed by Denis Chertykov (chertykov@gmail.com)
 
    This file is part of GCC.
@@ -43,6 +43,7 @@
 #include "expr.h"
 #include "langhooks.h"
 #include "cfgrtl.h"
+#include "params.h"
 #include "builtins.h"
 #include "context.h"
 #include "tree-pass.h"
@@ -409,6 +410,15 @@ avr_option_override (void)
 
   if (avr_strict_X)
     flag_caller_saves = 0;
+
+  /* Allow optimizer to introduce store data races. This used to be the
+     default - it was changed because bigger targets did not see any
+     performance decrease. For the AVR though, disallowing data races
+     introduces additional code in LIM and increases reg pressure.  */
+
+  maybe_set_param_value (PARAM_ALLOW_STORE_DATA_RACES, 1,
+      global_options.x_param_values,
+      global_options_set.x_param_values);
 
   /* Unwind tables currently require a frame pointer for correctness,
      see toplev.c:process_options().  */
@@ -2158,7 +2168,7 @@ cond_string (enum rtx_code code)
 /* Output ADDR to FILE as address.  */
 
 static void
-avr_print_operand_address (FILE *file, rtx addr)
+avr_print_operand_address (FILE *file, machine_mode /*mode*/, rtx addr)
 {
   switch (GET_CODE (addr))
     {
@@ -2358,7 +2368,7 @@ avr_print_operand (FILE *file, rtx x, int code)
           if (GET_CODE (addr) != PLUS)
                fatal_insn ("bad address, not (reg+disp):", addr);
 
-          avr_print_operand_address (file, XEXP (addr, 0));
+          avr_print_operand_address (file, VOIDmode, XEXP (addr, 0));
         }
       else if (code == 'p' || code == 'r')
         {
@@ -2366,13 +2376,14 @@ avr_print_operand (FILE *file, rtx x, int code)
             fatal_insn ("bad address, not post_inc or pre_dec:", addr);
 
           if (code == 'p')
-            avr_print_operand_address (file, XEXP (addr, 0));  /* X, Y, Z */
+	    /* X, Y, Z */
+            avr_print_operand_address (file, VOIDmode, XEXP (addr, 0));
           else
             avr_print_operand (file, XEXP (addr, 0), 0);  /* r26, r28, r30 */
         }
       else if (GET_CODE (addr) == PLUS)
         {
-          avr_print_operand_address (file, XEXP (addr,0));
+          avr_print_operand_address (file, VOIDmode, XEXP (addr,0));
           if (REGNO (XEXP (addr, 0)) == REG_X)
             fatal_insn ("internal compiler error.  Bad address:"
                         ,addr);
@@ -2380,13 +2391,13 @@ avr_print_operand (FILE *file, rtx x, int code)
           avr_print_operand (file, XEXP (addr,1), code);
         }
       else
-        avr_print_operand_address (file, addr);
+        avr_print_operand_address (file, VOIDmode, addr);
     }
   else if (code == 'i')
     {
       if (GET_CODE (x) == SYMBOL_REF && (SYMBOL_REF_FLAGS (x) & SYMBOL_FLAG_IO))
 	avr_print_operand_address
-	  (file, plus_constant (HImode, x, -avr_arch->sfr_offset));
+	  (file, VOIDmode, plus_constant (HImode, x, -avr_arch->sfr_offset));
       else
 	fatal_insn ("bad address, not an I/O address:", x);
     }
@@ -2426,7 +2437,28 @@ avr_print_operand (FILE *file, rtx x, int code)
   else if (code == 'k')
     fputs (cond_string (reverse_condition (GET_CODE (x))), file);
   else
-    avr_print_operand_address (file, x);
+    avr_print_operand_address (file, VOIDmode, x);
+}
+
+
+/* Implement TARGET_USE_BY_PIECES_INFRASTRUCTURE_P.  */
+
+/* Prefer sequence of loads/stores for moves of size upto
+   two - two pairs of load/store instructions are always better
+   than the 5 instruction sequence for a loop (1 instruction
+   for loop counter setup, and 4 for the body of the loop). */
+
+static bool
+avr_use_by_pieces_infrastructure_p (unsigned HOST_WIDE_INT size,
+				     unsigned int align ATTRIBUTE_UNUSED,
+				     enum by_pieces_operation op,
+				     bool speed_p)
+{
+
+  if (op != MOVE_BY_PIECES || (speed_p && (size > (MOVE_MAX_PIECES))))
+    return default_use_by_pieces_infrastructure_p (size, align, op, speed_p);
+
+  return size <= (MOVE_MAX_PIECES);
 }
 
 
@@ -13761,6 +13793,10 @@ avr_fold_builtin (tree fndecl, int n_args ATTRIBUTE_UNUSED, tree *arg,
 #define TARGET_PRINT_OPERAND_ADDRESS avr_print_operand_address
 #undef  TARGET_PRINT_OPERAND_PUNCT_VALID_P
 #define TARGET_PRINT_OPERAND_PUNCT_VALID_P avr_print_operand_punct_valid_p
+
+#undef TARGET_USE_BY_PIECES_INFRASTRUCTURE_P
+#define TARGET_USE_BY_PIECES_INFRASTRUCTURE_P \
+  avr_use_by_pieces_infrastructure_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

@@ -1,5 +1,5 @@
 /* Compilation switch flag type definitions for GCC.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -91,6 +91,21 @@ enum debug_struct_file
   DINFO_STRUCT_FILE_ANY     /* Debug structs defined in all files. */
 };
 
+/* Balance between GNAT encodings and standard DWARF to emit.  */
+
+enum dwarf_gnat_encodings
+{
+  DWARF_GNAT_ENCODINGS_ALL = 0,	    /* Emit all GNAT encodings, then emit as
+				       much standard DWARF as possible so it
+				       does not conflict with GNAT
+				       encodings.  */
+  DWARF_GNAT_ENCODINGS_GDB = 1,	    /* Emit as much standard DWARF as possible
+				       as long as GDB handles them.  Emit GNAT
+				       encodings for the rest.  */
+  DWARF_GNAT_ENCODINGS_MINIMAL = 2  /* Emit all the standard DWARF we can.
+				       Emit GNAT encodings for the rest.  */
+};
+
 /* Enumerate Objective-c instance variable visibility settings. */
 
 enum ivar_visibility
@@ -165,7 +180,6 @@ enum stack_check_type
 
 /* Names for the different levels of -Wstrict-overflow=N.  The numeric
    values here correspond to N.  */
-
 enum warn_strict_overflow_code
 {
   /* Overflow warning that should be issued with -Wall: a questionable
@@ -195,6 +209,13 @@ enum fp_contract_mode {
   FP_CONTRACT_FAST = 2
 };
 
+/* Scalar storage order kind.  */
+enum scalar_storage_order_kind {
+  SSO_NATIVE = 0,
+  SSO_BIG_ENDIAN,
+  SSO_LITTLE_ENDIAN
+};
+
 /* Vectorizer cost-model.  */
 enum vect_cost_model {
   VECT_COST_MODEL_UNLIMITED = 0,
@@ -202,7 +223,6 @@ enum vect_cost_model {
   VECT_COST_MODEL_DYNAMIC = 2,
   VECT_COST_MODEL_DEFAULT = 3
 };
-
 
 /* Different instrumentation modes.  */
 enum sanitize_code {
@@ -260,6 +280,14 @@ enum lto_partition_model {
   LTO_PARTITION_MAX = 4
 };
 
+/* flag_lto_linker_output initialization values.  */
+enum lto_linker_output {
+  LTO_LINKER_OUTPUT_UNKNOWN,
+  LTO_LINKER_OUTPUT_REL,
+  LTO_LINKER_OUTPUT_DYN,
+  LTO_LINKER_OUTPUT_PIE,
+  LTO_LINKER_OUTPUT_EXEC
+};
 
 /* gfortran -finit-real= values.  */
 

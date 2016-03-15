@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.  Selective scheduler and pipeliner.
-   Copyright (C) 2006-2015 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -24,21 +24,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree.h"
 #include "rtl.h"
 #include "df.h"
-#include "rtl-error.h"
 #include "tm_p.h"
 #include "regs.h"
 #include "cfgbuild.h"
-#include "flags.h"
 #include "insn-config.h"
 #include "insn-attr.h"
-#include "except.h"
 #include "params.h"
 #include "target.h"
-#include "output.h"
 #include "sched-int.h"
-#include "langhooks.h"
 #include "rtlhooks-def.h"
-#include "emit-rtl.h"
 #include "ira.h"
 #include "ira-int.h"
 #include "rtl-iter.h"
@@ -378,10 +372,8 @@ struct moveop_static_params
      they are to be removed.  */
   int uid;
 
-#ifdef ENABLE_CHECKING
   /* This is initialized to the insn on which the driver stopped its traversal.  */
   insn_t failed_insn;
-#endif
 
   /* True if we scheduled an insn with different register.  */
   bool was_renamed;
@@ -404,7 +396,7 @@ typedef struct fur_static_params *fur_static_params_p;
 typedef struct cmpd_local_params *cmpd_local_params_p;
 typedef struct moveop_static_params *moveop_static_params_p;
 
-/* Set of hooks and parameters that determine behaviour specific to
+/* Set of hooks and parameters that determine behavior specific to
    move_op or find_used_regs functions.  */
 struct code_motion_path_driver_info_def
 {
@@ -1465,31 +1457,44 @@ choose_best_pseudo_reg (regset used_regs,
         gcc_assert (mode == GET_MODE (dest));
       orig_regno = REGNO (dest);
 
-      if (!REGNO_REG_SET_P (used_regs, orig_regno))
-        {
-          if (orig_regno < FIRST_PSEUDO_REGISTER)
-            {
-              gcc_assert (df_regs_ever_live_p (orig_regno));
+      /* Check that nothing in used_regs intersects with orig_regno.  When
+	 we have a hard reg here, still loop over hard_regno_nregs.  */
+      if (HARD_REGISTER_NUM_P (orig_regno))
+	{
+	  int j, n;
+	  for (j = 0, n = hard_regno_nregs[orig_regno][mode]; j < n; j++)
+	    if (REGNO_REG_SET_P (used_regs, orig_regno + j))
+	      break;
+	  if (j < n)
+	    continue;
+	}
+      else
+	{
+	  if (REGNO_REG_SET_P (used_regs, orig_regno))
+	    continue;
+	}
+      if (HARD_REGISTER_NUM_P (orig_regno))
+	{
+	  gcc_assert (df_regs_ever_live_p (orig_regno));
 
-              /* For hard registers, we have to check hardware imposed
-                 limitations (frame/stack registers, calls crossed).  */
-              if (!TEST_HARD_REG_BIT (reg_rename_p->unavailable_hard_regs,
-                                      orig_regno))
-		{
-		  /* Don't let register cross a call if it doesn't already
-		     cross one.  This condition is written in accordance with
-		     that in sched-deps.c sched_analyze_reg().  */
-		  if (!reg_rename_p->crosses_call
-		      || REG_N_CALLS_CROSSED (orig_regno) > 0)
-		    return gen_rtx_REG (mode, orig_regno);
-		}
+	  /* For hard registers, we have to check hardware imposed
+	     limitations (frame/stack registers, calls crossed).  */
+	  if (!TEST_HARD_REG_BIT (reg_rename_p->unavailable_hard_regs,
+				  orig_regno))
+	    {
+	      /* Don't let register cross a call if it doesn't already
+		 cross one.  This condition is written in accordance with
+		 that in sched-deps.c sched_analyze_reg().  */
+	      if (!reg_rename_p->crosses_call
+		  || REG_N_CALLS_CROSSED (orig_regno) > 0)
+		return gen_rtx_REG (mode, orig_regno);
+	    }
 
-              bad_hard_regs = true;
-            }
-          else
-            return dest;
-        }
-     }
+	  bad_hard_regs = true;
+	}
+      else
+	return dest;
+    }
 
   *is_orig_reg_p_ptr = false;
 
@@ -1655,9 +1660,8 @@ find_best_reg_for_expr (expr_t expr, blist_t bnds, bool *is_orig_reg_p)
   collect_unavailable_regs_from_bnds (expr, bnds, used_regs, &reg_rename_data,
 				      &original_insns);
 
-#ifdef ENABLE_CHECKING
   /* If after reload, make sure we're working with hard regs here.  */
-  if (reload_completed)
+  if (flag_checking && reload_completed)
     {
       reg_set_iterator rsi;
       unsigned i;
@@ -1665,7 +1669,6 @@ find_best_reg_for_expr (expr_t expr, blist_t bnds, bool *is_orig_reg_p)
       EXECUTE_IF_SET_IN_REG_SET (used_regs, FIRST_PSEUDO_REGISTER, i, rsi)
         gcc_unreachable ();
     }
-#endif
 
   if (EXPR_SEPARABLE_P (expr))
     {
@@ -3593,7 +3596,6 @@ vinsn_vec_has_expr_p (vinsn_vec_t vinsn_vec, expr_t expr)
   return false;
 }
 
-#ifdef ENABLE_CHECKING
 /* Return true if either of expressions from ORIG_OPS can be blocked
    by previously created bookkeeping code.  STATIC_PARAMS points to static
    parameters of move_op.  */
@@ -3635,7 +3637,6 @@ av_set_could_be_blocked_by_bookkeeping_p (av_set_t orig_ops, void *static_params
 
   return false;
 }
-#endif
 
 /* Clear VINSN_VEC and detach vinsns.  */
 static void
@@ -4889,11 +4890,10 @@ move_cond_jump (rtx_insn *insn, bnd_t bnd)
   block_bnd = BLOCK_FOR_INSN (BND_TO (bnd));
   prev = BND_TO (bnd);
 
-#ifdef ENABLE_CHECKING
   /* Moving of jump should not cross any other jumps or beginnings of new
      basic blocks.  The only exception is when we move a jump through
      mutually exclusive insns along fallthru edges.  */
-  if (block_from != block_bnd)
+  if (flag_checking && block_from != block_bnd)
     {
       bb = block_from;
       for (link = PREV_INSN (insn); link != PREV_INSN (prev);
@@ -4908,7 +4908,6 @@ move_cond_jump (rtx_insn *insn, bnd_t bnd)
             }
         }
     }
-#endif
 
   /* Jump is moved to the boundary.  */
   next = PREV_INSN (insn);
@@ -6205,9 +6204,7 @@ move_op_orig_expr_not_found (insn_t insn, av_set_t orig_ops ATTRIBUTE_UNUSED,
 {
   moveop_static_params_p sparams = (moveop_static_params_p) static_params;
 
-#ifdef ENABLE_CHECKING
   sparams->failed_insn = insn;
-#endif
 
   /* If we're scheduling separate expr, in order to generate correct code
      we need to stop the search at bookkeeping code generated with the
@@ -6380,7 +6377,6 @@ code_motion_process_successors (insn_t insn, av_set_t orig_ops,
         }
     }
 
-#ifdef ENABLE_CHECKING
   /* Here, RES==1 if original expr was found at least for one of the
      successors.  After the loop, RES may happen to have zero value
      only if at some point the expr searched is present in av_set, but is
@@ -6388,12 +6384,10 @@ code_motion_process_successors (insn_t insn, av_set_t orig_ops,
      The exception is when the original operation is blocked by
      bookkeeping generated for another fence or for another path in current
      move_op.  */
-  gcc_assert (res == 1
-	      || (res == 0
-		  && av_set_could_be_blocked_by_bookkeeping_p (orig_ops,
-							       static_params))
-	      || res == -1);
-#endif
+  gcc_checking_assert (res == 1
+		       || (res == 0
+			    && av_set_could_be_blocked_by_bookkeeping_p (orig_ops, static_params))
+		       || res == -1);
 
   /* Merge data, clean up, etc.  */
   if (res != -1 && code_motion_path_driver_info->after_merge_succs)
@@ -6469,7 +6463,7 @@ code_motion_path_driver (insn_t insn, av_set_t orig_ops, ilist_t path,
         {
           /* We have already found an original operation on this branch, do not
              go any further and just return TRUE here.  If we don't stop here,
-             function can have exponential behaviour even on the small code
+             function can have exponential behavior even on the small code
              with many different paths (e.g. with data speculation and
              recovery blocks).  */
           if (sched_verbose >= 6)
@@ -6695,9 +6689,7 @@ move_op (insn_t insn, av_set_t orig_ops, expr_t expr_vliw,
   sparams.dest = dest;
   sparams.c_expr = c_expr;
   sparams.uid = INSN_UID (EXPR_INSN_RTX (expr_vliw));
-#ifdef ENABLE_CHECKING
   sparams.failed_insn = NULL;
-#endif
   sparams.was_renamed = false;
   lparams.e1 = NULL;
 

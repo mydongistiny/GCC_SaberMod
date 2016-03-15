@@ -1,5 +1,5 @@
 /* Handle the constant pool of the Java(TM) Virtual Machine.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -24,14 +24,12 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "jcf.h"
-#include "alias.h"
 #include "tree.h"
-#include "fold-const.h"
 #include "stringpool.h"
+#include "jcf.h"
+#include "fold-const.h"
 #include "stor-layout.h"
 #include "java-tree.h"
-#include "diagnostic-core.h"
 #include "toplev.h"
 
 static void set_constant_entry (CPool *, int, int, jword);

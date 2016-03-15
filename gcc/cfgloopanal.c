@@ -1,5 +1,5 @@
 /* Natural loop analysis code for GNU compiler.
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,20 +21,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
 #include "rtl.h"
-#include "cfgloop.h"
 #include "tree.h"
-#include "flags.h"
-#include "alias.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
+#include "predict.h"
 #include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
+#include "cfgloop.h"
+#include "explow.h"
 #include "expr.h"
 #include "graphds.h"
 #include "params.h"

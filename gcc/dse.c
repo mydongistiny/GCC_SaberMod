@@ -1,5 +1,5 @@
 /* RTL dead store elimination.
-   Copyright (C) 2005-2015 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
 
    Contributed by Richard Sandiford <rsandifor@codesourcery.com>
    and Kenneth Zadeck <zadeck@naturalbridge.com>
@@ -26,39 +26,27 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "predict.h"
 #include "df.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "stor-layout.h"
 #include "tm_p.h"
-#include "regs.h"
-#include "regset.h"
-#include "flags.h"
+#include "gimple-ssa.h"
+#include "expmed.h"
+#include "optabs.h"
+#include "emit-rtl.h"
+#include "recog.h"
+#include "alias.h"
+#include "stor-layout.h"
 #include "cfgrtl.h"
 #include "cselib.h"
 #include "tree-pass.h"
-#include "alloc-pool.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
 #include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
-#include "recog.h"
-#include "insn-codes.h"
-#include "optabs.h"
 #include "dbgcnt.h"
-#include "target.h"
 #include "params.h"
-#include "internal-fn.h"
-#include "gimple-ssa.h"
 #include "rtl-iter.h"
 #include "cfgcleanup.h"
 
@@ -1527,14 +1515,9 @@ record_store (rtx body, bb_info_t bb_info)
 	mem_addr = base->val_rtx;
       else
 	{
-	  group_info *group
-	    = rtx_group_vec[group_id];
+	  group_info *group = rtx_group_vec[group_id];
 	  mem_addr = group->canon_base_addr;
 	}
-      /* get_addr can only handle VALUE but cannot handle expr like:
-	 VALUE + OFFSET, so call get_addr to get original addr for
-	 mem_addr before plus_constant.  */
-      mem_addr = get_addr (mem_addr);
       if (offset)
 	mem_addr = plus_constant (get_address_mode (mem), mem_addr, offset);
     }
@@ -2140,14 +2123,9 @@ check_mem_read_rtx (rtx *loc, bb_info_t bb_info)
 	mem_addr = base->val_rtx;
       else
 	{
-	  group_info *group
-	    = rtx_group_vec[group_id];
+	  group_info *group = rtx_group_vec[group_id];
 	  mem_addr = group->canon_base_addr;
 	}
-      /* get_addr can only handle VALUE but cannot handle expr like:
-	 VALUE + OFFSET, so call get_addr to get original addr for
-	 mem_addr before plus_constant.  */
-      mem_addr = get_addr (mem_addr);
       if (offset)
 	mem_addr = plus_constant (get_address_mode (mem), mem_addr, offset);
     }
@@ -2578,6 +2556,8 @@ scan_insn (bb_info_t bb_info, rtx_insn *insn)
 		      active_local_stores = insn_info;
 		    }
 		}
+	      else
+		clear_rhs_from_active_local_stores ();
 	    }
 	}
       else if (SIBLING_CALL_P (insn) && reload_completed)

@@ -1,5 +1,5 @@
 /* Target machine subroutines for Altera Nios II.
-   Copyright (C) 2012-2015 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Jonah Graham (jgraham@altera.com), 
    Will Reece (wreece@altera.com), and Jeff DaSilva (jdasilva@altera.com).
    Contributed by Mentor Graphics, Inc.
@@ -2622,7 +2622,7 @@ nios2_print_operand (FILE *file, rtx op, int letter)
 	}
       if (letter == 0)
         {
-          output_address (op);
+          output_address (VOIDmode, op);
           return;
         }
       break;
@@ -2705,7 +2705,7 @@ nios2_output_addr_const_extra (FILE *file, rtx op)
 
 /* Implement TARGET_PRINT_OPERAND_ADDRESS.  */
 static void
-nios2_print_operand_address (FILE *file, rtx op)
+nios2_print_operand_address (FILE *file, machine_mode mode, rtx op)
 {
   switch (GET_CODE (op))
     {
@@ -2751,7 +2751,7 @@ nios2_print_operand_address (FILE *file, rtx op)
     case MEM:
       {
         rtx base = XEXP (op, 0);
-        nios2_print_operand_address (file, base);
+        nios2_print_operand_address (file, mode, base);
         return;
       }
     default:
@@ -4120,8 +4120,8 @@ cdx_and_immed (rtx op)
       HOST_WIDE_INT ival = INTVAL (op);
       return (ival == 1 || ival == 2 || ival == 3 || ival == 4
 	      || ival == 8 || ival == 0xf || ival == 0x10
-	      || ival == 0x10 || ival == 0x1f || ival == 0x20
-	      || ival == 0x3f || ival == 0x3f || ival == 0x7f
+	      || ival == 0x1f || ival == 0x20
+	      || ival == 0x3f || ival == 0x7f
 	      || ival == 0x80 || ival == 0xff || ival == 0x7ff
 	      || ival == 0xff00 || ival == 0xffff);
     }

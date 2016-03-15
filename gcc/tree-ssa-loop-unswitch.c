@@ -1,5 +1,5 @@
 /* Loop unswitching.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,15 +21,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
 #include "fold-const.h"
-#include "tm_p.h"
-#include "internal-fn.h"
 #include "gimplify.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
@@ -38,7 +34,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-into-ssa.h"
 #include "cfgloop.h"
 #include "params.h"
-#include "tree-pass.h"
 #include "tree-inline.h"
 #include "gimple-iterator.h"
 #include "cfghooks.h"
@@ -434,9 +429,9 @@ tree_unswitch_outer_loop (struct loop *loop)
   gcc_assert (loop->inner);
   if (loop->inner->next)
     return false;
-  /* Accept loops with single exit only.  */
+  /* Accept loops with single exit only which is not from inner loop.  */
   exit = single_exit (loop);
-  if (!exit)
+  if (!exit || exit->src->loop_father != loop)
     return false;
   /* Check that phi argument of exit edge is not defined inside loop.  */
   if (!check_exit_phi (loop))
@@ -449,7 +444,7 @@ tree_unswitch_outer_loop (struct loop *loop)
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, ";; Not unswitching, loop is not expected"
 		 " to iterate\n");
-	return false;
+      return false;
     }
 
   guard = find_loop_guard (loop);

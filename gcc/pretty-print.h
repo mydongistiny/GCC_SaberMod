@@ -1,5 +1,5 @@
 /* Various declarations for language-independent pretty-print subroutines.
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -27,11 +27,6 @@ along with GCC; see the file COPYING3.  If not see
 /* Maximum number of format string arguments.  */
 #define PP_NL_ARGMAX   30
 
-/* Maximum number of locations associated to each message.  If
-   location 'i' is UNKNOWN_LOCATION, then location 'i+1' is not
-   valid.  */
-#define MAX_LOCATIONS_PER_MESSAGE 2
-
 /* The type of a text to be formatted according a format specification
    along with a list of things.  */
 struct text_info
@@ -40,21 +35,10 @@ struct text_info
   va_list *args_ptr;
   int err_no;  /* for %m */
   void **x_data;
+  rich_location *m_richloc;
 
-  inline void set_location (unsigned int index_of_location, location_t loc)
-  {
-    gcc_checking_assert (index_of_location < MAX_LOCATIONS_PER_MESSAGE);
-    this->locations[index_of_location] = loc;
-  }
-
-  inline location_t get_location (unsigned int index_of_location) const
-  {
-    gcc_checking_assert (index_of_location < MAX_LOCATIONS_PER_MESSAGE);
-    return this->locations[index_of_location];
-  }
-
-private:
-  location_t locations[MAX_LOCATIONS_PER_MESSAGE];
+  void set_location (unsigned int idx, location_t loc, bool caret_p);
+  location_t get_location (unsigned int index_of_location) const;
 };
 
 /* How often diagnostics are prefixed by their locations:
@@ -141,7 +125,11 @@ output_buffer_append_r (output_buffer *buff, const char *start, int length)
 {
   gcc_checking_assert (start);
   obstack_grow (buff->obstack, start, length);
-  buff->line_length += length;
+  for (int i = 0; i < length; i++)
+    if (start[i] == '\n')
+      buff->line_length = 0;
+    else
+      buff->line_length++;
 }
 
 /*  Return a pointer to the last character emitted in the

@@ -1,5 +1,5 @@
 /* Perform simple optimizations to clean up the result of reload.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,36 +21,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
-
 #include "tm_p.h"
-#include "insn-config.h"
-#include "flags.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "insn-codes.h"
 #include "optabs.h"
 #include "regs.h"
+#include "emit-rtl.h"
+#include "recog.h"
+
 #include "cfgrtl.h"
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
 #include "reload.h"
-#include "recog.h"
-#include "alloc-pool.h"
 #include "cselib.h"
-#include "diagnostic-core.h"
-#include "except.h"
-#include "target.h"
 #include "tree-pass.h"
 #include "dbgcnt.h"
 
@@ -120,10 +106,6 @@ reload_cse_simplify (rtx_insn *insn, rtx testreg)
 
       if (!count && reload_cse_noop_set_p (body))
 	{
-	  rtx value = SET_DEST (body);
-	  if (REG_P (value)
-	      && ! REG_FUNCTION_VALUE_P (value))
-	    value = 0;
 	  if (check_for_inc_dec (insn))
 	    delete_insn_and_edges (insn);
 	  /* We're done with this insn.  */
@@ -1075,7 +1057,6 @@ static bool
 reload_combine_recognize_pattern (rtx_insn *insn)
 {
   rtx set, reg, src;
-  unsigned int regno;
 
   set = single_set (insn);
   if (set == NULL_RTX)
@@ -1086,7 +1067,20 @@ reload_combine_recognize_pattern (rtx_insn *insn)
   if (!REG_P (reg) || REG_NREGS (reg) != 1)
     return false;
 
-  regno = REGNO (reg);
+  unsigned int regno = REGNO (reg);
+  machine_mode mode = GET_MODE (reg);
+
+  if (reg_state[regno].use_index < 0
+      || reg_state[regno].use_index >= RELOAD_COMBINE_MAX_USES)
+    return false;
+
+  for (int i = reg_state[regno].use_index;
+       i < RELOAD_COMBINE_MAX_USES; i++)
+    {
+      struct reg_use *use = reg_state[regno].reg_use + i;
+      if (GET_MODE (*use->usep) != mode)
+	return false;
+    }
 
   /* Look for (set (REGX) (CONST_INT))
      (set (REGX) (PLUS (REGX) (REGY)))
@@ -1108,8 +1102,6 @@ reload_combine_recognize_pattern (rtx_insn *insn)
       && REG_P (XEXP (src, 1))
       && rtx_equal_p (XEXP (src, 0), reg)
       && !rtx_equal_p (XEXP (src, 1), reg)
-      && reg_state[regno].use_index >= 0
-      && reg_state[regno].use_index < RELOAD_COMBINE_MAX_USES
       && last_label_ruid < reg_state[regno].use_ruid)
     {
       rtx base = XEXP (src, 1);

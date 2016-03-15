@@ -1,5 +1,5 @@
 /* Mainly the interface between cpplib and the C front ends.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,20 +20,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
+#include "target.h"
+#include "c-common.h"
+#include "timevar.h"
 #include "stringpool.h"
 #include "stor-layout.h"
-#include "c-common.h"
-#include "flags.h"
-#include "timevar.h"
-#include "cpplib.h"
 #include "c-pragma.h"
-#include "intl.h"
-#include "splay-tree.h"
 #include "debug.h"
-#include "target.h"
 
 #include "attribs.h"
 
@@ -933,8 +926,9 @@ interpret_float (const cpp_token *token, unsigned int flags,
   value = build_real (const_type, real);
   if (flags & CPP_N_IMAGINARY)
     {
-      value = build_complex (NULL_TREE, convert (const_type,
-						 integer_zero_node), value);
+      value = build_complex (NULL_TREE,
+			     fold_convert (const_type,
+					   integer_zero_node), value);
       if (type != const_type)
 	{
 	  const_type = TREE_TYPE (value);
@@ -1268,4 +1262,30 @@ lex_charconst (const cpp_token *token)
     value = build_int_cst (type, (cppchar_signed_t) result);
 
   return value;
+}
+
+/* Helper function for c_parser_peek_conflict_marker
+   and cp_lexer_peek_conflict_marker.
+   Given a possible conflict marker token of kind TOK1_KIND
+   consisting of a pair of characters, get the token kind for the
+   standalone final character.  */
+
+enum cpp_ttype
+conflict_marker_get_final_tok_kind (enum cpp_ttype tok1_kind)
+{
+  switch (tok1_kind)
+    {
+    default: gcc_unreachable ();
+    case CPP_LSHIFT:
+      /* "<<" and '<' */
+      return CPP_LESS;
+
+    case CPP_EQ_EQ:
+      /* "==" and '=' */
+      return CPP_EQ;
+
+    case CPP_RSHIFT:
+      /* ">>" and '>' */
+      return CPP_GREATER;
+    }
 }

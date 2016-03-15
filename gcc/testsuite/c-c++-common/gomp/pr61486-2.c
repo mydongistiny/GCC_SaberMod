@@ -1,6 +1,5 @@
 /* PR middle-end/61486 */
 /* { dg-do compile } */
-/* { dg-options "-fopenmp" } */
 /* { dg-require-effective-target alloca } */
 
 #pragma omp declare target
@@ -355,8 +354,11 @@ test (int n, int o, int p, int q, int r, int s, int *pp)
 
 int q, i, j;
 
+#pragma omp declare target
+int s;
+
 void
-test2 (int n, int o, int p, int r, int s, int *pp)
+test2 (int n, int o, int p, int r, int *pp)
 {
   int a[o];
     #pragma omp distribute collapse (2) dist_schedule (static, 4) firstprivate (q)
@@ -449,3 +451,4 @@ test2 (int n, int o, int p, int r, int s, int *pp)
 	  s = i * 10;
 	}
 }
+#pragma omp end declare target

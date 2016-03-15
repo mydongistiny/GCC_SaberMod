@@ -316,7 +316,19 @@ package body Sem_Ch5 is
             Get_First_Interp (Lhs, I, It);
 
             while Present (It.Typ) loop
-               if Has_Compatible_Type (Rhs, It.Typ) then
+
+               --  An indexed component with generalized indexing is always
+               --  overloaded with the corresponding dereference. Discard the
+               --  interpretation that yields a reference type, which is not
+               --  assignable.
+
+               if Nkind (Lhs) = N_Indexed_Component
+                 and then Present (Generalized_Indexing (Lhs))
+                 and then Has_Implicit_Dereference (It.Typ)
+               then
+                  null;
+
+               elsif Has_Compatible_Type (Rhs, It.Typ) then
                   if T1 /= Any_Type then
 
                      --  An explicit dereference is overloaded if the prefix
@@ -394,7 +406,13 @@ package body Sem_Ch5 is
 
       --  Cases where Lhs is not a variable
 
-      if not Is_Variable (Lhs) then
+      --  Cases where Lhs is not a variable. In an instance or an inlined body
+      --  no need for further check because assignment was legal in template.
+
+      if In_Inlined_Body then
+         null;
+
+      elsif not Is_Variable (Lhs) then
 
          --  Ada 2005 (AI-327): Check assignment to the attribute Priority of a
          --  protected object.
@@ -486,6 +504,15 @@ package body Sem_Ch5 is
          end if;
 
          Ghost_Mode := Save_Ghost_Mode;
+         return;
+
+      --  A class-wide type may be a limited view. This illegal case is not
+      --  caught by previous checks.
+
+      elsif Ekind (T1) = E_Class_Wide_Type
+        and then From_Limited_With (T1)
+      then
+         Error_Msg_NE ("invalid use of limited view of&", Lhs, T1);
          return;
 
       --  Enforce RM 3.9.3 (8): the target of an assignment operation cannot be
@@ -2039,19 +2066,20 @@ package body Sem_Ch5 is
 
             Set_Is_Aliased (Def_Id, Has_Aliased_Components (Typ));
 
-            --  AI12-0151 stipulates that the container cannot be a component
-            --  that depends on a discriminant if the enclosing object is
-            --  mutable, to prevent a modification of the container in the
-            --  course of an iteration.
+            --  AI12-0047 stipulates that the domain (array or container)
+            --  cannot be a component that depends on a discriminant if the
+            --  enclosing object is mutable, to prevent a modification of the
+            --  dowmain of iteration in the course of an iteration.
 
-            --  Should comment on need to go to Original_Node ???
+            --  If the object is an expression it has been captured in a
+            --  temporary, so examine original node.
 
             if Nkind (Original_Node (Iter_Name)) = N_Selected_Component
               and then Is_Dependent_Component_Of_Mutable_Object
                          (Original_Node (Iter_Name))
             then
                Error_Msg_N
-                 ("container cannot be a discriminant-dependent "
+                 ("iterable name cannot be a discriminant-dependent "
                   & "component of a mutable object", N);
             end if;
 

@@ -1,6 +1,6 @@
 /* Handle the hair of processing (but not expanding) inline functions.
    Also manage function and variable name overloading.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -24,21 +24,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "stringpool.h"
-#include "varasm.h"
-#include "cp-tree.h"
-#include "flags.h"
-#include "toplev.h"
-#include "tm_p.h"
 #include "target.h"
-#include "common/common-target.h"
-#include "diagnostic.h"
-#include "hard-reg-set.h"
-#include "function.h"
+#include "cp-tree.h"
+#include "stringpool.h"
 #include "cgraph.h"
+#include "varasm.h"
+#include "toplev.h"
+#include "common/common-target.h"
 
 /* Various flags to control the mangling process.  */
 
@@ -482,6 +474,22 @@ trivial_fn_p (tree fn)
   return type_has_trivial_fn (DECL_CONTEXT (fn), special_function_p (fn));
 }
 
+/* PARM is a PARM_DECL for a function which we want to forward to another
+   function without changing its value category, a la std::forward.  */
+
+tree
+forward_parm (tree parm)
+{
+  tree exp = convert_from_reference (parm);
+  tree type = TREE_TYPE (parm);
+  if (DECL_PACK_P (parm))
+    type = PACK_EXPANSION_PATTERN (type);
+  exp = build_static_cast (type, exp, tf_warning_or_error);
+  if (DECL_PACK_P (parm))
+    exp = make_pack_expansion (exp);
+  return exp;
+}
+
 /* Subroutine of do_build_copy_constructor: Add a mem-initializer for BINFO
    given the parameter or parameters PARM, possibly inherited constructor
    base INH, or move flag MOVE_P.  */
@@ -502,10 +510,7 @@ add_one_base_init (tree binfo, tree parm, bool move_p, tree inh,
       init = NULL_TREE;
       for (; parm; parm = DECL_CHAIN (parm))
 	{
-	  tree exp = convert_from_reference (parm);
-	  if (TREE_CODE (TREE_TYPE (parm)) != REFERENCE_TYPE
-	      || TYPE_REF_IS_RVALUE (TREE_TYPE (parm)))
-	    exp = move (exp);
+	  tree exp = forward_parm (parm);
 	  *p = build_tree_list (NULL_TREE, exp);
 	  p = &TREE_CHAIN (*p);
 	}
@@ -1105,7 +1110,7 @@ is_trivially_xible (enum tree_code code, tree to, tree from)
 static void
 process_subob_fn (tree fn, tree *spec_p, bool *trivial_p,
 		  bool *deleted_p, bool *constexpr_p,
-		  bool diag, tree arg)
+		  bool diag, tree arg, bool dtor_from_ctor = false)
 {
   if (!fn || fn == error_mark_node)
     goto bad;
@@ -1117,7 +1122,7 @@ process_subob_fn (tree fn, tree *spec_p, bool *trivial_p,
       *spec_p = merge_exception_specifiers (*spec_p, raises);
     }
 
-  if (!trivial_fn_p (fn))
+  if (!trivial_fn_p (fn) && !dtor_from_ctor)
     {
       if (trivial_p)
 	*trivial_p = false;
@@ -1150,14 +1155,17 @@ process_subob_fn (tree fn, tree *spec_p, bool *trivial_p,
 }
 
 /* Subroutine of synthesized_method_walk to allow recursion into anonymous
-   aggregates.  */
+   aggregates.  If DTOR_FROM_CTOR is true, we're walking subobject destructors
+   called from a synthesized constructor, in which case we don't consider
+   the triviality of the subobject destructor.  */
 
 static void
 walk_field_subobs (tree fields, tree fnname, special_function_kind sfk,
 		   int quals, bool copy_arg_p, bool move_p,
 		   bool assign_p, tree *spec_p, bool *trivial_p,
 		   bool *deleted_p, bool *constexpr_p,
-		   bool diag, int flags, tsubst_flags_t complain)
+		   bool diag, int flags, tsubst_flags_t complain,
+		   bool dtor_from_ctor)
 {
   tree field;
   for (field = fields; field; field = DECL_CHAIN (field))
@@ -1276,7 +1284,7 @@ walk_field_subobs (tree fields, tree fnname, special_function_kind sfk,
 	  walk_field_subobs (TYPE_FIELDS (mem_type), fnname, sfk, quals,
 			     copy_arg_p, move_p, assign_p, spec_p, trivial_p,
 			     deleted_p, constexpr_p,
-			     diag, flags, complain);
+			     diag, flags, complain, dtor_from_ctor);
 	  continue;
 	}
 
@@ -1293,7 +1301,7 @@ walk_field_subobs (tree fields, tree fnname, special_function_kind sfk,
       rval = locate_fn_flags (mem_type, fnname, argtype, flags, complain);
 
       process_subob_fn (rval, spec_p, trivial_p, deleted_p,
-			constexpr_p, diag, field);
+			constexpr_p, diag, field, dtor_from_ctor);
     }
 }
 
@@ -1371,9 +1379,18 @@ synthesized_method_walk (tree ctype, special_function_kind sfk, bool const_p,
 
   /* If that user-written default constructor would satisfy the
      requirements of a constexpr constructor (7.1.5), the
-     implicitly-defined default constructor is constexpr.  */
+     implicitly-defined default constructor is constexpr.
+
+     The implicitly-defined copy/move assignment operator is constexpr if
+      - X is a literal type, and
+      - the assignment operator selected to copy/move each direct base class
+	subobject is a constexpr function, and
+      - for each non-static data member of X that is of class type (or array
+	thereof), the assignment operator selected to copy/move that member is a
+	constexpr function.  */
   if (constexpr_p)
-    *constexpr_p = ctor_p;
+    *constexpr_p = ctor_p
+      || (assign_p && cxx_dialect >= cxx14);
 
   move_p = false;
   switch (sfk)
@@ -1476,7 +1493,7 @@ synthesized_method_walk (tree ctype, special_function_kind sfk, bool const_p,
 	     dtors would be a double-fault).  */
 	  process_subob_fn (rval, NULL, NULL,
 			    deleted_p, NULL, false,
-			    basetype);
+			    basetype, /*dtor_from_ctor*/true);
 	}
 
       if (check_vdtor && type_has_virtual_destructor (basetype))
@@ -1523,7 +1540,7 @@ synthesized_method_walk (tree ctype, special_function_kind sfk, bool const_p,
 				      NULL_TREE, flags, complain);
 	      process_subob_fn (rval, NULL, NULL,
 				deleted_p, NULL, false,
-				basetype);
+				basetype, /*dtor_from_ctor*/true);
 	    }
 	}
     }
@@ -1532,13 +1549,13 @@ synthesized_method_walk (tree ctype, special_function_kind sfk, bool const_p,
   walk_field_subobs (TYPE_FIELDS (ctype), fnname, sfk, quals,
 		     copy_arg_p, move_p, assign_p, spec_p, trivial_p,
 		     deleted_p, constexpr_p,
-		     diag, flags, complain);
+		     diag, flags, complain, /*dtor_from_ctor*/false);
   if (ctor_p)
     walk_field_subobs (TYPE_FIELDS (ctype), complete_dtor_identifier,
 		       sfk_destructor, TYPE_UNQUALIFIED, false,
 		       false, false, NULL, NULL,
 		       deleted_p, NULL,
-		       false, flags, complain);
+		       false, flags, complain, /*dtor_from_ctor*/true);
 
   pop_scope (scope);
 
@@ -1649,10 +1666,8 @@ maybe_explain_implicit_delete (tree decl)
 		    "deleted because its exception-specification does not "
 		    "match the implicit exception-specification %qX",
 		    decl, raises);
-#ifdef ENABLE_CHECKING
-	  else
+	  else if (flag_checking)
 	    gcc_unreachable ();
-#endif
 
 	  pop_scope (scope);
 	}
@@ -1849,13 +1864,8 @@ implicitly_declare_fn (special_function_kind kind, tree type,
       DECL_ASSIGNMENT_OPERATOR_P (fn) = 1;
       SET_OVERLOADED_OPERATOR_CODE (fn, NOP_EXPR);
     }
-  
-  /* If pointers to member functions use the least significant bit to
-     indicate whether a function is virtual, ensure a pointer
-     to this function will have that bit clear.  */
-  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn
-      && DECL_ALIGN (fn) < 2 * BITS_PER_UNIT)
-    DECL_ALIGN (fn) = 2 * BITS_PER_UNIT;
+
+  DECL_ALIGN (fn) = MINIMUM_METHOD_BOUNDARY;
 
   /* Create the explicit arguments.  */
   if (rhs_parm_type)

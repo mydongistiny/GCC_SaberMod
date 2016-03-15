@@ -915,234 +915,467 @@ AC_DEFUN([GLIBCXX_ENABLE_C99], [
   GLIBCXX_ENABLE(c99,$1,,[turns on ISO/IEC 9899:1999 support])
 
   if test x"$enable_c99" = x"yes"; then
+    AC_LANG_SAVE
+    AC_LANG_CPLUSPLUS
 
-  AC_LANG_SAVE
-  AC_LANG_CPLUSPLUS
+    # Use -std=c++98 (instead of -std=gnu++98) because leaving __STRICT_ANSI__
+    # undefined may cause fake C99 facilities, like pre-standard snprintf,
+    # to be spuriously enabled.
+    ac_save_CXXFLAGS="$CXXFLAGS"
+    CXXFLAGS="$CXXFLAGS -std=c++98"
+    ac_save_LIBS="$LIBS"
+    ac_save_gcc_no_link="$gcc_no_link"
 
-  # Use -std=c++98 because the default (-std=gnu++98) leaves __STRICT_ANSI__
-  # undefined and fake C99 facilities - like pre-standard snprintf - may be
-  # spuriously enabled.
-  # Long term, -std=c++0x could be even better, could manage to explicitly
-  # request C99 facilities to the underlying C headers.
-  ac_save_CXXFLAGS="$CXXFLAGS"
-  CXXFLAGS="$CXXFLAGS -std=c++98"
-  ac_save_LIBS="$LIBS"
-  ac_save_gcc_no_link="$gcc_no_link"
+    if test x$gcc_no_link != xyes; then
+      # Use -fno-exceptions to that the C driver can link these tests without
+      # hitting undefined references to personality routines.
+      CXXFLAGS="$CXXFLAGS -fno-exceptions"
+      AC_CHECK_LIB(m, sin, [LIBS="$LIBS -lm"], [
+        # Use the default compile-only tests in GCC_TRY_COMPILE_OR_LINK
+        gcc_no_link=yes
+      ])
+    fi
 
-  if test x$gcc_no_link != xyes; then
-    # Use -fno-exceptions to that the C driver can link these tests without
-    # hitting undefined references to personality routines.
-    CXXFLAGS="$CXXFLAGS -fno-exceptions"
-    AC_CHECK_LIB(m, sin, [
-      LIBS="$LIBS -lm"
-    ], [
-      # Use the default compile-only tests in GCC_TRY_COMPILE_OR_LINK
-      gcc_no_link=yes
+    # Check for the existence of <math.h> functions used if C99 is enabled.
+    AC_MSG_CHECKING([for ISO C99 support in <math.h> for C++98])
+    AC_CACHE_VAL(glibcxx_cv_c99_math_cxx98, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <math.h>
+         volatile double d1, d2;
+         volatile int i;],
+        [i = fpclassify(d1);
+         i = isfinite(d1);
+         i = isinf(d1);
+         i = isnan(d1);
+         i = isnormal(d1);
+         i = signbit(d1);
+         i = isgreater(d1, d2);
+         i = isgreaterequal(d1, d2);
+         i = isless(d1, d2);
+         i = islessequal(d1, d2);
+         i = islessgreater(d1, d2);
+         i = islessgreater(d1, d2);
+         i = isunordered(d1, d2);
+        ], [glibcxx_cv_c99_math_cxx98=yes], [glibcxx_cv_c99_math_cxx98=no])
     ])
-  fi
+    AC_MSG_RESULT($glibcxx_cv_c99_math_cxx98)
+    if test x"$glibcxx_cv_c99_math_cxx98" = x"yes"; then
+      AC_DEFINE(_GLIBCXX98_USE_C99_MATH, 1,
+        [Define if C99 functions or macros in <math.h> should be imported
+        in <cmath> in namespace std for C++98.])
+    fi
 
-  # Check for the existence of <math.h> functions used if C99 is enabled.
-  AC_MSG_CHECKING([for ISO C99 support in <math.h>])
-  AC_CACHE_VAL(glibcxx_cv_c99_math, [
-  GCC_TRY_COMPILE_OR_LINK(
-     [#include <math.h>
-      volatile double d1, d2;
-      volatile int i;],
-     [i = fpclassify(d1);
-      i = isfinite(d1);
-      i = isinf(d1);
-      i = isnan(d1);
-      i = isnormal(d1);
-      i = signbit(d1);
-      i = isgreater(d1, d2);
-      i = isgreaterequal(d1, d2);
-      i = isless(d1, d2);
-      i = islessequal(d1, d2);
-      i = islessgreater(d1, d2);
-      i = islessgreater(d1, d2);
-      i = isunordered(d1, d2);
-     ],[glibcxx_cv_c99_math=yes], [glibcxx_cv_c99_math=no])
-  ])
-  AC_MSG_RESULT($glibcxx_cv_c99_math)
-  if test x"$glibcxx_cv_c99_math" = x"yes"; then
-    AC_DEFINE(_GLIBCXX_USE_C99_MATH, 1,
-	      [Define if C99 functions or macros in <math.h> should be imported
-	      in <cmath> in namespace std.])
-  fi
+    # Check for the existence of <complex.h> complex math functions.
+    # This is necessary even though libstdc++ uses the builtin versions
+    # of these functions, because if the builtin cannot be used, a reference
+    # to the library function is emitted.
+    AC_CHECK_HEADERS(tgmath.h, ac_has_tgmath_h=yes, ac_has_tgmath_h=no)
+    AC_CHECK_HEADERS(complex.h, ac_has_complex_h=yes, ac_has_complex_h=no)
+    if test x"$ac_has_complex_h" = x"yes"; then
+      AC_MSG_CHECKING([for ISO C99 support in <complex.h> for C++98])
+      AC_CACHE_VAL(glibcxx_cv_c99_complex_cxx98, [
+        GCC_TRY_COMPILE_OR_LINK(
+          [#include <complex.h>
+           typedef __complex__ float float_type;
+           typedef __complex__ double double_type;
+           typedef __complex__ long double ld_type;
+           volatile float_type tmpf;
+           volatile double_type tmpd;
+           volatile ld_type tmpld;
+           volatile float f;
+           volatile double d;
+           volatile long double ld;],
+          [f = cabsf(tmpf);
+           f = cargf(tmpf);
+           tmpf = ccosf(tmpf);
+           tmpf = ccoshf(tmpf);
+           tmpf = cexpf(tmpf);
+           tmpf = clogf(tmpf);
+           tmpf = csinf(tmpf);
+           tmpf = csinhf(tmpf);
+           tmpf = csqrtf(tmpf);
+           tmpf = ctanf(tmpf);
+           tmpf = ctanhf(tmpf);
+           tmpf = cpowf(tmpf, tmpf);
+           tmpf = cprojf(tmpf);
+           d = cabs(tmpd);
+           d = carg(tmpd);
+           tmpd = ccos(tmpd);
+           tmpd = ccosh(tmpd);
+           tmpd = cexp(tmpd);
+           tmpd = clog(tmpd);
+           tmpd = csin(tmpd);
+           tmpd = csinh(tmpd);
+           tmpd = csqrt(tmpd);
+           tmpd = ctan(tmpd);
+           tmpd = ctanh(tmpd);
+           tmpd = cpow(tmpd, tmpd);
+           tmpd = cproj(tmpd);
+           ld = cabsl(tmpld);
+           ld = cargl(tmpld);
+           tmpld = ccosl(tmpld);
+           tmpld = ccoshl(tmpld);
+           tmpld = cexpl(tmpld);
+           tmpld = clogl(tmpld);
+           tmpld = csinl(tmpld);
+           tmpld = csinhl(tmpld);
+           tmpld = csqrtl(tmpld);
+           tmpld = ctanl(tmpld);
+           tmpld = ctanhl(tmpld);
+           tmpld = cpowl(tmpld, tmpld);
+           tmpld = cprojl(tmpld);
+          ], [glibcxx_cv_c99_complex_cxx98=yes], [glibcxx_cv_c99_complex_cxx98=no])
+      ])
+    fi
+    AC_MSG_RESULT($glibcxx_cv_c99_complex_cxx98)
+    if test x"$glibcxx_cv_c99_complex_cxx98" = x"yes"; then
+      AC_DEFINE(_GLIBCXX98_USE_C99_COMPLEX, 1,
+        [Define if C99 functions in <complex.h> should be used in
+        <complex> for C++98. Using compiler builtins for these functions
+        requires corresponding C99 library functions to be present.])
+    fi
 
-  # Check for the existence of <complex.h> complex math functions.
-  # This is necessary even though libstdc++ uses the builtin versions
-  # of these functions, because if the builtin cannot be used, a reference
-  # to the library function is emitted.
-  AC_CHECK_HEADERS(tgmath.h, ac_has_tgmath_h=yes, ac_has_tgmath_h=no)
-  AC_CHECK_HEADERS(complex.h, ac_has_complex_h=yes, ac_has_complex_h=no)
-  glibcxx_cv_c99_complex=no;
-  if test x"$ac_has_complex_h" = x"yes"; then
-    AC_MSG_CHECKING([for ISO C99 support in <complex.h>])
-    GCC_TRY_COMPILE_OR_LINK(
-       [#include <complex.h>
-	typedef __complex__ float float_type;
-	typedef __complex__ double double_type;
-	typedef __complex__ long double ld_type;
-	volatile float_type tmpf;
-	volatile double_type tmpd;
-	volatile ld_type tmpld;
-	volatile float f;
-	volatile double d;
-	volatile long double ld;],
-       [f = cabsf(tmpf);
-	f = cargf(tmpf);
-	tmpf = ccosf(tmpf);
-	tmpf = ccoshf(tmpf);
-	tmpf = cexpf(tmpf);
-	tmpf = clogf(tmpf);
-	tmpf = csinf(tmpf);
-	tmpf = csinhf(tmpf);
-	tmpf = csqrtf(tmpf);
-	tmpf = ctanf(tmpf);
-	tmpf = ctanhf(tmpf);
-	tmpf = cpowf(tmpf, tmpf);
-	tmpf = cprojf(tmpf);
-	d = cabs(tmpd);
-	d = carg(tmpd);
-	tmpd = ccos(tmpd);
-	tmpd = ccosh(tmpd);
-	tmpd = cexp(tmpd);
-	tmpd = clog(tmpd);
-	tmpd = csin(tmpd);
-	tmpd = csinh(tmpd);
-	tmpd = csqrt(tmpd);
-	tmpd = ctan(tmpd);
-	tmpd = ctanh(tmpd);
-	tmpd = cpow(tmpd, tmpd);
-	tmpd = cproj(tmpd);
-	ld = cabsl(tmpld);
-	ld = cargl(tmpld);
-	tmpld = ccosl(tmpld);
-	tmpld = ccoshl(tmpld);
-	tmpld = cexpl(tmpld);
-	tmpld = clogl(tmpld);
-	tmpld = csinl(tmpld);
-	tmpld = csinhl(tmpld);
-	tmpld = csqrtl(tmpld);
-	tmpld = ctanl(tmpld);
-	tmpld = ctanhl(tmpld);
-	tmpld = cpowl(tmpld, tmpld);
-	tmpld = cprojl(tmpld);
-       ],[glibcxx_cv_c99_complex=yes], [glibcxx_cv_c99_complex=no])
-  fi
-  AC_MSG_RESULT($glibcxx_cv_c99_complex)
-  if test x"$glibcxx_cv_c99_complex" = x"yes"; then
-    AC_DEFINE(_GLIBCXX_USE_C99_COMPLEX, 1,
-	      [Define if C99 functions in <complex.h> should be used in
-	      <complex>. Using compiler builtins for these functions requires
-	      corresponding C99 library functions to be present.])
-  fi
+    # Check for the existence in <stdio.h> of vscanf, et. al.
+    AC_MSG_CHECKING([for ISO C99 support in <stdio.h> for C++98])
+    AC_CACHE_VAL(glibcxx_cv_c99_stdio_cxx98, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <stdio.h>
+         #include <stdarg.h>
+         void foo(char* fmt, ...)
+         {
+           va_list args; va_start(args, fmt);
+           vfscanf(stderr, "%i", args);
+           vscanf("%i", args);
+           vsnprintf(fmt, 0, "%i", args);
+           vsscanf(fmt, "%i", args);
+           snprintf(fmt, 0, "%i");
+         }], [],
+        [glibcxx_cv_c99_stdio_cxx98=yes], [glibcxx_cv_c99_stdio_cxx98=no])
+    ])
+    AC_MSG_RESULT($glibcxx_cv_c99_stdio_cxx98)
+    if test x"$glibcxx_cv_c99_stdio_cxx98" = x"yes"; then
+      AC_DEFINE(_GLIBCXX98_USE_C99_STDIO, 1,
+        [Define if C99 functions or macros in <stdio.h> should be imported
+        in <cstdio> in namespace std for C++98.])
+    fi
 
-  # Check for the existence in <stdio.h> of vscanf, et. al.
-  AC_MSG_CHECKING([for ISO C99 support in <stdio.h>])
-  AC_CACHE_VAL(glibcxx_cv_c99_stdio, [
-  GCC_TRY_COMPILE_OR_LINK(
-     [#include <stdio.h>
-      #include <stdarg.h>
-      void foo(char* fmt, ...)
-      {
-	va_list args; va_start(args, fmt);
-	vfscanf(stderr, "%i", args);
-	vscanf("%i", args);
-	vsnprintf(fmt, 0, "%i", args);
-	vsscanf(fmt, "%i", args);
-	snprintf(fmt, 0, "%i");
-      }], [],
-     [glibcxx_cv_c99_stdio=yes], [glibcxx_cv_c99_stdio=no])
-  ])
-  AC_MSG_RESULT($glibcxx_cv_c99_stdio)
+    # Check for the existence in <stdlib.h> of lldiv_t, et. al.
+    AC_MSG_CHECKING([for ISO C99 support in <stdlib.h> for C++98])
+    AC_CACHE_VAL(glibcxx_cv_c99_stdlib_cxx98, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <stdlib.h>
+         volatile float f;
+         volatile long double ld;
+         volatile unsigned long long ll;
+         lldiv_t mydivt;],
+        [char* tmp;
+         f = strtof("gnu", &tmp);
+         ld = strtold("gnu", &tmp);
+         ll = strtoll("gnu", &tmp, 10);
+         ll = strtoull("gnu", &tmp, 10);
+         ll = llabs(10);
+         mydivt = lldiv(10,1);
+         ll = mydivt.quot;
+         ll = mydivt.rem;
+         ll = atoll("10");
+         _Exit(0);
+        ], [glibcxx_cv_c99_stdlib_cxx98=yes], [glibcxx_cv_c99_stdlib_cxx98=no])
+    ])
+    AC_MSG_RESULT($glibcxx_cv_c99_stdlib_cxx98)
+    if test x"$glibcxx_cv_c99_stdlib_cxx98" = x"yes"; then
+      AC_DEFINE(_GLIBCXX98_USE_C99_STDLIB, 1,
+        [Define if C99 functions or macros in <stdlib.h> should be imported
+        in <cstdlib> in namespace std for C++98.])
+    fi
 
-  # Check for the existence in <stdlib.h> of lldiv_t, et. al.
-  AC_MSG_CHECKING([for ISO C99 support in <stdlib.h>])
-  AC_CACHE_VAL(glibcxx_cv_c99_stdlib, [
-  GCC_TRY_COMPILE_OR_LINK(
-     [#include <stdlib.h>
-      volatile float f;
-      volatile long double ld;
-      volatile unsigned long long ll;
-      lldiv_t mydivt;],
-     [char* tmp;
-      f = strtof("gnu", &tmp);
-      ld = strtold("gnu", &tmp);
-      ll = strtoll("gnu", &tmp, 10);
-      ll = strtoull("gnu", &tmp, 10);
-      ll = llabs(10);
-      mydivt = lldiv(10,1);
-      ll = mydivt.quot;
-      ll = mydivt.rem;
-      ll = atoll("10");
-      _Exit(0);
-      ],[glibcxx_cv_c99_stdlib=yes], [glibcxx_cv_c99_stdlib=no])
-  ])
-  AC_MSG_RESULT($glibcxx_cv_c99_stdlib)
+    # Check for the existence in <wchar.h> of wcstold, etc.
+    if test x"$ac_has_wchar_h" = xyes &&
+       test x"$ac_has_wctype_h" = xyes; then
+      AC_MSG_CHECKING([for ISO C99 support in <wchar.h> for C++98])
+      AC_CACHE_VAL(glibcxx_cv_c99_wchar_cxx98, [
+        AC_TRY_COMPILE([#include <wchar.h>
+          namespace test
+          {
+            using ::wcstold;
+            using ::wcstoll;
+            using ::wcstoull;
+          }
+        ], [], [glibcxx_cv_c99_wchar_cxx98=yes], [glibcxx_cv_c99_wchar_cxx98=no])
+      ])
 
-  # Check for the existence in <wchar.h> of wcstold, etc.
-  glibcxx_cv_c99_wchar=no;
-  if test x"$ac_has_wchar_h" = xyes &&
-     test x"$ac_has_wctype_h" = xyes; then
-    AC_MSG_CHECKING([for ISO C99 support in <wchar.h>])
-    AC_TRY_COMPILE([#include <wchar.h>
-		    namespace test
-		    {
-		      using ::wcstold;
-		      using ::wcstoll;
-		      using ::wcstoull;
-		    }
-		   ],[],[glibcxx_cv_c99_wchar=yes], [glibcxx_cv_c99_wchar=no])
+      # Checks for wide character functions that may not be present.
+      # Injection of these is wrapped with guard macros.
+      # NB: only put functions here, instead of immediately above, if
+      # absolutely necessary.
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vfwscanf; }], [],
+        [AC_DEFINE(HAVE_VFWSCANF, 1, [Defined if vfwscanf exists.])], [])
 
-    # Checks for wide character functions that may not be present.
-    # Injection of these is wrapped with guard macros.
-    # NB: only put functions here, instead of immediately above, if
-    # absolutely necessary.
-    AC_TRY_COMPILE([#include <wchar.h>
-		    namespace test { using ::vfwscanf; } ], [],
- 	    	   [AC_DEFINE(HAVE_VFWSCANF,1,
-			[Defined if vfwscanf exists.])],[])
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vswscanf; }], [],
+        [AC_DEFINE(HAVE_VSWSCANF, 1, [Defined if vswscanf exists.])], [])
 
-    AC_TRY_COMPILE([#include <wchar.h>
-		    namespace test { using ::vswscanf; } ], [],
- 	    	   [AC_DEFINE(HAVE_VSWSCANF,1,
-			[Defined if vswscanf exists.])],[])
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vwscanf; }], [],
+        [AC_DEFINE(HAVE_VWSCANF, 1, [Defined if vwscanf exists.])], [])
 
-    AC_TRY_COMPILE([#include <wchar.h>
-		    namespace test { using ::vwscanf; } ], [],
- 	    	   [AC_DEFINE(HAVE_VWSCANF,1,[Defined if vwscanf exists.])],[])
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::wcstof; }], [],
+        [AC_DEFINE(HAVE_WCSTOF, 1, [Defined if wcstof exists.])], [])
 
-    AC_TRY_COMPILE([#include <wchar.h>
-		    namespace test { using ::wcstof; } ], [],
- 	    	   [AC_DEFINE(HAVE_WCSTOF,1,[Defined if wcstof exists.])],[])
+      AC_TRY_COMPILE([#include <wctype.h>],
+        [wint_t t; int i = iswblank(t);],
+        [AC_DEFINE(HAVE_ISWBLANK, 1, [Defined if iswblank exists.])], [])
 
-    AC_TRY_COMPILE([#include <wctype.h>],
-		   [ wint_t t; int i = iswblank(t);],
- 	    	   [AC_DEFINE(HAVE_ISWBLANK,1,
-			[Defined if iswblank exists.])],[])
+      AC_MSG_RESULT($glibcxx_cv_c99_wchar_cxx98)
+      if test x"$glibcxx_cv_c99_wchar_cxx98" = x"yes"; then
+        AC_DEFINE(_GLIBCXX98_USE_C99_WCHAR, 1,
+          [Define if C99 functions or macros in <wchar.h> should be imported
+          in <cwchar> in namespace std for C++98.])
+      fi
+    fi
 
-    AC_MSG_RESULT($glibcxx_cv_c99_wchar)
-  fi
+    # Option parsed, now set things appropriately.
+    if test x"$glibcxx_cv_c99_math_cxx98" = x"no" ||
+       test x"$glibcxx_cv_c99_complex_cxx98" = x"no" ||
+       test x"$glibcxx_cv_c99_stdio_cxx98" = x"no" ||
+       test x"$glibcxx_cv_c99_stdlib_cxx98" = x"no" ||
+       test x"$glibcxx_cv_c99_wchar_cxx98" = x"no"; then
+      enable_c99=no;
+    else
+      AC_DEFINE(_GLIBCXX_USE_C99, 1,
+        [Define if C99 functions or macros from <wchar.h>, <math.h>,
+        <complex.h>, <stdio.h>, and <stdlib.h> can be used or exposed.])
+    fi
 
-  # Option parsed, now set things appropriately.
-  if test x"$glibcxx_cv_c99_math" = x"no" ||
-     test x"$glibcxx_cv_c99_complex" = x"no" ||
-     test x"$glibcxx_cv_c99_stdio" = x"no" ||
-     test x"$glibcxx_cv_c99_stdlib" = x"no" ||
-     test x"$glibcxx_cv_c99_wchar" = x"no"; then
-    enable_c99=no;
-  else
-    AC_DEFINE(_GLIBCXX_USE_C99, 1,
-    [Define if C99 functions or macros from <wchar.h>, <math.h>,
-    <complex.h>, <stdio.h>, and <stdlib.h> can be used or exposed.])
-  fi
+    gcc_no_link="$ac_save_gcc_no_link"
+    LIBS="$ac_save_LIBS"
+    CXXFLAGS="$ac_save_CXXFLAGS"
+    AC_LANG_RESTORE
 
-  gcc_no_link="$ac_save_gcc_no_link"
-  LIBS="$ac_save_LIBS"
-  CXXFLAGS="$ac_save_CXXFLAGS"
-  AC_LANG_RESTORE
+    AC_LANG_SAVE
+    AC_LANG_CPLUSPLUS
+
+    # Use -std=c++11 and test again for C99 library feature in C++11 mode.
+    # For the reasons given above we use -std=c++11 not -std=gnu++11.
+    ac_save_CXXFLAGS="$CXXFLAGS"
+    CXXFLAGS="$CXXFLAGS -std=c++11"
+    ac_save_LIBS="$LIBS"
+    ac_save_gcc_no_link="$gcc_no_link"
+
+    if test x$gcc_no_link != xyes; then
+      # Use -fno-exceptions to that the C driver can link these tests without
+      # hitting undefined references to personality routines.
+      CXXFLAGS="$CXXFLAGS -fno-exceptions"
+      AC_CHECK_LIB(m, sin, [LIBS="$LIBS -lm"], [
+        # Use the default compile-only tests in GCC_TRY_COMPILE_OR_LINK
+        gcc_no_link=yes
+      ])
+    fi
+
+    # Check for the existence of <math.h> functions used if C99 is enabled.
+    AC_MSG_CHECKING([for ISO C99 support in <math.h> for C++11])
+    AC_CACHE_VAL(glibcxx_cv_c99_math_cxx11, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <math.h>
+         volatile double d1, d2;
+         volatile int i;],
+        [i = fpclassify(d1);
+         i = isfinite(d1);
+         i = isinf(d1);
+         i = isnan(d1);
+         i = isnormal(d1);
+         i = signbit(d1);
+         i = isgreater(d1, d2);
+         i = isgreaterequal(d1, d2);
+         i = isless(d1, d2);
+         i = islessequal(d1, d2);
+         i = islessgreater(d1, d2);
+         i = islessgreater(d1, d2);
+         i = isunordered(d1, d2);
+        ], [glibcxx_cv_c99_math_cxx11=yes], [glibcxx_cv_c99_math_cxx11=no])
+    ])
+    AC_MSG_RESULT($glibcxx_cv_c99_math_cxx11)
+    if test x"$glibcxx_cv_c99_math_cxx11" = x"yes"; then
+      AC_DEFINE(_GLIBCXX11_USE_C99_MATH, 1,
+        [Define if C99 functions or macros in <math.h> should be imported
+        in <cmath> in namespace std for C++11.])
+    fi
+
+    # Check for the existence of <complex.h> complex math functions.
+    # This is necessary even though libstdc++ uses the builtin versions
+    # of these functions, because if the builtin cannot be used, a reference
+    # to the library function is emitted.
+    AC_CHECK_HEADERS(tgmath.h, ac_has_tgmath_h=yes, ac_has_tgmath_h=no)
+    AC_CHECK_HEADERS(complex.h, ac_has_complex_h=yes, ac_has_complex_h=no)
+    if test x"$ac_has_complex_h" = x"yes"; then
+      AC_MSG_CHECKING([for ISO C99 support in <complex.h> for C++11])
+      AC_CACHE_VAL(glibcxx_cv_c99_complex_cxx11, [
+        GCC_TRY_COMPILE_OR_LINK(
+          [#include <complex.h>
+           typedef __complex__ float float_type;
+           typedef __complex__ double double_type;
+           typedef __complex__ long double ld_type;
+           volatile float_type tmpf;
+           volatile double_type tmpd;
+           volatile ld_type tmpld;
+           volatile float f;
+           volatile double d;
+           volatile long double ld;],
+          [f = cabsf(tmpf);
+           f = cargf(tmpf);
+           tmpf = ccosf(tmpf);
+           tmpf = ccoshf(tmpf);
+           tmpf = cexpf(tmpf);
+           tmpf = clogf(tmpf);
+           tmpf = csinf(tmpf);
+           tmpf = csinhf(tmpf);
+           tmpf = csqrtf(tmpf);
+           tmpf = ctanf(tmpf);
+           tmpf = ctanhf(tmpf);
+           tmpf = cpowf(tmpf, tmpf);
+           tmpf = cprojf(tmpf);
+           d = cabs(tmpd);
+           d = carg(tmpd);
+           tmpd = ccos(tmpd);
+           tmpd = ccosh(tmpd);
+           tmpd = cexp(tmpd);
+           tmpd = clog(tmpd);
+           tmpd = csin(tmpd);
+           tmpd = csinh(tmpd);
+           tmpd = csqrt(tmpd);
+           tmpd = ctan(tmpd);
+           tmpd = ctanh(tmpd);
+           tmpd = cpow(tmpd, tmpd);
+           tmpd = cproj(tmpd);
+           ld = cabsl(tmpld);
+           ld = cargl(tmpld);
+           tmpld = ccosl(tmpld);
+           tmpld = ccoshl(tmpld);
+           tmpld = cexpl(tmpld);
+           tmpld = clogl(tmpld);
+           tmpld = csinl(tmpld);
+           tmpld = csinhl(tmpld);
+           tmpld = csqrtl(tmpld);
+           tmpld = ctanl(tmpld);
+           tmpld = ctanhl(tmpld);
+           tmpld = cpowl(tmpld, tmpld);
+           tmpld = cprojl(tmpld);
+          ], [glibcxx_cv_c99_complex_cxx11=yes], [glibcxx_cv_c99_complex_cxx11=no])
+      ])
+    fi
+    AC_MSG_RESULT($glibcxx_cv_c99_complex_cxx11)
+    if test x"$glibcxx_cv_c99_complex_cxx11" = x"yes"; then
+      AC_DEFINE(_GLIBCXX11_USE_C99_COMPLEX, 1,
+        [Define if C99 functions in <complex.h> should be used in
+        <complex> for C++11. Using compiler builtins for these functions
+        requires corresponding C99 library functions to be present.])
+    fi
+
+    # Check for the existence in <stdio.h> of vscanf, et. al.
+    AC_MSG_CHECKING([for ISO C99 support in <stdio.h> for C++11])
+    AC_CACHE_VAL(glibcxx_cv_c99_stdio_cxx11, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <stdio.h>
+         #include <stdarg.h>
+         void foo(char* fmt, ...)
+         {
+           va_list args; va_start(args, fmt);
+           vfscanf(stderr, "%i", args);
+           vscanf("%i", args);
+           vsnprintf(fmt, 0, "%i", args);
+           vsscanf(fmt, "%i", args);
+           snprintf(fmt, 0, "%i");
+         }], [],
+        [glibcxx_cv_c99_stdio_cxx11=yes], [glibcxx_cv_c99_stdio_cxx11=no])
+    ])
+    AC_MSG_RESULT($glibcxx_cv_c99_stdio_cxx11)
+    if test x"$glibcxx_cv_c99_stdio_cxx11" = x"yes"; then
+      AC_DEFINE(_GLIBCXX11_USE_C99_STDIO, 1,
+        [Define if C99 functions or macros in <stdio.h> should be imported
+        in <cstdio> in namespace std for C++11.])
+    fi
+
+    # Check for the existence in <stdlib.h> of lldiv_t, et. al.
+    AC_MSG_CHECKING([for ISO C99 support in <stdlib.h> for C++11])
+    AC_CACHE_VAL(glibcxx_cv_c99_stdlib_cxx11, [
+      GCC_TRY_COMPILE_OR_LINK(
+        [#include <stdlib.h>
+         volatile float f;
+         volatile long double ld;
+         volatile unsigned long long ll;
+         lldiv_t mydivt;],
+        [char* tmp;
+         f = strtof("gnu", &tmp);
+         ld = strtold("gnu", &tmp);
+         ll = strtoll("gnu", &tmp, 10);
+         ll = strtoull("gnu", &tmp, 10);
+         ll = llabs(10);
+         mydivt = lldiv(10,1);
+         ll = mydivt.quot;
+         ll = mydivt.rem;
+         ll = atoll("10");
+         _Exit(0);
+        ], [glibcxx_cv_c99_stdlib_cxx11=yes], [glibcxx_cv_c99_stdlib_cxx11=no])
+    ])
+    AC_MSG_RESULT($glibcxx_cv_c99_stdlib_cxx11)
+    if test x"$glibcxx_cv_c99_stdlib_cxx11" = x"yes"; then
+      AC_DEFINE(_GLIBCXX11_USE_C99_STDLIB, 1,
+        [Define if C99 functions or macros in <stdlib.h> should be imported
+        in <cstdlib> in namespace std for C++11.])
+    fi
+
+    # Check for the existence in <wchar.h> of wcstold, etc.
+    if test x"$ac_has_wchar_h" = xyes &&
+       test x"$ac_has_wctype_h" = xyes; then
+      AC_MSG_CHECKING([for ISO C99 support in <wchar.h> for C++11])
+      AC_CACHE_VAL(glibcxx_cv_c99_wchar_cxx11, [
+        AC_TRY_COMPILE([#include <wchar.h>
+          namespace test
+          {
+            using ::wcstold;
+            using ::wcstoll;
+            using ::wcstoull;
+          }
+        ], [], [glibcxx_cv_c99_wchar_cxx11=yes], [glibcxx_cv_c99_wchar_cxx11=no])
+      ])
+
+      # Checks for wide character functions that may not be present.
+      # Injection of these is wrapped with guard macros.
+      # NB: only put functions here, instead of immediately above, if
+      # absolutely necessary.
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vfwscanf; }], [],
+        [AC_DEFINE(HAVE_VFWSCANF, 1, [Defined if vfwscanf exists.])], [])
+
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vswscanf; }], [],
+        [AC_DEFINE(HAVE_VSWSCANF, 1, [Defined if vswscanf exists.])], [])
+
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::vwscanf; }], [],
+        [AC_DEFINE(HAVE_VWSCANF, 1, [Defined if vwscanf exists.])], [])
+
+      AC_TRY_COMPILE([#include <wchar.h>
+        namespace test { using ::wcstof; }], [],
+        [AC_DEFINE(HAVE_WCSTOF, 1, [Defined if wcstof exists.])], [])
+
+      AC_TRY_COMPILE([#include <wctype.h>],
+        [wint_t t; int i = iswblank(t);],
+        [AC_DEFINE(HAVE_ISWBLANK, 1, [Defined if iswblank exists.])], [])
+
+      AC_MSG_RESULT($glibcxx_cv_c99_wchar_cxx11)
+      if test x"$glibcxx_cv_c99_wchar_cxx11" = x"yes"; then
+        AC_DEFINE(_GLIBCXX11_USE_C99_WCHAR, 1,
+          [Define if C99 functions or macros in <wchar.h> should be imported
+          in <cwchar> in namespace std for C++11.])
+      fi
+    fi
+
+    gcc_no_link="$ac_save_gcc_no_link"
+    LIBS="$ac_save_LIBS"
+    CXXFLAGS="$ac_save_CXXFLAGS"
+    AC_LANG_RESTORE
   fi
 
   AC_MSG_CHECKING([for fully enabled ISO C99 support])
@@ -1943,6 +2176,102 @@ AC_DEFUN([GLIBCXX_CHECK_STDIO_PROTO], [
 ])
 
 dnl
+dnl Check whether required C++11 overloads are present in <math.h>.
+dnl
+AC_DEFUN([GLIBCXX_CHECK_MATH11_PROTO], [
+
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS="$CXXFLAGS -std=c++11"
+
+  case "$host" in
+    *-*-solaris2.*)
+      # Solaris 12 introduced the C++11 <math.h> overloads.  A backport to
+      # a Solaris 11.3 SRU is likely, maybe even a Solaris 10 patch.
+      AC_MSG_CHECKING([for C++11 <math.h> overloads])
+      AC_CACHE_VAL(glibcxx_cv_math11_overload, [
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+	  [#include <math.h>
+	   #undef isfinite
+	   namespace std {
+	     inline bool isfinite(float __x)
+	     { return __builtin_isfinite(__x); }
+	   }
+	])],
+	[glibcxx_cv_math11_overload=no],
+	[glibcxx_cv_math11_overload=yes]
+      )])
+
+      # autoheader cannot handle indented templates.
+      AH_VERBATIM([__CORRECT_ISO_CPP11_MATH_H_PROTO],
+        [/* Define if all C++11 overloads are available in <math.h>.  */
+#if __cplusplus >= 201103L
+#undef __CORRECT_ISO_CPP11_MATH_H_PROTO
+#endif])
+
+      if test $glibcxx_cv_math11_overload = yes; then
+        AC_DEFINE(__CORRECT_ISO_CPP11_MATH_H_PROTO)
+      fi
+      AC_MSG_RESULT([$glibcxx_cv_math11_overload])
+      ;;
+    *)
+      # If <math.h> defines the obsolete isinf(double) and isnan(double)
+      # functions (instead of or as well as the C99 generic macros) then we
+      # can't define std::isinf(double) and std::isnan(double) in <cmath>
+      # and must use the ones from <math.h> instead.
+      AC_MSG_CHECKING([for obsolete isinf function in <math.h>])
+        AC_CACHE_VAL(glibcxx_cv_obsolete_isinf, [
+          AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+            [#define _GLIBCXX_INCLUDE_NEXT_C_HEADERS
+             #include <math.h>
+             #undef isinf
+             namespace std {
+               using ::isinf;
+               bool isinf(float);
+               bool isinf(long double);
+             }
+             using std::isinf;
+             bool b = isinf(0.0);
+          ])],
+          [glibcxx_cv_obsolete_isinf=yes],
+          [glibcxx_cv_obsolete_isinf=no]
+        )])
+      AC_MSG_RESULT([$glibcxx_cv_obsolete_isinf])
+      if test $glibcxx_cv_obsolete_isinf = yes; then
+        AC_DEFINE(HAVE_OBSOLETE_ISINF, 1,
+                  [Define if <math.h> defines obsolete isinf function.])
+      fi
+
+      AC_MSG_CHECKING([for obsolete isnan function in <math.h>])
+        AC_CACHE_VAL(glibcxx_cv_obsolete_isnan, [
+          AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+            [#include <math.h>
+             #undef isnan
+             namespace std {
+               using ::isnan;
+               bool isnan(float);
+               bool isnan(long double);
+             }
+             using std::isnan;
+             bool b = isnan(0.0);
+          ])],
+          [glibcxx_cv_obsolete_isnan=yes],
+          [glibcxx_cv_obsolete_isnan=no]
+        )])
+      AC_MSG_RESULT([$glibcxx_cv_obsolete_isnan])
+      if test $glibcxx_cv_obsolete_isnan = yes; then
+        AC_DEFINE(HAVE_OBSOLETE_ISNAN, 1,
+                  [Define if <math.h> defines obsolete isnan function.])
+      fi
+      ;;
+  esac
+
+  CXXFLAGS="$ac_save_CXXFLAGS"
+  AC_LANG_RESTORE
+])
+
+dnl
 dnl Check whether macros, etc are present for <system_error>
 dnl
 AC_DEFUN([GLIBCXX_CHECK_SYSTEM_ERROR], [
@@ -2032,10 +2361,10 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
       linux* | gnu* | kfreebsd*-gnu | knetbsd*-gnu)
 	enable_clocale_flag=gnu
 	;;
-      darwin* | freebsd*)
+      darwin*)
 	enable_clocale_flag=darwin
 	;;
-      dragonfly*)
+      dragonfly* | freebsd*)
 	enable_clocale_flag=dragonfly
 	;;
       openbsd*)
@@ -2114,7 +2443,7 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
       CLOCALE_INTERNAL_H=config/locale/generic/c++locale_internal.h
       ;;
     darwin)
-      AC_MSG_RESULT(darwin or freebsd)
+      AC_MSG_RESULT(darwin)
 
       CLOCALE_H=config/locale/generic/c_locale.h
       CLOCALE_CC=config/locale/generic/c_locale.cc
@@ -2131,7 +2460,7 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
       ;;
 
     dragonfly)
-      AC_MSG_RESULT(dragonfly)
+      AC_MSG_RESULT(dragonfly or freebsd)
 
       CLOCALE_H=config/locale/dragonfly/c_locale.h
       CLOCALE_CC=config/locale/dragonfly/c_locale.cc
@@ -2310,6 +2639,8 @@ AC_DEFUN([GLIBCXX_ENABLE_ALLOCATOR], [
       ;;
   esac
 
+  GLIBCXX_CONDITIONAL(ENABLE_ALLOCATOR_NEW,
+		      test $enable_libstdcxx_allocator_flag = new)
   AC_SUBST(ALLOCATOR_H)
   AC_SUBST(ALLOCATOR_NAME)
 ])
@@ -2377,6 +2708,10 @@ AC_DEFUN([GLIBCXX_ENABLE_VTABLE_VERIFY], [
       darwin*)
         VTV_CXXFLAGS="-fvtable-verify=std -Wl,-u,_vtable_map_vars_start -Wl,-u,_vtable_map_vars_end"
         VTV_CXXLINKFLAGS="-L${toplevel_builddir}/libvtv/.libs -Wl,-rpath,${toplevel_builddir}/libvtv/.libs"
+        ;;
+      solaris2*)
+        VTV_CXXFLAGS="-fvtable-verify=std -Wl,-u_vtable_map_vars_start,-u_vtable_map_vars_end"
+        VTV_CXXLINKFLAGS="-L${toplevel_builddir}/libvtv/.libs -Wl,-R -Wl,${toplevel_builddir}/libvtv/.libs"
         ;;
       *)
         VTV_CXXFLAGS="-fvtable-verify=std -Wl,-u_vtable_map_vars_start,-u_vtable_map_vars_end"
@@ -3155,9 +3490,9 @@ EOF
   AC_LANG_RESTORE
 
   # Set atomicity_dir to builtins if all but the long long test above passes.
-  if test $glibcxx_cv_atomic_bool = yes \
-     && test $glibcxx_cv_atomic_short = yes \
-     && test $glibcxx_cv_atomic_int = yes; then
+  if test "$glibcxx_cv_atomic_bool" = yes \
+     && test "$glibcxx_cv_atomic_short" = yes \
+     && test "$glibcxx_cv_atomic_int" = yes; then
     AC_DEFINE(_GLIBCXX_ATOMIC_BUILTINS, 1,
     [Define if the compiler supports C++11 atomics.])
     atomicity_dir=cpu/generic/atomicity_builtins
@@ -4054,6 +4389,34 @@ dnl
 dnl
   CXXFLAGS="$ac_save_CXXFLAGS"
   AC_LANG_RESTORE
+])
+
+dnl
+dnl Check how size_t is mangled.  Copied from libitm.
+dnl
+AC_DEFUN([GLIBCXX_CHECK_SIZE_T_MANGLING], [
+  AC_CACHE_CHECK([how size_t is mangled],
+                 glibcxx_cv_size_t_mangling, [
+    AC_TRY_COMPILE([], [extern __SIZE_TYPE__ x; extern unsigned long x;],
+                   [glibcxx_cv_size_t_mangling=m], [
+      AC_TRY_COMPILE([], [extern __SIZE_TYPE__ x; extern unsigned int x;],
+                     [glibcxx_cv_size_t_mangling=j], [
+        AC_TRY_COMPILE([],
+                       [extern __SIZE_TYPE__ x; extern unsigned long long x;],
+                       [glibcxx_cv_size_t_mangling=y], [
+          AC_TRY_COMPILE([],
+                         [extern __SIZE_TYPE__ x; extern unsigned short x;],
+                         [glibcxx_cv_size_t_mangling=t],
+                         [glibcxx_cv_size_t_mangling=x])
+        ])
+      ])
+    ])
+  ])
+  if test $glibcxx_cv_size_t_mangling = x; then
+    AC_MSG_ERROR([Unknown underlying type for size_t])
+  fi
+  AC_DEFINE_UNQUOTED(_GLIBCXX_MANGLE_SIZE_T, [$glibcxx_cv_size_t_mangling],
+    [Define to the letter to which size_t is mangled.])
 ])
 
 # Macros from the top-level gcc directory.

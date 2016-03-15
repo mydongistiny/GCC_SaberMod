@@ -181,7 +181,7 @@ package Atree is
    --   Flag10
    --   Flag11        Note that Flag0-3 are stored separately in the Flags
    --   Flag12        table, but that's a detail of the implementation which
-   --   Flag13        is entirely hidden by the funcitonal interface.
+   --   Flag13        is entirely hidden by the functional interface.
    --   Flag14
    --   Flag15
    --   Flag16
@@ -803,6 +803,33 @@ package Atree is
       V9 : Entity_Kind) return Boolean;
 
    function Ekind_In
+     (E   : Entity_Id;
+      V1  : Entity_Kind;
+      V2  : Entity_Kind;
+      V3  : Entity_Kind;
+      V4  : Entity_Kind;
+      V5  : Entity_Kind;
+      V6  : Entity_Kind;
+      V7  : Entity_Kind;
+      V8  : Entity_Kind;
+      V9  : Entity_Kind;
+      V10 : Entity_Kind) return Boolean;
+
+   function Ekind_In
+     (E   : Entity_Id;
+      V1  : Entity_Kind;
+      V2  : Entity_Kind;
+      V3  : Entity_Kind;
+      V4  : Entity_Kind;
+      V5  : Entity_Kind;
+      V6  : Entity_Kind;
+      V7  : Entity_Kind;
+      V8  : Entity_Kind;
+      V9  : Entity_Kind;
+      V10 : Entity_Kind;
+      V11 : Entity_Kind) return Boolean;
+
+   function Ekind_In
      (T  : Entity_Kind;
       V1 : Entity_Kind;
       V2 : Entity_Kind) return Boolean;
@@ -869,6 +896,33 @@ package Atree is
       V7 : Entity_Kind;
       V8 : Entity_Kind;
       V9 : Entity_Kind) return Boolean;
+
+   function Ekind_In
+     (T   : Entity_Kind;
+      V1  : Entity_Kind;
+      V2  : Entity_Kind;
+      V3  : Entity_Kind;
+      V4  : Entity_Kind;
+      V5  : Entity_Kind;
+      V6  : Entity_Kind;
+      V7  : Entity_Kind;
+      V8  : Entity_Kind;
+      V9  : Entity_Kind;
+      V10 : Entity_Kind) return Boolean;
+
+   function Ekind_In
+     (T   : Entity_Kind;
+      V1  : Entity_Kind;
+      V2  : Entity_Kind;
+      V3  : Entity_Kind;
+      V4  : Entity_Kind;
+      V5  : Entity_Kind;
+      V6  : Entity_Kind;
+      V7  : Entity_Kind;
+      V8  : Entity_Kind;
+      V9  : Entity_Kind;
+      V10 : Entity_Kind;
+      V11 : Entity_Kind) return Boolean;
 
    pragma Inline (Ekind_In);
    --  Inline all above functions
@@ -1385,6 +1439,9 @@ package Atree is
       function Elist10 (N : Node_Id) return Elist_Id;
       pragma Inline (Elist10);
 
+      function Elist11 (N : Node_Id) return Elist_Id;
+      pragma Inline (Elist11);
+
       function Elist13 (N : Node_Id) return Elist_Id;
       pragma Inline (Elist13);
 
@@ -1411,6 +1468,9 @@ package Atree is
 
       function Elist26 (N : Node_Id) return Elist_Id;
       pragma Inline (Elist26);
+
+      function Elist36 (N : Node_Id) return Elist_Id;
+      pragma Inline (Elist36);
 
       function Name1 (N : Node_Id) return Name_Id;
       pragma Inline (Name1);
@@ -2742,6 +2802,9 @@ package Atree is
       procedure Set_Elist10 (N : Node_Id; Val : Elist_Id);
       pragma Inline (Set_Elist10);
 
+      procedure Set_Elist11 (N : Node_Id; Val : Elist_Id);
+      pragma Inline (Set_Elist11);
+
       procedure Set_Elist13 (N : Node_Id; Val : Elist_Id);
       pragma Inline (Set_Elist13);
 
@@ -2768,6 +2831,9 @@ package Atree is
 
       procedure Set_Elist26 (N : Node_Id; Val : Elist_Id);
       pragma Inline (Set_Elist26);
+
+      procedure Set_Elist36 (N : Node_Id; Val : Elist_Id);
+      pragma Inline (Set_Elist36);
 
       procedure Set_Name1 (N : Node_Id; Val : Name_Id);
       pragma Inline (Set_Name1);

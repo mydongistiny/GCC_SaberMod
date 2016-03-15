@@ -1,5 +1,5 @@
 /* Tail merging for gimple.
-   Copyright (C) 2011-2015 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Tom de Vries (tom@codesourcery.com)
 
 This file is part of GCC.
@@ -189,31 +189,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
 #include "fold-const.h"
-#include "stor-layout.h"
 #include "trans-mem.h"
-#include "tm_p.h"
 #include "cfganal.h"
 #include "cfgcleanup.h"
-#include "flags.h"
-#include "internal-fn.h"
-#include "tree-eh.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
 #include "params.h"
-#include "gimple-pretty-print.h"
 #include "tree-ssa-sccvn.h"
-#include "tree-dump.h"
 #include "cfgloop.h"
-#include "tree-pass.h"
-#include "trans-mem.h"
 
 /* Describes a group of bbs with the same successors.  The successor bbs are
    cached in succs, and the successor edge flags are cached in succ_flags.
@@ -1091,7 +1081,7 @@ gimple_operand_equal_value_p (tree t1, tree t2)
       || t2 == NULL_TREE)
     return false;
 
-  if (operand_equal_p (t1, t2, 0))
+  if (operand_equal_p (t1, t2, OEP_MATCH_SIDE_EFFECTS))
     return true;
 
   return gvn_uses_equal (t1, t2);
@@ -1217,6 +1207,42 @@ gsi_advance_bw_nondebug_nonlocal (gimple_stmt_iterator *gsi, tree *vuse,
     }
 }
 
+/* Return true if equal (in the sense of gimple_equal_p) statements STMT1 and
+   STMT2 are allowed to be merged.  */
+
+static bool
+merge_stmts_p (gimple *stmt1, gimple *stmt2)
+{
+  /* What could be better than this here is to blacklist the bb
+     containing the stmt, when encountering the stmt f.i. in
+     same_succ_hash.  */
+  if (is_tm_ending (stmt1))
+    return false;
+
+  if (is_gimple_call (stmt1)
+      && gimple_call_internal_p (stmt1))
+    switch (gimple_call_internal_fn (stmt1))
+      {
+      case IFN_UBSAN_NULL:
+      case IFN_UBSAN_BOUNDS:
+      case IFN_UBSAN_VPTR:
+      case IFN_UBSAN_CHECK_ADD:
+      case IFN_UBSAN_CHECK_SUB:
+      case IFN_UBSAN_CHECK_MUL:
+      case IFN_UBSAN_OBJECT_SIZE:
+      case IFN_ASAN_CHECK:
+	/* For these internal functions, gimple_location is an implicit
+	   parameter, which will be used explicitly after expansion.
+	   Merging these statements may cause confusing line numbers in
+	   sanitizer messages.  */
+	return gimple_location (stmt1) == gimple_location (stmt2);
+      default:
+	break;
+      }
+
+  return true;
+}
+
 /* Determines whether BB1 and BB2 (members of same_succ) are duplicates.  If so,
    clusters them.  */
 
@@ -1236,14 +1262,10 @@ find_duplicate (same_succ *same_succ, basic_block bb1, basic_block bb2)
       gimple *stmt1 = gsi_stmt (gsi1);
       gimple *stmt2 = gsi_stmt (gsi2);
 
-      /* What could be better than this here is to blacklist the bb
-	 containing the stmt, when encountering the stmt f.i. in
-	 same_succ_hash.  */
-      if (is_tm_ending (stmt1)
-	  || is_tm_ending (stmt2))
+      if (!gimple_equal_p (same_succ, stmt1, stmt2))
 	return;
 
-      if (!gimple_equal_p (same_succ, stmt1, stmt2))
+      if (!merge_stmts_p (stmt1, stmt2))
 	return;
 
       gsi_prev_nondebug (&gsi1);
@@ -1417,7 +1439,7 @@ find_clusters_1 (same_succ *same_succ)
 	  if (BB_CLUSTER (bb1) != NULL && BB_CLUSTER (bb1) == BB_CLUSTER (bb2))
 	    continue;
 
-	  /* Limit quadratic behaviour.  */
+	  /* Limit quadratic behavior.  */
 	  nr_comparisons++;
 	  if (nr_comparisons > max_comparisons)
 	    break;

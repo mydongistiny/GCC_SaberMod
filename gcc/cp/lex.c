@@ -1,5 +1,5 @@
 /* Separate lexical analyzer for GNU C++.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -24,17 +24,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "stringpool.h"
 #include "cp-tree.h"
-#include "cpplib.h"
-#include "flags.h"
+#include "stringpool.h"
 #include "c-family/c-pragma.h"
 #include "c-family/c-objc.h"
-#include "tm_p.h"
-#include "timevar.h"
 
 static int interface_strcmp (const char *);
 static void init_cp_pragma (void);

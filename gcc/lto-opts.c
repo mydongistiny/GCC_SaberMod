@@ -1,6 +1,6 @@
 /* LTO IL options.
 
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by Simon Baldwin <simonb@google.com>
 
 This file is part of GCC.
@@ -22,23 +22,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
 #include "backend.h"
+#include "target.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
-#include "options.h"
-#include "fold-const.h"
-#include "internal-fn.h"
-#include "flags.h"
-#include "opts.h"
-#include "options.h"
-#include "common/common-target.h"
-#include "diagnostic.h"
 #include "cgraph.h"
-#include "target.h"
 #include "lto-streamer.h"
-#include "lto-section-names.h"
+#include "opts.h"
 #include "toplev.h"
 
 /* Append the option piece OPT to the COLLECT_GCC_OPTIONS string

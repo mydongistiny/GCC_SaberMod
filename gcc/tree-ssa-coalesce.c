@@ -1,5 +1,5 @@
 /* Coalesce SSA_NAMES together for the out-of-ssa pass.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod <amacleod@redhat.com>
 
 This file is part of GCC.
@@ -22,25 +22,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "predict.h"
+#include "tm_p.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "flags.h"
 #include "tree-pretty-print.h"
+#include "diagnostic-core.h"
 #include "dumpfile.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "tree-ssa-live.h"
 #include "tree-ssa-coalesce.h"
-#include "cfgexpand.h"
 #include "explow.h"
-#include "diagnostic-core.h"
 #include "tree-dfa.h"
-#include "tm_p.h"
 #include "stor-layout.h"
 
 /* This set of routines implements a coalesce_list.  This is an object which
@@ -56,6 +50,11 @@ struct coalesce_pair
   int first_element;
   int second_element;
   int cost;
+
+  /* The order in which coalescing pairs are discovered is recorded in this
+     field, which is used as the final tie breaker when sorting coalesce
+     pairs.  */
+  int index;
 };
 
 /* Coalesce pair hashtable helpers.  */
@@ -260,6 +259,13 @@ delete_coalesce_list (coalesce_list *cl)
   free (cl);
 }
 
+/* Return the number of unique coalesce pairs in CL.  */
+
+static inline int
+num_coalesce_pairs (coalesce_list *cl)
+{
+  return cl->list->elements ();
+}
 
 /* Find a matching coalesce pair object in CL for the pair P1 and P2.  If
    one isn't found, return NULL if CREATE is false, otherwise create a new
@@ -296,6 +302,7 @@ find_coalesce_pair (coalesce_list *cl, int p1, int p2, bool create)
       pair->first_element = p.first_element;
       pair->second_element = p.second_element;
       pair->cost = 0;
+      pair->index = num_coalesce_pairs (cl);
       *slot = pair;
     }
 
@@ -349,28 +356,13 @@ compare_pairs (const void *p1, const void *p2)
   int result;
 
   result = (* pp1)->cost - (* pp2)->cost;
-  /* Since qsort does not guarantee stability we use the elements
-     as a secondary key.  This provides us with independence from
-     the host's implementation of the sorting algorithm.  */
+  /* And if everything else is equal, then sort based on which
+     coalesce pair was found first.  */
   if (result == 0)
-    {
-      result = (* pp2)->first_element - (* pp1)->first_element;
-      if (result == 0)
-	result = (* pp2)->second_element - (* pp1)->second_element;
-    }
+    result = (*pp2)->index - (*pp1)->index;
 
   return result;
 }
-
-
-/* Return the number of unique coalesce pairs in CL.  */
-
-static inline int
-num_coalesce_pairs (coalesce_list *cl)
-{
-  return cl->list->elements ();
-}
-
 
 /* Iterate over CL using ITER, returning values in PAIR.  */
 

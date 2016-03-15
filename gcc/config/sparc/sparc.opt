@@ -1,6 +1,6 @@
 ; Options for the SPARC port of the compiler
 ;
-; Copyright (C) 2005-2015 Free Software Foundation, Inc.
+; Copyright (C) 2005-2016 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -203,13 +203,13 @@ Target RejectNegative Joined Var(sparc_debug_string)
 Enable debug output.
 
 mstd-struct-return
-Target Report RejectNegative Var(sparc_std_struct_return)
+Target Report Var(sparc_std_struct_return)
 Enable strict 32-bit psABI struct return checking.
 
 mfix-at697f
 Target Report RejectNegative Var(sparc_fix_at697f)
 Enable workaround for single erratum of AT697F processor
-(corresponding to erratum #13 of AT697E processor)
+(corresponding to erratum #13 of AT697E processor).
 
 mfix-ut699
 Target Report RejectNegative Var(sparc_fix_ut699)

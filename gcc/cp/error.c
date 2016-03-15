@@ -1,6 +1,6 @@
 /* Call-backs for C++ error reporting.
    This code is non-reentrant.
-   Copyright (C) 1993-2015 Free Software Foundation, Inc.
+   Copyright (C) 1993-2016 Free Software Foundation, Inc.
    This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
@@ -20,13 +20,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
-#include "stringpool.h"
 #include "cp-tree.h"
-#include "flags.h"
-#include "diagnostic.h"
+#include "stringpool.h"
 #include "tree-diagnostic.h"
 #include "langhooks-def.h"
 #include "intl.h"
@@ -495,7 +490,9 @@ dump_type (cxx_pretty_printer *pp, tree t, int flags)
 
     case TEMPLATE_TYPE_PARM:
       pp_cxx_cv_qualifier_seq (pp, t);
-      if (TYPE_IDENTIFIER (t))
+      if (tree c = PLACEHOLDER_TYPE_CONSTRAINTS (t))
+	pp_cxx_constrained_type_spec (pp, c);
+      else if (TYPE_IDENTIFIER (t))
 	pp_cxx_tree_identifier (pp, TYPE_IDENTIFIER (t));
       else
 	pp_cxx_canonical_template_parameter
@@ -878,10 +875,10 @@ dump_type_suffix (cxx_pretty_printer *pp, tree t, int flags)
     case ARRAY_TYPE:
       pp_maybe_space (pp);
       pp_cxx_left_bracket (pp);
-      if (TYPE_DOMAIN (t))
+      if (tree dtype = TYPE_DOMAIN (t))
 	{
-	  tree dtype = TYPE_DOMAIN (t);
 	  tree max = TYPE_MAX_VALUE (dtype);
+	  /* Zero-length arrays have an upper bound of SIZE_MAX.  */
 	  if (integer_all_onesp (max))
 	    pp_character (pp, '0');
 	  else if (tree_fits_shwi_p (max))
@@ -956,7 +953,7 @@ dump_global_iord (cxx_pretty_printer *pp, tree t)
   else
     gcc_unreachable ();
 
-  pp_printf (pp, p, LOCATION_FILE (input_location));
+  pp_printf (pp, p, DECL_SOURCE_FILE (t));
 }
 
 static void
@@ -2847,7 +2844,7 @@ decl_as_dwarf_string (tree decl, int flags)
 {
   const char *name;
   /* Curiously, reinit_cxx_pp doesn't reset the flags field, so setting the flag
-     here will be adequate to get the desired behaviour.  */
+     here will be adequate to get the desired behavior.  */
   cxx_pp->flags |= pp_c_flag_gnu_v3;
   name = decl_as_string (decl, flags);
   /* Subsequent calls to the pretty printer shouldn't use this style.  */
@@ -2879,7 +2876,7 @@ lang_decl_dwarf_name (tree decl, int v, bool translate)
 {
   const char *name;
   /* Curiously, reinit_cxx_pp doesn't reset the flags field, so setting the flag
-     here will be adequate to get the desired behaviour.  */
+     here will be adequate to get the desired behavior.  */
   cxx_pp->flags |= pp_c_flag_gnu_v3;
   name = lang_decl_name (decl, v, translate);
   /* Subsequent calls to the pretty printer shouldn't use this style.  */
@@ -3368,8 +3365,8 @@ print_instantiation_partial_context_line (diagnostic_context *context,
     {
       pp_verbatim (context->printer,
 		   recursive_p
-		   ? _("recursively required from here")
-		   : _("required from here"));
+		   ? _("recursively required from here\n")
+		   : _("required from here\n"));
     }
 }
 
@@ -3453,7 +3450,6 @@ print_instantiation_partial_context (diagnostic_context *context,
     }
   print_instantiation_partial_context_line (context, NULL, loc,
 					    /*recursive_p=*/false);
-  pp_newline (context->printer);
 }
 
 /* Called from cp_thing to print the template context for an error.  */
@@ -3562,7 +3558,7 @@ cp_printer (pretty_printer *pp, text_info *text, const char *spec,
 
   pp_string (pp, result);
   if (set_locus && t != NULL)
-    text->set_location (0, location_of (t));
+    text->set_location (0, location_of (t), true);
   return true;
 #undef next_tree
 #undef next_tcode
@@ -3676,9 +3672,10 @@ pedwarn_cxx98 (location_t location, int opt, const char *gmsgid, ...)
   diagnostic_info diagnostic;
   va_list ap;
   bool ret;
+  rich_location richloc (line_table, location);
 
   va_start (ap, gmsgid);
-  diagnostic_set_info (&diagnostic, gmsgid, &ap, location,
+  diagnostic_set_info (&diagnostic, gmsgid, &ap, &richloc,
 		       (cxx_dialect == cxx98) ? DK_PEDWARN : DK_WARNING);
   diagnostic.option_index = opt;
   ret = report_diagnostic (&diagnostic);

@@ -638,6 +638,7 @@ LIBOBJS
 TSAN_TARGET_DEPENDENT_OBJECTS
 LIBBACKTRACE_SUPPORTED_FALSE
 LIBBACKTRACE_SUPPORTED_TRUE
+OBSTACK_DEFS
 RPC_DEFS
 BACKTRACE_SUPPORTS_THREADS
 BACKTRACE_USES_MALLOC
@@ -10646,7 +10647,7 @@ _LT_EOF
 	if $NM -V 2>&1 | $GREP 'GNU' > /dev/null; then
 	  export_symbols_cmds='$NM -Bpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B") || (\$ 2 == "W")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
 	else
-	  export_symbols_cmds='$NM -BCpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
+	  export_symbols_cmds='$NM -BCpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B") || (\$ 2 == "L")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
 	fi
 	aix_use_runtimelinking=no
 
@@ -15380,7 +15381,7 @@ $as_echo_n "checking whether the $compiler linker ($LD) supports shared librarie
     if $NM -V 2>&1 | $GREP 'GNU' > /dev/null; then
       export_symbols_cmds_CXX='$NM -Bpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B") || (\$ 2 == "W")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
     else
-      export_symbols_cmds_CXX='$NM -BCpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
+      export_symbols_cmds_CXX='$NM -BCpg $libobjs $convenience | awk '\''{ if (((\$ 2 == "T") || (\$ 2 == "D") || (\$ 2 == "B") || (\$ 2 == "L")) && (substr(\$ 3,1,1) != ".")) { print \$ 3 } }'\'' | sort -u > $export_symbols'
     fi
     ;;
   pw32*)
@@ -16485,7 +16486,7 @@ done
 
 
 # Common libraries that we need to link against for all sanitizer libs.
-link_sanitizer_common='-lpthread -ldl -lm'
+link_sanitizer_common='-lpthread -lm'
 
 # Set up the set of additional libraries that we need to link against for libasan.
 link_libasan=$link_sanitizer_common
@@ -16951,6 +16952,39 @@ else
 fi
 
 RPC_DEFS=$rpc_defs
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking obstack params" >&5
+$as_echo_n "checking obstack params... " >&6; }
+if test "${libsanitizer_cv_sys_obstack+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  save_cppflags=$CPPFLAGS
+CPPFLAGS="-I${srcdir}/../include -o conftest.iii $CPPFLAGS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+#include "obstack.h"
+#ifdef _OBSTACK_SIZE_T
+_OBSTACK_SIZE_T
+#else
+int
+#endif
+
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  libsanitizer_cv_sys_obstack=`sed -e '/^#/d;/^[	 ]*$/d' conftest.iii | sed -e '$!d;s/size_t/SIZE_T/'`
+else
+  libsanitizer_cv_sys_obstack=int
+fi
+rm -f conftest.err conftest.$ac_ext
+CPPFLAGS=$save_cppflags
+rm -f conftest.iii
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $libsanitizer_cv_sys_obstack" >&5
+$as_echo "$libsanitizer_cv_sys_obstack" >&6; }
+OBSTACK_DEFS=-D_OBSTACK_SIZE_T=\"$libsanitizer_cv_sys_obstack\"
 
 
  if test "x${BACKTRACE_SUPPORTED}x${BACKTRACE_USES_MALLOC}" = "x1x0"; then

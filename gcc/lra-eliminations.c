@@ -1,5 +1,5 @@
 /* Code for RTL register eliminations.
-   Copyright (C) 2010-2015 Free Software Foundation, Inc.
+   Copyright (C) 2010-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -55,33 +55,17 @@ along with GCC; see the file COPYING3.	If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
+#include "tree.h"
 #include "df.h"
 #include "tm_p.h"
+#include "optabs.h"
 #include "regs.h"
-#include "insn-config.h"
-#include "insn-codes.h"
+#include "ira.h"
 #include "recog.h"
 #include "output.h"
-#include "addresses.h"
-#include "target.h"
-#include "flags.h"
-#include "alias.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "except.h"
-#include "optabs.h"
-#include "ira.h"
 #include "rtl-error.h"
-#include "lra.h"
-#include "insn-attr.h"
 #include "lra-int.h"
 
 /* This structure is used to record information about hard register
@@ -295,6 +279,37 @@ get_elimination (rtx reg)
   return &self_elim_table;
 }
 
+/* Transform (subreg (plus reg const)) to (plus (subreg reg) const)
+   when it is possible.  Return X or the transformation result if the
+   transformation is done.  */
+static rtx
+move_plus_up (rtx x)
+{
+  rtx subreg_reg;
+  enum machine_mode x_mode, subreg_reg_mode;
+  
+  if (GET_CODE (x) != SUBREG || !subreg_lowpart_p (x))
+    return x;
+  subreg_reg = SUBREG_REG (x);
+  x_mode = GET_MODE (x);
+  subreg_reg_mode = GET_MODE (subreg_reg);
+  if (GET_CODE (x) == SUBREG && GET_CODE (subreg_reg) == PLUS
+      && GET_MODE_SIZE (x_mode) <= GET_MODE_SIZE (subreg_reg_mode)
+      && CONSTANT_P (XEXP (subreg_reg, 1))
+      && GET_MODE_CLASS (x_mode) == MODE_INT
+      && GET_MODE_CLASS (subreg_reg_mode) == MODE_INT)
+    {
+      rtx cst = simplify_subreg (x_mode, XEXP (subreg_reg, 1), subreg_reg_mode,
+				 subreg_lowpart_offset (x_mode,
+							subreg_reg_mode));
+      if (cst && CONSTANT_P (cst))
+	return gen_rtx_PLUS (x_mode, lowpart_subreg (x_mode,
+						     XEXP (subreg_reg, 0),
+						     subreg_reg_mode), cst);
+    }
+  return x;
+}
+
 /* Scan X and replace any eliminable registers (such as fp) with a
    replacement (such as sp) if SUBST_P, plus an offset.  The offset is
    a change in the offset between the eliminable register and its
@@ -423,6 +438,8 @@ lra_eliminate_regs_1 (rtx_insn *insn, rtx x, machine_mode mem_mode,
 					 subst_p, update_p,
 					 update_sp_offset, full_p);
 
+	new0 = move_plus_up (new0);
+	new1 = move_plus_up (new1);
 	if (new0 != XEXP (x, 0) || new1 != XEXP (x, 1))
 	  return form_sum (new0, new1);
       }
@@ -1436,11 +1453,11 @@ lra_eliminate (bool final_p, bool first_p)
   bitmap_initialize (&insns_with_changed_offsets, &reg_obstack);
   if (final_p)
     {
-#ifdef ENABLE_CHECKING
-      update_reg_eliminate (&insns_with_changed_offsets);
-      if (! bitmap_empty_p (&insns_with_changed_offsets))
-	gcc_unreachable ();
-#endif
+      if (flag_checking)
+	{
+	  update_reg_eliminate (&insns_with_changed_offsets);
+	  gcc_assert (bitmap_empty_p (&insns_with_changed_offsets));
+	}
       /* We change eliminable hard registers in insns so we should do
 	 this for all insns containing any eliminable hard
 	 register.  */

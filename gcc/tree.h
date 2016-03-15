@@ -1,6 +1,5 @@
-
 /* Definitions for the ubiquitous 'tree' type for GNU compilers.
-   Copyright (C) 1989-2015 Free Software Foundation, Inc.
+   Copyright (C) 1989-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -22,6 +21,58 @@ along with GCC; see the file COPYING3.  If not see
 #define GCC_TREE_H
 
 #include "tree-core.h"
+
+/* Convert a target-independent built-in function code to a combined_fn.  */
+
+inline combined_fn
+as_combined_fn (built_in_function fn)
+{
+  return combined_fn (int (fn));
+}
+
+/* Convert an internal function code to a combined_fn.  */
+
+inline combined_fn
+as_combined_fn (internal_fn fn)
+{
+  return combined_fn (int (fn) + int (END_BUILTINS));
+}
+
+/* Return true if CODE is a target-independent built-in function.  */
+
+inline bool
+builtin_fn_p (combined_fn code)
+{
+  return int (code) < int (END_BUILTINS);
+}
+
+/* Return the target-independent built-in function represented by CODE.
+   Only valid if builtin_fn_p (CODE).  */
+
+inline built_in_function
+as_builtin_fn (combined_fn code)
+{
+  gcc_checking_assert (builtin_fn_p (code));
+  return built_in_function (int (code));
+}
+
+/* Return true if CODE is an internal function.  */
+
+inline bool
+internal_fn_p (combined_fn code)
+{
+  return int (code) >= int (END_BUILTINS);
+}
+
+/* Return the internal function represented by CODE.  Only valid if
+   internal_fn_p (CODE).  */
+
+inline internal_fn
+as_internal_fn (combined_fn code)
+{
+  gcc_checking_assert (internal_fn_p (code));
+  return internal_fn (int (code) - int (END_BUILTINS));
+}
 
 /* Macros for initializing `tree_contains_struct'.  */
 #define MARK_TS_BASE(C)					\
@@ -181,22 +232,6 @@ along with GCC; see the file COPYING3.  If not see
 
 
 /* Helper macros for math builtins.  */
-
-#define BUILTIN_EXP10_P(FN) \
- ((FN) == BUILT_IN_EXP10 || (FN) == BUILT_IN_EXP10F || (FN) == BUILT_IN_EXP10L \
-  || (FN) == BUILT_IN_POW10 || (FN) == BUILT_IN_POW10F || (FN) == BUILT_IN_POW10L)
-
-#define BUILTIN_EXPONENT_P(FN) (BUILTIN_EXP10_P (FN) \
-  || (FN) == BUILT_IN_EXP || (FN) == BUILT_IN_EXPF || (FN) == BUILT_IN_EXPL \
-  || (FN) == BUILT_IN_EXP2 || (FN) == BUILT_IN_EXP2F || (FN) == BUILT_IN_EXP2L)
-
-#define BUILTIN_SQRT_P(FN) \
- ((FN) == BUILT_IN_SQRT || (FN) == BUILT_IN_SQRTF || (FN) == BUILT_IN_SQRTL)
-
-#define BUILTIN_CBRT_P(FN) \
- ((FN) == BUILT_IN_CBRT || (FN) == BUILT_IN_CBRTF || (FN) == BUILT_IN_CBRTL)
-
-#define BUILTIN_ROOT_P(FN) (BUILTIN_SQRT_P (FN) || BUILTIN_CBRT_P (FN))
 
 #define CASE_FLT_FN(FN) case FN: case FN##F: case FN##L
 #define CASE_FLT_FN_REENT(FN) case FN##_R: case FN##F_R: case FN##L_R
@@ -906,8 +941,29 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define IDENTIFIER_TRANSPARENT_ALIAS(NODE) \
   (IDENTIFIER_NODE_CHECK (NODE)->base.deprecated_flag)
 
-/* In fixed-point types, means a saturating type.  */
-#define TYPE_SATURATING(NODE) (TYPE_CHECK (NODE)->base.u.bits.saturating_flag)
+/* In an aggregate type, indicates that the scalar fields of the type are
+   stored in reverse order from the target order.  This effectively
+   toggles BYTES_BIG_ENDIAN and WORDS_BIG_ENDIAN within the type.  */
+#define TYPE_REVERSE_STORAGE_ORDER(NODE) \
+  (TREE_CHECK4 (NODE, RECORD_TYPE, UNION_TYPE, QUAL_UNION_TYPE, ARRAY_TYPE)->base.u.bits.saturating_flag)
+
+/* In a non-aggregate type, indicates a saturating type.  */
+#define TYPE_SATURATING(NODE) \
+  (TREE_NOT_CHECK4 (NODE, RECORD_TYPE, UNION_TYPE, QUAL_UNION_TYPE, ARRAY_TYPE)->base.u.bits.saturating_flag)
+
+/* In a BIT_FIELD_REF and MEM_REF, indicates that the reference is to a group
+   of bits stored in reverse order from the target order.  This effectively
+   toggles both BYTES_BIG_ENDIAN and WORDS_BIG_ENDIAN for the reference.
+
+   The overall strategy is to preserve the invariant that every scalar in
+   memory is associated with a single storage order, i.e. all accesses to
+   this scalar are done with the same storage order.  This invariant makes
+   it possible to factor out the storage order in most transformations, as
+   only the address and/or the value (in target order) matter for them.
+   But, of course, the storage order must be preserved when the accesses
+   themselves are rewritten or transformed.  */
+#define REF_REVERSE_STORAGE_ORDER(NODE) \
+  (TREE_CHECK2 (NODE, BIT_FIELD_REF, MEM_REF)->base.default_def_flag)
 
 /* These flags are available for each language front end to use internally.  */
 #define TREE_LANG_FLAG_0(NODE) \
@@ -1076,9 +1132,24 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define EXPR_FILENAME(NODE) LOCATION_FILE (EXPR_CHECK ((NODE))->exp.locus)
 #define EXPR_LINENO(NODE) LOCATION_LINE (EXPR_CHECK (NODE)->exp.locus)
 
+#define CAN_HAVE_RANGE_P(NODE) (CAN_HAVE_LOCATION_P (NODE))
+#define EXPR_LOCATION_RANGE(NODE) (get_expr_source_range (EXPR_CHECK ((NODE))))
+
+#define EXPR_HAS_RANGE(NODE) \
+    (CAN_HAVE_RANGE_P (NODE) \
+     ? EXPR_LOCATION_RANGE (NODE).m_start != UNKNOWN_LOCATION \
+     : false)
+
 /* True if a tree is an expression or statement that can have a
    location.  */
 #define CAN_HAVE_LOCATION_P(NODE) ((NODE) && EXPR_P (NODE))
+
+static inline source_range
+get_expr_source_range (tree expr)
+{
+  location_t loc = EXPR_LOCATION (expr);
+  return get_range_from_loc (line_table, loc);
+}
 
 extern void protected_set_expr_location (tree, location_t);
 
@@ -1218,16 +1289,6 @@ extern void protected_set_expr_location (tree, location_t);
 #define OMP_STANDALONE_CLAUSES(NODE) \
   TREE_OPERAND (TREE_RANGE_CHECK (NODE, OACC_CACHE, OMP_TARGET_EXIT_DATA), 0)
 
-#define OACC_PARALLEL_BODY(NODE) \
-  TREE_OPERAND (OACC_PARALLEL_CHECK (NODE), 0)
-#define OACC_PARALLEL_CLAUSES(NODE) \
-  TREE_OPERAND (OACC_PARALLEL_CHECK (NODE), 1)
-
-#define OACC_KERNELS_BODY(NODE) \
-  TREE_OPERAND (OACC_KERNELS_CHECK(NODE), 0)
-#define OACC_KERNELS_CLAUSES(NODE) \
-  TREE_OPERAND (OACC_KERNELS_CHECK(NODE), 1)
-
 #define OACC_DATA_BODY(NODE) \
   TREE_OPERAND (OACC_DATA_CHECK (NODE), 0)
 #define OACC_DATA_CLAUSES(NODE) \
@@ -1270,8 +1331,7 @@ extern void protected_set_expr_location (tree, location_t);
 #define OMP_FOR_COND(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 3)
 #define OMP_FOR_INCR(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 4)
 #define OMP_FOR_PRE_BODY(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 5)
-/* Note that this is only available for OMP_FOR, hence OMP_FOR_CHECK.  */
-#define OMP_FOR_ORIG_DECLS(NODE)   TREE_OPERAND (OMP_FOR_CHECK (NODE), 6)
+#define OMP_FOR_ORIG_DECLS(NODE)   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 6)
 
 #define OMP_SECTIONS_BODY(NODE)    TREE_OPERAND (OMP_SECTIONS_CHECK (NODE), 0)
 #define OMP_SECTIONS_CLAUSES(NODE) TREE_OPERAND (OMP_SECTIONS_CHECK (NODE), 1)
@@ -1331,15 +1391,6 @@ extern void protected_set_expr_location (tree, location_t);
    This status is meaningful in the implementation of lastprivate.  */
 #define OMP_SECTION_LAST(NODE) \
   (OMP_SECTION_CHECK (NODE)->base.private_flag)
-
-/* True on an OACC_KERNELS statement if is represents combined kernels loop
-   directive.  */
-#define OACC_KERNELS_COMBINED(NODE) \
-  (OACC_KERNELS_CHECK (NODE)->base.private_flag)
-
-/* Like OACC_KERNELS_COMBINED, but for parallel loop directive.  */
-#define OACC_PARALLEL_COMBINED(NODE) \
-  (OACC_PARALLEL_CHECK (NODE)->base.private_flag)
 
 /* True on an OMP_PARALLEL statement if it represents an explicit
    combined parallel work-sharing constructs.  */
@@ -1401,6 +1452,11 @@ extern void protected_set_expr_location (tree, location_t);
    with FIRSTPRIVATE/LASTPRIVATE on it originally.  */
 #define OMP_CLAUSE_SHARED_FIRSTPRIVATE(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_SHARED)->base.public_flag)
+
+/* True on a SHARED clause if a scalar is not modified in the body and
+   thus could be optimized as firstprivate.  */
+#define OMP_CLAUSE_SHARED_READONLY(NODE) \
+  TREE_PRIVATE (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_SHARED))
 
 #define OMP_CLAUSE_IF_MODIFIER(NODE)	\
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_IF)->omp_clause.subcode.if_modifier)
@@ -1472,10 +1528,6 @@ extern void protected_set_expr_location (tree, location_t);
    OMP_CLAUSE_MAP with GOMP_MAP_POINTER are marked with this flag.  */
 #define OMP_CLAUSE_MAP_ZERO_BIAS_ARRAY_SECTION(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_MAP)->base.public_flag)
-/* Nonzero if the same decl appears both in OMP_CLAUSE_MAP and either
-   OMP_CLAUSE_PRIVATE or OMP_CLAUSE_FIRSTPRIVATE.  */
-#define OMP_CLAUSE_MAP_PRIVATE(NODE) \
-  TREE_PRIVATE (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_MAP))
 /* Nonzero if this is a mapped array section, that might need special
    treatment if OMP_CLAUSE_SIZE is zero.  */
 #define OMP_CLAUSE_MAP_MAYBE_ZERO_LENGTH_ARRAY_SECTION(NODE) \
@@ -1580,6 +1632,17 @@ extern void protected_set_expr_location (tree, location_t);
 
 #define OMP_CLAUSE_DEFAULT_KIND(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_DEFAULT)->omp_clause.subcode.default_kind)
+
+#define OMP_CLAUSE_TILE_LIST(NODE) \
+  OMP_CLAUSE_OPERAND (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_TILE), 0)
+
+#define OMP_CLAUSE__GRIDDIM__DIMENSION(NODE) \
+  (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE__GRIDDIM_)\
+   ->omp_clause.subcode.dimension)
+#define OMP_CLAUSE__GRIDDIM__SIZE(NODE) \
+  OMP_CLAUSE_OPERAND (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE__GRIDDIM_), 0)
+#define OMP_CLAUSE__GRIDDIM__GROUP(NODE) \
+  OMP_CLAUSE_OPERAND (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE__GRIDDIM_), 1)
 
 /* SSA_NAME accessors.  */
 
@@ -1738,6 +1801,7 @@ extern void protected_set_expr_location (tree, location_t);
 #define TYPE_MAIN_VARIANT(NODE) (TYPE_CHECK (NODE)->type_common.main_variant)
 #define TYPE_CONTEXT(NODE) (TYPE_CHECK (NODE)->type_common.context)
 
+#define TYPE_MODE_RAW(NODE) (TYPE_CHECK (NODE)->type_common.mode)
 #define TYPE_MODE(NODE) \
   (VECTOR_TYPE_P (TYPE_CHECK (NODE)) \
    ? vector_type_mode (NODE) : (NODE)->type_common.mode)
@@ -2032,7 +2096,7 @@ extern machine_mode element_mode (const_tree t);
 #define BINFO_VIRTUAL_P(NODE) (TREE_BINFO_CHECK (NODE)->base.static_flag)
 
 /* Flags for language dependent use.  */
-#define BINFO_MARKED(NODE) TREE_LANG_FLAG_0 (TREE_BINFO_CHECK (NODE))
+#define BINFO_FLAG_0(NODE) TREE_LANG_FLAG_0 (TREE_BINFO_CHECK (NODE))
 #define BINFO_FLAG_1(NODE) TREE_LANG_FLAG_1 (TREE_BINFO_CHECK (NODE))
 #define BINFO_FLAG_2(NODE) TREE_LANG_FLAG_2 (TREE_BINFO_CHECK (NODE))
 #define BINFO_FLAG_3(NODE) TREE_LANG_FLAG_3 (TREE_BINFO_CHECK (NODE))
@@ -2172,6 +2236,9 @@ extern machine_mode element_mode (const_tree t);
    builtin-ness is indicated by source location.  */
 #define DECL_IS_BUILTIN(DECL) \
   (LOCATION_LOCUS (DECL_SOURCE_LOCATION (DECL)) <= BUILTINS_LOCATION)
+
+#define DECL_LOCATION_RANGE(NODE) \
+  (get_decl_source_range (DECL_MINIMAL_CHECK (NODE)))
 
 /*  For FIELD_DECLs, this is the RECORD_TYPE, UNION_TYPE, or
     QUAL_UNION_TYPE node that the field is a member of.  For VAR_DECL,
@@ -3710,6 +3777,10 @@ extern int allocate_decl_uid (void);
 extern tree make_node_stat (enum tree_code MEM_STAT_DECL);
 #define make_node(t) make_node_stat (t MEM_STAT_INFO)
 
+/* Free tree node.  */
+
+extern void free_node (tree);
+
 /* Make a copy of a node, with all the same contents.  */
 
 extern tree copy_node_stat (tree MEM_STAT_DECL);
@@ -3847,6 +3918,8 @@ extern tree build_vector_stat (tree, tree * MEM_STAT_DECL);
 #define build_vector(t,v) build_vector_stat (t, v MEM_STAT_INFO)
 extern tree build_vector_from_ctor (tree, vec<constructor_elt, va_gc> *);
 extern tree build_vector_from_val (tree, tree);
+extern void recompute_constructor_flags (tree);
+extern void verify_constructor_flags (tree);
 extern tree build_constructor (tree, vec<constructor_elt, va_gc> *);
 extern tree build_constructor_single (tree, tree, tree);
 extern tree build_constructor_from_list (tree, tree);
@@ -3888,6 +3961,10 @@ extern tree build_call_expr_loc (location_t, tree, int, ...);
 extern tree build_call_expr (tree, int, ...);
 extern tree build_call_expr_internal_loc (location_t, enum internal_fn,
 					  tree, int, ...);
+extern tree build_call_expr_internal_loc (location_t, enum internal_fn,
+					  tree, int, tree *);
+extern tree maybe_build_call_expr_loc (location_t, combined_fn, tree,
+				       int, ...);
 extern tree build_string_literal (int, const char *);
 
 /* Construct various nodes representing data types.  */
@@ -4254,6 +4331,10 @@ extern tree staticp (tree);
 
 extern tree save_expr (tree);
 
+/* Return true if T is function-invariant.  */
+
+extern bool tree_invariant_p (tree);
+
 /* Look inside EXPR into any simple arithmetic operations.  Return the
    outermost non-arithmetic or non-invariant node.  */
 
@@ -4372,6 +4453,65 @@ handled_component_p (const_tree t)
     }
 }
 
+/* Return true T is a component with reverse storage order.  */
+
+static inline bool
+reverse_storage_order_for_component_p (tree t)
+{
+  /* The storage order only applies to scalar components.  */
+  if (AGGREGATE_TYPE_P (TREE_TYPE (t)) || VECTOR_TYPE_P (TREE_TYPE (t)))
+    return false;
+
+  if (TREE_CODE (t) == REALPART_EXPR || TREE_CODE (t) == IMAGPART_EXPR)
+    t = TREE_OPERAND (t, 0);
+
+  switch (TREE_CODE (t))
+    {
+    case ARRAY_REF:
+    case COMPONENT_REF:
+      /* ??? Fortran can take COMPONENT_REF of a VOID_TYPE.  */
+      /* ??? UBSan can take COMPONENT_REF of a REFERENCE_TYPE.  */
+      return AGGREGATE_TYPE_P (TREE_TYPE (TREE_OPERAND (t, 0)))
+	     && TYPE_REVERSE_STORAGE_ORDER (TREE_TYPE (TREE_OPERAND (t, 0)));
+
+    case BIT_FIELD_REF:
+    case MEM_REF:
+      return REF_REVERSE_STORAGE_ORDER (t);
+
+    case ARRAY_RANGE_REF:
+    case VIEW_CONVERT_EXPR:
+    default:
+      return false;
+    }
+
+  gcc_unreachable ();
+}
+
+/* Return true if T is a storage order barrier, i.e. a VIEW_CONVERT_EXPR
+   that can modify the storage order of objects.  Note that, even if the
+   TYPE_REVERSE_STORAGE_ORDER flag is set on both the inner type and the
+   outer type, a VIEW_CONVERT_EXPR can modify the storage order because
+   it can change the partition of the aggregate object into scalars.  */
+
+static inline bool
+storage_order_barrier_p (const_tree t)
+{
+  if (TREE_CODE (t) != VIEW_CONVERT_EXPR)
+    return false;
+
+  if (AGGREGATE_TYPE_P (TREE_TYPE (t))
+      && TYPE_REVERSE_STORAGE_ORDER (TREE_TYPE (t)))
+    return true;
+
+  tree op = TREE_OPERAND (t, 0);
+
+  if (AGGREGATE_TYPE_P (TREE_TYPE (op))
+      && TYPE_REVERSE_STORAGE_ORDER (TREE_TYPE (op)))
+    return true;
+
+  return false;
+}
+
 /* Given a DECL or TYPE, return the scope in which it was declared, or
    NUL_TREE if there is no containing scope.  */
 
@@ -4453,6 +4593,7 @@ extern unsigned crc32_unsigned (unsigned, unsigned);
 extern void clean_symbol_name (char *);
 extern tree get_file_function_name (const char *);
 extern tree get_callee_fndecl (const_tree);
+extern combined_fn get_call_combined_fn (const_tree);
 extern int type_num_arguments (const_tree);
 extern bool associative_tree_code (enum tree_code);
 extern bool commutative_tree_code (enum tree_code);
@@ -4478,6 +4619,7 @@ extern tree lhd_gcc_personality (void);
 extern void assign_assembler_name_if_neeeded (tree);
 extern void warn_deprecated_use (tree, tree);
 extern void cache_integer_cst (tree);
+extern const char *combined_fn_name (combined_fn);
 
 /* Return the memory model from a host integer.  */
 static inline enum memmodel
@@ -4621,7 +4763,7 @@ extern tree reconstruct_complex_type (tree, tree);
 extern int real_onep (const_tree);
 extern int real_minus_onep (const_tree);
 extern void init_ttree (void);
-extern void build_common_tree_nodes (bool, bool);
+extern void build_common_tree_nodes (bool);
 extern void build_common_builtin_nodes (void);
 extern tree build_nonstandard_integer_type (unsigned HOST_WIDE_INT, int);
 extern tree build_nonstandard_boolean_type (unsigned HOST_WIDE_INT);
@@ -4689,7 +4831,9 @@ extern void DEBUG_FUNCTION verify_type (const_tree t);
 extern bool gimple_canonical_types_compatible_p (const_tree, const_tree,
 						 bool trust_type_canonical = true);
 extern bool type_with_interoperable_signedness (const_tree);
-/* Return simplified tree code of type that is used for canonical type merging.  */
+
+/* Return simplified tree code of type that is used for canonical type
+   merging.  */
 inline enum tree_code
 tree_code_for_canonical_type_merging (enum tree_code code)
 {
@@ -4709,6 +4853,23 @@ tree_code_for_canonical_type_merging (enum tree_code code)
   if (code == REFERENCE_TYPE)
     return POINTER_TYPE;
   return code;
+}
+
+/* Return ture if get_alias_set care about TYPE_CANONICAL of given type.
+   We don't define the types for pointers, arrays and vectors.  The reason is
+   that pointers are handled specially: ptr_type_node accesses conflict with
+   accesses to all other pointers.  This is done by alias.c.
+   Because alias sets of arrays and vectors are the same as types of their
+   elements, we can't compute canonical type either.  Otherwise we could go
+   form void *[10] to int *[10] (because they are equivalent for canonical type
+   machinery) and get wrong TBAA.  */
+
+inline bool
+canonical_type_used_p (const_tree t)
+{
+  return !(POINTER_TYPE_P (t)
+	   || TREE_CODE (t) == ARRAY_TYPE
+	   || TREE_CODE (t) == VECTOR_TYPE);
 }
 
 #define tree_map_eq tree_map_base_eq
@@ -5174,7 +5335,7 @@ extern bool complete_ctor_at_level_p (const_tree, HOST_WIDE_INT, const_tree);
    the access position and size.  */
 extern tree get_inner_reference (tree, HOST_WIDE_INT *, HOST_WIDE_INT *,
 				 tree *, machine_mode *, int *, int *,
-				 bool);
+				 int *, bool);
 
 extern tree build_personality_function (const char *);
 
@@ -5219,10 +5380,53 @@ type_with_alias_set_p (const_tree t)
   return false;
 }
 
+extern location_t get_pure_location (location_t loc);
+
+/* Get the endpoint of any range encoded within location LOC.  */
+
+static inline location_t
+get_finish (location_t loc)
+{
+  return get_range_from_loc (line_table, loc).m_finish;
+}
+
+extern location_t set_block (location_t loc, tree block);
+
 extern void gt_ggc_mx (tree &);
 extern void gt_pch_nx (tree &);
 extern void gt_pch_nx (tree &, gt_pointer_operator, void *);
 
 extern bool nonnull_arg_p (const_tree);
+extern bool is_redundant_typedef (const_tree);
+
+extern location_t
+set_source_range (tree expr, location_t start, location_t finish);
+
+extern location_t
+set_source_range (tree expr, source_range src_range);
+
+static inline source_range
+get_decl_source_range (tree decl)
+{
+  location_t loc = DECL_SOURCE_LOCATION (decl);
+  return get_range_from_loc (line_table, loc);
+}
+
+extern location_t
+make_location (location_t caret, location_t start, location_t finish);
+
+/* Return true if it makes sense to promote/demote from_type to to_type. */
+inline bool
+desired_pro_or_demotion_p (const_tree to_type, const_tree from_type)
+{
+  unsigned int to_type_precision = TYPE_PRECISION (to_type);
+
+  /* OK to promote if to_type is no bigger than word_mode. */
+  if (to_type_precision <= GET_MODE_PRECISION (word_mode))
+    return true;
+
+  /* Otherwise, allow only if narrowing or same precision conversions. */
+  return to_type_precision <= TYPE_PRECISION (from_type);
+}
 
 #endif  /* GCC_TREE_H  */

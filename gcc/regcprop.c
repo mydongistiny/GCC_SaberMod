@@ -1,5 +1,5 @@
 /* Copy propagation on hard registers for the GNU compiler.
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -26,14 +26,13 @@
 #include "tm_p.h"
 #include "insn-config.h"
 #include "regs.h"
-#include "addresses.h"
-#include "reload.h"
+#include "emit-rtl.h"
 #include "recog.h"
-#include "flags.h"
 #include "diagnostic-core.h"
+#include "addresses.h"
 #include "tree-pass.h"
 #include "rtl-iter.h"
-#include "emit-rtl.h"
+#include "cfgrtl.h"
 
 /* The following code does forward propagation of hard register copies.
    The object is to eliminate as many dependencies as possible, so that
@@ -100,9 +99,7 @@ static bool replace_oldest_value_addr (rtx *, enum reg_class,
 static bool replace_oldest_value_mem (rtx, rtx_insn *, struct value_data *);
 static bool copyprop_hardreg_forward_1 (basic_block, struct value_data *);
 extern void debug_value_data (struct value_data *);
-#ifdef ENABLE_CHECKING
 static void validate_value_data (struct value_data *);
-#endif
 
 /* Free all queued updates for DEBUG_INSNs that change some reg to
    register REGNO.  */
@@ -150,9 +147,8 @@ kill_value_one_regno (unsigned int regno, struct value_data *vd)
   if (vd->e[regno].debug_insn_changes)
     free_debug_insn_changes (vd, regno);
 
-#ifdef ENABLE_CHECKING
-  validate_value_data (vd);
-#endif
+  if (flag_checking)
+    validate_value_data (vd);
 }
 
 /* Kill the value in register REGNO for NREGS, and any other registers
@@ -365,9 +361,8 @@ copy_value (rtx dest, rtx src, struct value_data *vd)
     continue;
   vd->e[i].next_regno = dr;
 
-#ifdef ENABLE_CHECKING
-  validate_value_data (vd);
-#endif
+  if (flag_checking)
+    validate_value_data (vd);
 }
 
 /* Return true if a mode change from ORIG to NEW is allowed for REGNO.  */
@@ -745,9 +740,9 @@ static bool
 copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 {
   bool anything_changed = false;
-  rtx_insn *insn;
+  rtx_insn *insn, *next;
 
-  for (insn = BB_HEAD (bb); ; insn = NEXT_INSN (insn))
+  for (insn = BB_HEAD (bb); ; insn = next)
     {
       int n_ops, i, predicated;
       bool is_asm, any_replacements;
@@ -757,6 +752,7 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
       bool changed = false;
       struct kill_set_value_data ksvd;
 
+      next = NEXT_INSN (insn);
       if (!NONDEBUG_INSN_P (insn))
 	{
 	  if (DEBUG_INSN_P (insn))
@@ -1048,6 +1044,23 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
       bool noop_p = (copy_p
 		     && rtx_equal_p (SET_DEST (set), SET_SRC (set)));
 
+      /* If a noop move is using narrower mode than we have recorded,
+	 we need to either remove the noop move, or kill_set_value.  */
+      if (noop_p
+	  && (GET_MODE_BITSIZE (GET_MODE (SET_DEST (set)))
+	      < GET_MODE_BITSIZE (vd->e[REGNO (SET_DEST (set))].mode)))
+	{
+	  if (noop_move_p (insn))
+	    {
+	      bool last = insn == BB_END (bb);
+	      delete_insn (insn);
+	      if (last)
+		break;
+	    }
+	  else
+	    noop_p = false;
+	}
+
       if (!noop_p)
 	{
 	  /* Notice stores.  */
@@ -1141,7 +1154,6 @@ copyprop_hardreg_forward_bb_without_debug_insn (basic_block bb)
   skip_debug_insn_p = false;
 }
 
-#ifdef ENABLE_CHECKING
 static void
 validate_value_data (struct value_data *vd)
 {
@@ -1187,7 +1199,7 @@ validate_value_data (struct value_data *vd)
 		      i, GET_MODE_NAME (vd->e[i].mode), vd->e[i].oldest_regno,
 		      vd->e[i].next_regno);
 }
-#endif
+
 
 namespace {
 

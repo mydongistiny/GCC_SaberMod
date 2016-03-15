@@ -1,5 +1,5 @@
 /* IR-agnostic target query functions relating to optabs
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -34,6 +34,36 @@ struct target_optabs *this_fn_optabs = &default_target_optabs;
 #if SWITCHABLE_TARGET
 struct target_optabs *this_target_optabs = &default_target_optabs;
 #endif
+
+/* Return the insn used to perform conversion OP from mode FROM_MODE
+   to mode TO_MODE; return CODE_FOR_nothing if the target does not have
+   such an insn, or if it is unsuitable for optimization type OPT_TYPE.  */
+
+insn_code
+convert_optab_handler (convert_optab optab, machine_mode to_mode,
+		       machine_mode from_mode, optimization_type opt_type)
+{
+  insn_code icode = convert_optab_handler (optab, to_mode, from_mode);
+  if (icode == CODE_FOR_nothing
+      || !targetm.optab_supported_p (optab, to_mode, from_mode, opt_type))
+    return CODE_FOR_nothing;
+  return icode;
+}
+
+/* Return the insn used to implement mode MODE of OP; return
+   CODE_FOR_nothing if the target does not have such an insn,
+   or if it is unsuitable for optimization type OPT_TYPE.  */
+
+insn_code
+direct_optab_handler (convert_optab optab, machine_mode mode,
+		      optimization_type opt_type)
+{
+  insn_code icode = direct_optab_handler (optab, mode);
+  if (icode == CODE_FOR_nothing
+      || !targetm.optab_supported_p (optab, mode, mode, opt_type))
+    return CODE_FOR_nothing;
+  return icode;
+}
 
 /* Enumerates the possible types of structure operand to an
    extraction_insn.  */
@@ -466,7 +496,9 @@ can_mult_highpart_p (machine_mode mode, bool uns_p)
 /* Return true if target supports vector masked load/store for mode.  */
 
 bool
-can_vec_mask_load_store_p (machine_mode mode, bool is_load)
+can_vec_mask_load_store_p (machine_mode mode,
+			   machine_mode mask_mode,
+			   bool is_load)
 {
   optab op = is_load ? maskload_optab : maskstore_optab;
   machine_mode vmode;
@@ -474,7 +506,7 @@ can_vec_mask_load_store_p (machine_mode mode, bool is_load)
 
   /* If mode is vector mode, check it directly.  */
   if (VECTOR_MODE_P (mode))
-    return optab_handler (op, mode) != CODE_FOR_nothing;
+    return convert_optab_handler (op, mode, mask_mode) != CODE_FOR_nothing;
 
   /* Otherwise, return true if there is some vector mode with
      the mask load/store supported.  */
@@ -485,7 +517,12 @@ can_vec_mask_load_store_p (machine_mode mode, bool is_load)
   if (!VECTOR_MODE_P (vmode))
     return false;
 
-  if (optab_handler (op, vmode) != CODE_FOR_nothing)
+  mask_mode = targetm.vectorize.get_mask_mode (GET_MODE_NUNITS (vmode),
+					       GET_MODE_SIZE (vmode));
+  if (mask_mode == VOIDmode)
+    return false;
+
+  if (convert_optab_handler (op, vmode, mask_mode) != CODE_FOR_nothing)
     return true;
 
   vector_sizes = targetm.vectorize.autovectorize_vector_sizes ();
@@ -496,8 +533,10 @@ can_vec_mask_load_store_p (machine_mode mode, bool is_load)
       if (cur <= GET_MODE_SIZE (mode))
 	continue;
       vmode = mode_for_vector (mode, cur / GET_MODE_SIZE (mode));
+      mask_mode = targetm.vectorize.get_mask_mode (GET_MODE_NUNITS (vmode),
+						   cur);
       if (VECTOR_MODE_P (vmode)
-	  && optab_handler (op, vmode) != CODE_FOR_nothing)
+	  && convert_optab_handler (op, vmode, mask_mode) != CODE_FOR_nothing)
 	return true;
     }
   return false;

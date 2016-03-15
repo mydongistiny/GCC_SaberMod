@@ -1,6 +1,6 @@
 /* Routines to implement minimum-cost maximal flow algorithm used to smooth
    basic block and edge frequency counts.
-   Copyright (C) 2008-2015 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Contributed by Paul Yuan (yingbo.com@gmail.com) and
                   Vinodha Ramasamy (vinodha@google.com).
 
@@ -46,8 +46,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "hard-reg-set.h"
-#include "gcov-io.h"
 #include "profile.h"
 #include "dumpfile.h"
 

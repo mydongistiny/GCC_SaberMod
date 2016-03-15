@@ -1,5 +1,5 @@
 /* Functions to determine/estimate number of iterations of a loop.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,43 +21,27 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "gimple-pretty-print.h"
+#include "diagnostic-core.h"
 #include "stor-layout.h"
 #include "fold-const.h"
 #include "calls.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "tm_p.h"
-#include "gimple-pretty-print.h"
 #include "intl.h"
-#include "internal-fn.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-ssa-loop-ivopts.h"
 #include "tree-ssa-loop-niter.h"
 #include "tree-ssa-loop.h"
-#include "dumpfile.h"
 #include "cfgloop.h"
 #include "tree-chrec.h"
 #include "tree-scalar-evolution.h"
-#include "tree-data-ref.h"
 #include "params.h"
-#include "diagnostic-core.h"
-#include "tree-inline.h"
-#include "tree-pass.h"
-#include "wide-int-print.h"
 
 
 /* The maximum number of dominator BBs we search for conditions
@@ -973,13 +957,14 @@ number_of_iterations_ne_max (mpz_t bnd, bool no_overflow, tree c, tree s,
    bounds on the difference FINAL - IV->base.  */
 
 static bool
-number_of_iterations_ne (tree type, affine_iv *iv, tree final,
-			 struct tree_niter_desc *niter, bool exit_must_be_taken,
-			 bounds *bnds)
+number_of_iterations_ne (struct loop *loop, tree type, affine_iv *iv,
+			 tree final, struct tree_niter_desc *niter,
+			 bool exit_must_be_taken, bounds *bnds)
 {
   tree niter_type = unsigned_type_for (type);
   tree s, c, d, bits, assumption, tmp, bound;
   mpz_t max;
+  tree e;
 
   niter->control = *iv;
   niter->bound = final;
@@ -1013,6 +998,23 @@ number_of_iterations_ne (tree type, affine_iv *iv, tree final,
   niter->max = widest_int::from (wi::from_mpz (niter_type, max, false),
 				 TYPE_SIGN (niter_type));
   mpz_clear (max);
+
+  /* Compute no-overflow information for the control iv.  Note we are
+     handling NE_EXPR, if iv base equals to final value, the loop exits
+     immediately, and the iv does not overflow.  */
+  if (tree_int_cst_sign_bit (iv->step))
+    e = fold_build2 (GE_EXPR, boolean_type_node, iv->base, final);
+  else
+    e = fold_build2 (LE_EXPR, boolean_type_node, iv->base, final);
+  e = simplify_using_initial_conditions (loop, e);
+  if (integer_onep (e)
+      && (integer_onep (s)
+	  || (TREE_CODE (c) == INTEGER_CST
+	      && TREE_CODE (s) == INTEGER_CST
+	      && wi::mod_trunc (c, s, TYPE_SIGN (type)) == 0)))
+    {
+      niter->control.no_overflow = true;
+    }
 
   /* First the trivial cases -- when the step is 1.  */
   if (integer_onep (s))
@@ -1377,8 +1379,8 @@ assert_loop_rolls_lt (tree type, affine_iv *iv0, affine_iv *iv1,
    that the exit must be taken eventually.  */
 
 static bool
-number_of_iterations_lt (tree type, affine_iv *iv0, affine_iv *iv1,
-			 struct tree_niter_desc *niter,
+number_of_iterations_lt (struct loop *loop, tree type, affine_iv *iv0,
+			 affine_iv *iv1, struct tree_niter_desc *niter,
 			 bool exit_must_be_taken, bounds *bnds)
 {
   tree niter_type = unsigned_type_for (type);
@@ -1450,7 +1452,8 @@ number_of_iterations_lt (tree type, affine_iv *iv0, affine_iv *iv1,
 	 zps does not overflow.  */
       zps.no_overflow = true;
 
-      return number_of_iterations_ne (type, &zps, delta, niter, true, bnds);
+      return number_of_iterations_ne (loop, type, &zps,
+				      delta, niter, true, bnds);
     }
 
   /* Make sure that the control iv does not overflow.  */
@@ -1489,9 +1492,9 @@ number_of_iterations_lt (tree type, affine_iv *iv0, affine_iv *iv1,
    is the case).  BNDS bounds the difference IV1->base - IV0->base.  */
 
 static bool
-number_of_iterations_le (tree type, affine_iv *iv0, affine_iv *iv1,
-			 struct tree_niter_desc *niter, bool exit_must_be_taken,
-			 bounds *bnds)
+number_of_iterations_le (struct loop *loop, tree type, affine_iv *iv0,
+			 affine_iv *iv1, struct tree_niter_desc *niter,
+			 bool exit_must_be_taken, bounds *bnds)
 {
   tree assumption;
   tree type1 = type;
@@ -1539,7 +1542,7 @@ number_of_iterations_le (tree type, affine_iv *iv0, affine_iv *iv1,
 
   bounds_add (bnds, 1, type1);
 
-  return number_of_iterations_lt (type, iv0, iv1, niter, exit_must_be_taken,
+  return number_of_iterations_lt (loop, type, iv0, iv1, niter, exit_must_be_taken,
 				  bnds);
 }
 
@@ -1714,18 +1717,18 @@ number_of_iterations_cond (struct loop *loop,
     {
     case NE_EXPR:
       gcc_assert (integer_zerop (iv1->step));
-      ret = number_of_iterations_ne (type, iv0, iv1->base, niter,
+      ret = number_of_iterations_ne (loop, type, iv0, iv1->base, niter,
 				     exit_must_be_taken, &bnds);
       break;
 
     case LT_EXPR:
-      ret = number_of_iterations_lt (type, iv0, iv1, niter, exit_must_be_taken,
-				     &bnds);
+      ret = number_of_iterations_lt (loop, type, iv0, iv1, niter,
+				     exit_must_be_taken, &bnds);
       break;
 
     case LE_EXPR:
-      ret = number_of_iterations_le (type, iv0, iv1, niter, exit_must_be_taken,
-				     &bnds);
+      ret = number_of_iterations_le (loop, type, iv0, iv1, niter,
+				     exit_must_be_taken, &bnds);
       break;
 
     default:
@@ -2739,9 +2742,9 @@ static widest_int
 derive_constant_upper_bound (tree val)
 {
   enum tree_code code;
-  tree op0, op1;
+  tree op0, op1, op2;
 
-  extract_ops_from_tree (val, &code, &op0, &op1);
+  extract_ops_from_tree (val, &code, &op0, &op1, &op2);
   return derive_constant_upper_bound_ops (TREE_TYPE (val), op0, code, op1);
 }
 
@@ -2754,7 +2757,7 @@ derive_constant_upper_bound_ops (tree type, tree op0,
 				 enum tree_code code, tree op1)
 {
   tree subtype, maxt;
-  widest_int bnd, max, mmax, cst;
+  widest_int bnd, max, cst;
   gimple *stmt;
 
   if (INTEGRAL_TYPE_P (type))
@@ -2820,8 +2823,8 @@ derive_constant_upper_bound_ops (tree type, tree op0,
 	  /* OP0 + CST.  We need to check that
 	     BND <= MAX (type) - CST.  */
 
-	  mmax -= cst;
-	  if (wi::ltu_p (bnd, max))
+	  widest_int mmax = max - cst;
+	  if (wi::leu_p (bnd, mmax))
 	    return max;
 
 	  return bnd + cst;
@@ -3062,7 +3065,9 @@ record_nonwrapping_iv (struct loop *loop, tree base, tree step, gimple *stmt,
 	  && get_range_info (orig_base, &min, &max) == VR_RANGE
 	  && wi::gts_p (high, max))
 	base = wide_int_to_tree (unsigned_type, max);
-      else if (TREE_CODE (base) != INTEGER_CST)
+      else if (TREE_CODE (base) != INTEGER_CST
+	       && dominated_by_p (CDI_DOMINATORS,
+				  loop->latch, gimple_bb (stmt)))
 	base = fold_convert (unsigned_type, high);
       delta = fold_build2 (MINUS_EXPR, unsigned_type, base, extreme);
       step = fold_build1 (NEGATE_EXPR, unsigned_type, step);
@@ -3077,7 +3082,9 @@ record_nonwrapping_iv (struct loop *loop, tree base, tree step, gimple *stmt,
 	  && get_range_info (orig_base, &min, &max) == VR_RANGE
 	  && wi::gts_p (min, low))
 	base = wide_int_to_tree (unsigned_type, min);
-      else if (TREE_CODE (base) != INTEGER_CST)
+      else if (TREE_CODE (base) != INTEGER_CST
+	       && dominated_by_p (CDI_DOMINATORS,
+				  loop->latch, gimple_bb (stmt)))
 	base = fold_convert (unsigned_type, low);
       delta = fold_build2 (MINUS_EXPR, unsigned_type, extreme, base);
     }
@@ -4267,11 +4274,11 @@ free_numbers_of_iterations_estimates_loop (struct loop *loop)
 /* Frees the information on upper bounds on numbers of iterations of loops.  */
 
 void
-free_numbers_of_iterations_estimates (void)
+free_numbers_of_iterations_estimates (function *fn)
 {
   struct loop *loop;
 
-  FOR_EACH_LOOP (loop, 0)
+  FOR_EACH_LOOP_FN (fn, loop, 0)
     {
       free_numbers_of_iterations_estimates_loop (loop);
     }

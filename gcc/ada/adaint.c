@@ -168,10 +168,12 @@ UINT CurrentCCSEncoding;
 #if defined (_WIN32)
 
 #include <process.h>
+#include <signal.h>
 #include <dir.h>
 #include <windows.h>
 #include <accctrl.h>
 #include <aclapi.h>
+#include <tlhelp32.h>
 #undef DIR_SEPARATOR
 #define DIR_SEPARATOR '\\'
 
@@ -983,8 +985,8 @@ __gnat_open_new_temp (char *path, int fmode)
   strcpy (path, "GNAT-XXXXXX");
 
 #if (defined (__FreeBSD__) || defined (__NetBSD__) || defined (__OpenBSD__) \
-  || defined (__linux__) || defined (__GLIBC__)) && !defined (__vxworks) \
-  || defined (__DragonFly__)
+  || defined (__linux__) || defined (__GLIBC__) || defined (__ANDROID__) \
+  || defined (__DragonFly__)) && !defined (__vxworks)
   return mkstemp (path);
 #elif defined (__Lynx__)
   mktemp (path);
@@ -2787,16 +2789,19 @@ __gnat_locate_exec_on_path (char *exec_name)
   apath_val = (char *) alloca (EXPAND_BUFFER_SIZE);
 
   WS2SC (apath_val, wapath_val, EXPAND_BUFFER_SIZE);
-  return __gnat_locate_exec (exec_name, apath_val);
 
 #else
-  char *path_val = getenv ("PATH");
+  const char *path_val = getenv ("PATH");
 
-  if (path_val == NULL) return NULL;
+  /* If PATH is not defined, proceed with __gnat_locate_exec anyway, so we can
+     find files that contain directory names.  */
+
+  if (path_val == NULL) path_val = "";
   apath_val = (char *) alloca (strlen (path_val) + 1);
   strcpy (apath_val, path_val);
-  return __gnat_locate_exec (exec_name, apath_val);
 #endif
+
+  return __gnat_locate_exec (exec_name, apath_val);
 }
 
 /* Dummy functions for Osint import for non-VMS systems.
@@ -2898,6 +2903,8 @@ char __gnat_environment_char = '$';
    mode = 1  : In this mode, time stamps and read/write/execute attributes are
                copied.
 
+   mode = 2  : In this mode, only read/write/execute attributes are copied
+
    Returns 0 if operation was successful and -1 in case of error. */
 
 int
@@ -2917,39 +2924,46 @@ __gnat_copy_attribs (char *from ATTRIBUTE_UNUSED, char *to ATTRIBUTE_UNUSED,
   S2WSC (wfrom, from, GNAT_MAX_PATH_LEN + 2);
   S2WSC (wto, to, GNAT_MAX_PATH_LEN + 2);
 
-  /* retrieve from times */
+  /*  Do we need to copy the timestamp ? */
 
-  hfrom = CreateFile
-    (wfrom, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (mode != 2) {
+     /* retrieve from times */
 
-  if (hfrom == INVALID_HANDLE_VALUE)
-    return -1;
+     hfrom = CreateFile
+       (wfrom, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, NULL);
 
-  res = GetFileTime (hfrom, &fct, &flat, &flwt);
+     if (hfrom == INVALID_HANDLE_VALUE)
+       return -1;
 
-  CloseHandle (hfrom);
+     res = GetFileTime (hfrom, &fct, &flat, &flwt);
 
-  if (res == 0)
-    return -1;
+     CloseHandle (hfrom);
 
-  /* retrieve from times */
+     if (res == 0)
+       return -1;
 
-  hto = CreateFile
-    (wto, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+     /* retrieve from times */
 
-  if (hto == INVALID_HANDLE_VALUE)
-    return -1;
+     hto = CreateFile
+       (wto, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, NULL);
 
-  res = SetFileTime (hto, NULL, &flat, &flwt);
+     if (hto == INVALID_HANDLE_VALUE)
+       return -1;
 
-  CloseHandle (hto);
+     res = SetFileTime (hto, NULL, &flat, &flwt);
 
-  if (res == 0)
-    return -1;
+     CloseHandle (hto);
 
+     if (res == 0)
+       return -1;
+  }
+
+  /* Do we need to copy the permissions ? */
   /* Set file attributes in full mode. */
 
-  if (mode == 1)
+  if (mode != 0)
     {
       DWORD attribs = GetFileAttributes (wfrom);
 
@@ -2967,26 +2981,24 @@ __gnat_copy_attribs (char *from ATTRIBUTE_UNUSED, char *to ATTRIBUTE_UNUSED,
   GNAT_STRUCT_STAT fbuf;
   struct utimbuf tbuf;
 
-  if (GNAT_STAT (from, &fbuf) == -1)
-    {
-      return -1;
-    }
+  if (GNAT_STAT (from, &fbuf) == -1) {
+     return -1;
+  }
 
-  tbuf.actime = fbuf.st_atime;
-  tbuf.modtime = fbuf.st_mtime;
+  /* Do we need to copy timestamp ? */
+  if (mode != 2) {
+     tbuf.actime = fbuf.st_atime;
+     tbuf.modtime = fbuf.st_mtime;
 
-  if (utime (to, &tbuf) == -1)
-    {
-      return -1;
-    }
+     if (utime (to, &tbuf) == -1) {
+        return -1;
+     }
+  }
 
-  if (mode == 1)
-    {
-      if (chmod (to, fbuf.st_mode) == -1)
-	{
+  /* Do we need to copy file permissions ? */
+  if (mode != 0 && (chmod (to, fbuf.st_mode) == -1)) {
 	  return -1;
-	}
-    }
+  }
 
   return 0;
 #endif
@@ -3061,17 +3073,7 @@ __gnat_sals_init_using_constructors (void)
 #endif
 }
 
-#if defined (__ANDROID__)
-
-#include <pthread.h>
-
-void *
-__gnat_lwp_self (void)
-{
-   return (void *) pthread_self ();
-}
-
-#elif defined (__linux__)
+#if defined (__linux__) || defined (__ANDROID__)
 /* There is no function in the glibc to retrieve the LWP of the current
    thread. We need to do a system call in order to retrieve this
    information. */
@@ -3081,7 +3083,9 @@ __gnat_lwp_self (void)
 {
    return (void *) syscall (__NR_gettid);
 }
+#endif
 
+#if defined (__linux__)
 #include <sched.h>
 
 /* glibc versions earlier than 2.7 do not define the routines to handle
@@ -3186,6 +3190,135 @@ __gnat_get_executable_load_address (void)
 #else
   return NULL;
 #endif
+}
+
+void
+__gnat_kill (int pid, int sig, int close ATTRIBUTE_UNUSED)
+{
+#if defined(_WIN32)
+  HANDLE h = OpenProcess (PROCESS_ALL_ACCESS, FALSE, pid);
+  if (h == NULL)
+    return;
+  if (sig == 9)
+    {
+      TerminateProcess (h, 1);
+    }
+  else if (sig == SIGINT)
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, pid);
+  else if (sig == SIGBREAK)
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, pid);
+  /* ??? The last two alternatives don't really work. SIGBREAK requires setting
+     up process groups at start time which we don't do; treating SIGINT is just
+     not possible apparently. So we really only support signal 9. Fortunately
+     that's all we use in GNAT.Expect */
+
+  CloseHandle (h);
+#elif defined (__vxworks)
+  /* Not implemented */
+#else
+  kill (pid, sig);
+#endif
+}
+
+void __gnat_killprocesstree (int pid, int sig_num)
+{
+#if defined(_WIN32)
+  HANDLE hWnd;
+  PROCESSENTRY32 pe;
+
+  memset(&pe, 0, sizeof(PROCESSENTRY32));
+  pe.dwSize = sizeof(PROCESSENTRY32);
+
+  HANDLE hSnap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+
+  /*  cannot take snapshot, just kill the parent process */
+
+  if (hSnap == INVALID_HANDLE_VALUE)
+    {
+      __gnat_kill (pid, sig_num, 1);
+      return;
+    }
+
+  if (Process32First(hSnap, &pe))
+    {
+      BOOL bContinue = TRUE;
+
+      /* kill child processes first */
+
+      while (bContinue)
+        {
+          if (pe.th32ParentProcessID == (int)pid)
+            __gnat_killprocesstree (pe.th32ProcessID, sig_num);
+
+          bContinue = Process32Next (hSnap, &pe);
+        }
+    }
+
+  CloseHandle (hSnap);
+
+  /* kill process */
+
+  __gnat_kill (pid, sig_num, 1);
+
+#elif defined (__vxworks)
+  /* not implemented */
+
+#elif defined (__linux__)
+  DIR *dir;
+  struct dirent *d;
+
+  /*  read all processes' pid and ppid */
+
+  dir = opendir ("/proc");
+
+  /*  cannot open proc, just kill the parent process */
+
+  if (!dir)
+    {
+      __gnat_kill (pid, sig_num, 1);
+      return;
+    }
+
+  /* kill child processes first */
+
+  while ((d = readdir (dir)) != NULL)
+    {
+      if ((d->d_type & DT_DIR) == DT_DIR)
+        {
+          char statfile[64] = { 0 };
+          int _pid, _ppid;
+
+          /* read /proc/<PID>/stat */
+
+          strncpy (statfile, "/proc/", sizeof(statfile));
+          strncat (statfile, d->d_name, sizeof(statfile));
+          strncat (statfile, "/stat", sizeof(statfile));
+
+          FILE *fd = fopen (statfile, "r");
+
+          if (fd)
+            {
+              const int match = fscanf (fd, "%d %*s %*s %d", &_pid, &_ppid);
+              fclose (fd);
+
+              if (match == 2 && _ppid == pid)
+                __gnat_killprocesstree (_pid, sig_num);
+            }
+        }
+    }
+
+  closedir (dir);
+
+  /* kill process */
+
+  __gnat_kill (pid, sig_num, 1);
+#else
+  __gnat_kill (pid, sig_num, 1);
+#endif
+  /* Note on Solaris it is possible to read /proc/<PID>/status.
+     The 5th and 6th words are the pid and the 7th and 8th the ppid.
+     See: /usr/include/sys/procfs.h (struct pstatus).
+  */
 }
 
 #ifdef __cplusplus

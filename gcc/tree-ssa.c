@@ -1,5 +1,5 @@
 /* Miscellaneous SSA utility functions.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,20 +21,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "gimple-pretty-print.h"
+#include "diagnostic-core.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "flags.h"
-#include "tm_p.h"
-#include "target.h"
-#include "langhooks.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-fold.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
@@ -42,9 +37,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-loop-manip.h"
 #include "tree-into-ssa.h"
 #include "tree-ssa.h"
-#include "tree-inline.h"
-#include "tree-pass.h"
-#include "diagnostic-core.h"
 #include "cfgloop.h"
 #include "cfgexpand.h"
 
@@ -127,10 +119,10 @@ redirect_edge_var_map_vector (edge e)
 /* Clear the edge variable mappings.  */
 
 void
-redirect_edge_var_map_destroy (void)
+redirect_edge_var_map_empty (void)
 {
-  delete edge_var_maps;
-  edge_var_maps = NULL;
+  if (edge_var_maps)
+    edge_var_maps->empty ();
 }
 
 
@@ -1118,25 +1110,24 @@ make_pass_init_datastructures (gcc::context *ctxt)
 /* Deallocate memory associated with SSA data structures for FNDECL.  */
 
 void
-delete_tree_ssa (void)
+delete_tree_ssa (struct function *fn)
 {
-  fini_ssanames ();
+  fini_ssanames (fn);
 
   /* We no longer maintain the SSA operand cache at this point.  */
-  if (ssa_operands_active (cfun))
-    fini_ssa_operands (cfun);
+  if (ssa_operands_active (fn))
+    fini_ssa_operands (fn);
 
-  cfun->gimple_df->default_defs->empty ();
-  cfun->gimple_df->default_defs = NULL;
-  pt_solution_reset (&cfun->gimple_df->escaped);
-  if (cfun->gimple_df->decls_to_pointers != NULL)
-    delete cfun->gimple_df->decls_to_pointers;
-  cfun->gimple_df->decls_to_pointers = NULL;
-  cfun->gimple_df->modified_noreturn_calls = NULL;
-  cfun->gimple_df = NULL;
+  fn->gimple_df->default_defs->empty ();
+  fn->gimple_df->default_defs = NULL;
+  pt_solution_reset (&fn->gimple_df->escaped);
+  if (fn->gimple_df->decls_to_pointers != NULL)
+    delete fn->gimple_df->decls_to_pointers;
+  fn->gimple_df->decls_to_pointers = NULL;
+  fn->gimple_df = NULL;
 
   /* We no longer need the edge variable maps.  */
-  redirect_edge_var_map_destroy ();
+  redirect_edge_var_map_empty ();
 }
 
 /* Return true if EXPR is a useless type conversion, otherwise return
@@ -1212,6 +1203,24 @@ ssa_undefined_value_p (tree t, bool partial)
     }
   return false;
 }
+
+
+/* Return TRUE iff STMT, a gimple statement, references an undefined
+   SSA name.  */
+
+bool
+gimple_uses_undefined_value_p (gimple *stmt)
+{
+  ssa_op_iter iter;
+  tree op;
+
+  FOR_EACH_SSA_TREE_OPERAND (op, stmt, iter, SSA_OP_USE)
+    if (ssa_undefined_value_p (op))
+      return true;
+
+  return false;
+}
+
 
 
 /* If necessary, rewrite the base of the reference tree *TP from
@@ -1427,7 +1436,8 @@ execute_update_addresses_taken (void)
               tree lhs = gimple_get_lhs (stmt);
               if (lhs
 		  && TREE_CODE (lhs) != SSA_NAME
-		  && non_rewritable_lvalue_p (lhs))
+		  && ((code == GIMPLE_CALL && ! DECL_P (lhs))
+		      || non_rewritable_lvalue_p (lhs)))
 		{
 		  decl = get_base_address (lhs);
 		  if (DECL_P (decl))

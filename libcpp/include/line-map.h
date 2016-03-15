@@ -1,5 +1,5 @@
 /* Map (unsigned int) keys to (source file, line, column) triples.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -47,7 +47,8 @@ enum lc_reason
 typedef unsigned int linenum_type;
 
 /* The typedef "source_location" is a key within the location database,
-   identifying a source location or macro expansion.
+   identifying a source location or macro expansion, along with range
+   information, and (optionally) a pointer for use by gcc.
 
    This key only has meaning in relation to a line_maps instance.  Within
    gcc there is a single line_maps instance: "line_table", declared in
@@ -59,21 +60,58 @@ typedef unsigned int linenum_type;
 
   Actual     | Value                         | Meaning
   -----------+-------------------------------+-------------------------------
-  0x00000000 |                               | Reserved for use by libcpp
-  0x00000001 | RESERVED_LOCATION_COUNT - 1   | Reserved for use by libcpp
+  0x00000000 | UNKNOWN_LOCATION (gcc/input.h)| Unknown/invalid location.
+  -----------+-------------------------------+-------------------------------
+  0x00000001 | BUILTINS_LOCATION             | The location for declarations
+             |   (gcc/input.h)               | in "<built-in>"
   -----------+-------------------------------+-------------------------------
   0x00000002 | RESERVED_LOCATION_COUNT       | The first location to be
              | (also                         | handed out, and the
              |  ordmap[0]->start_location)   | first line in ordmap 0
   -----------+-------------------------------+-------------------------------
              | ordmap[1]->start_location     | First line in ordmap 1
-             | ordmap[1]->start_location+1   | First column in that line
-             | ordmap[1]->start_location+2   | 2nd column in that line
-             |                               | Subsequent lines are offset by
-             |                               | (1 << column_bits),
-             |                               | e.g. 128 for 7 bits, with a
-             |                               | column value of 0 representing
-             |                               | "the whole line".
+             | ordmap[1]->start_location+32  | First column in that line
+             |   (assuming range_bits == 5)  |
+             | ordmap[1]->start_location+64  | 2nd column in that line
+             | ordmap[1]->start_location+4096| Second line in ordmap 1
+             |   (assuming column_bits == 12)
+             |
+             |   Subsequent lines are offset by (1 << column_bits),
+             |   e.g. 4096 for 12 bits, with a column value of 0 representing
+             |   "the whole line".
+             |
+             |   Within a line, the low "range_bits" (typically 5) are used for
+             |   storing short ranges, so that there's an offset of
+             |     (1 << range_bits) between individual columns within a line,
+             |   typically 32.
+             |   The low range_bits store the offset of the end point from the
+             |   start point, and the start point is found by masking away
+             |   the range bits.
+             |
+             |   For example:
+             |      ordmap[1]->start_location+64    "2nd column in that line"
+             |   above means a caret at that location, with a range
+             |   starting and finishing at the same place (the range bits
+             |   are 0), a range of length 1.
+             |
+             |   By contrast:
+             |      ordmap[1]->start_location+68
+             |   has range bits 0x4, meaning a caret with a range starting at
+             |   that location, but with endpoint 4 columns further on: a range
+             |   of length 5.
+             |
+             |   Ranges that have caret != start, or have an endpoint too
+             |   far away to fit in range_bits are instead stored as ad-hoc
+             |   locations.  Hence for range_bits == 5 we can compactly store
+             |   tokens of length <= 32 without needing to use the ad-hoc
+             |   table.
+             |
+             |   This packing scheme means we effectively have
+             |     (column_bits - range_bits)
+             |   of bits for the columns, typically (12 - 5) = 7, for 128
+             |   columns; longer line widths are accomodated by starting a
+             |   new ordmap with a higher column_bits.
+             |
              | ordmap[2]->start_location-1   | Final location in ordmap 1
   -----------+-------------------------------+-------------------------------
              | ordmap[2]->start_location     | First line in ordmap 2
@@ -94,6 +132,16 @@ typedef unsigned int linenum_type;
              |
              |                    (unallocated integers)
              |
+  0x60000000 | LINE_MAP_MAX_LOCATION_WITH_COLS
+             |   Beyond this point, ordinary linemaps have 0 bits per column:
+             |   each increment of the value corresponds to a new source line.
+             |
+  0x70000000 | LINE_MAP_MAX_SOURCE_LOCATION
+             |   Beyond the point, we give up on ordinary maps; attempts to
+             |   create locations in them lead to UNKNOWN_LOCATION (0).
+             |
+             |                    (unallocated integers)
+             |
              |                   Macro maps grow this way
              |                   ^^^^^^^^^^^^^^^^^^^^^^^^
              |                               |
@@ -107,16 +155,140 @@ typedef unsigned int linenum_type;
              | macromap[1]->start_location   | Start of macro map 1
   -----------+-------------------------------+-------------------------------
              | macromap[0]->start_location   | Start of macro map 0
-  0x7fffffff | MAX_SOURCE_LOCATION           |
+  0x7fffffff | MAX_SOURCE_LOCATION           | Also used as a mask for
+             |                               | accessing the ad-hoc data table
   -----------+-------------------------------+-------------------------------
-  0x80000000 | Start of ad-hoc values        |
-  ...        |                               |
+  0x80000000 | Start of ad-hoc values; the lower 31 bits are used as an index
+  ...        | into the line_table->location_adhoc_data_map.data array.
   0xffffffff | UINT_MAX                      |
   -----------+-------------------------------+-------------------------------
 
-  To see how this works in practice, see the worked example in
-  libcpp/location-example.txt.  */
+   Examples of location encoding.
+
+   Packed ranges
+   =============
+
+   Consider encoding the location of a token "foo", seen underlined here
+   on line 523, within an ordinary line_map that starts at line 500:
+
+                 11111111112
+        12345678901234567890
+     522
+     523   return foo + bar;
+                  ^~~
+     524
+
+   The location's caret and start are both at line 523, column 11; the
+   location's finish is on the same line, at column 13 (an offset of 2
+   columns, for length 3).
+
+   Line 523 is offset 23 from the starting line of the ordinary line_map.
+
+   caret == start, and the offset of the finish fits within 5 bits, so
+   this can be stored as a packed range.
+
+   This is encoded as:
+      ordmap->start
+         + (line_offset << ordmap->m_column_and_range_bits)
+         + (column << ordmap->m_range_bits)
+         + (range_offset);
+   i.e. (for line offset 23, column 11, range offset 2):
+      ordmap->start
+         + (23 << 12)
+         + (11 << 5)
+         + 2;
+   i.e.:
+      ordmap->start + 0x17162
+   assuming that the line_map uses the default of 7 bits for columns and
+   5 bits for packed range (giving 12 bits for m_column_and_range_bits).
+
+
+   "Pure" locations
+   ================
+
+   These are a special case of the above, where
+      caret == start == finish
+   They are stored as packed ranges with offset == 0.
+   For example, the location of the "f" of "foo" could be stored
+   as above, but with range offset 0, giving:
+      ordmap->start
+         + (23 << 12)
+         + (11 << 5)
+         + 0;
+   i.e.:
+      ordmap->start + 0x17160
+
+
+   Unoptimized ranges
+   ==================
+
+   Consider encoding the location of the binary expression
+   below:
+
+                 11111111112
+        12345678901234567890
+     521
+     523   return foo + bar;
+                  ~~~~^~~~~
+     523
+
+   The location's caret is at the "+", line 523 column 15, but starts
+   earlier, at the "f" of "foo" at column 11.  The finish is at the "r"
+   of "bar" at column 19.
+
+   This can't be stored as a packed range since start != caret.
+   Hence it is stored as an ad-hoc location e.g. 0x80000003.
+
+   Stripping off the top bit gives us an index into the ad-hoc
+   lookaside table:
+
+     line_table->location_adhoc_data_map.data[0x3]
+
+   from which the caret, start and finish can be looked up,
+   encoded as "pure" locations:
+
+     start  == ordmap->start + (23 << 12) + (11 << 5)
+            == ordmap->start + 0x17160  (as above; the "f" of "foo")
+
+     caret  == ordmap->start + (23 << 12) + (15 << 5)
+            == ordmap->start + 0x171e0
+
+     finish == ordmap->start + (23 << 12) + (19 << 5)
+            == ordmap->start + 0x17260
+
+   To further see how source_location works in practice, see the
+   worked example in libcpp/location-example.txt.  */
 typedef unsigned int source_location;
+
+/* A range of source locations.
+
+   Ranges are closed:
+   m_start is the first location within the range,
+   m_finish is the last location within the range.
+
+   We may need a more compact way to store these, but for now,
+   let's do it the simple way, as a pair.  */
+struct GTY(()) source_range
+{
+  source_location m_start;
+  source_location m_finish;
+
+  /* We avoid using constructors, since various structs that
+     don't yet have constructors will embed instances of
+     source_range.  */
+
+  /* Make a source_range from a source_location.  */
+  static source_range from_location (source_location loc)
+  {
+    source_range result;
+    result.m_start = loc;
+    result.m_finish = loc;
+    return result;
+  }
+
+  /* Is there any part of this range on the given line?  */
+  bool intersects_line_p (const char *file, int line) const;
+};
 
 /* Memory allocation function typedef.  Works like xrealloc.  */
 typedef void *(*line_map_realloc) (void *, size_t);
@@ -163,8 +335,9 @@ struct GTY((tag ("0"), desc ("%h.reason == LC_ENTER_MACRO ? 2 : 1"))) line_map {
    
    Physical source file TO_FILE at line TO_LINE at column 0 is represented
    by the logical START_LOCATION.  TO_LINE+L at column C is represented by
-   START_LOCATION+(L*(1<<column_bits))+C, as long as C<(1<<column_bits),
-   and the result_location is less than the next line_map's start_location.
+   START_LOCATION+(L*(1<<m_column_and_range_bits))+(C*1<<m_range_bits), as
+   long as C<(1<<effective range bits), and the result_location is less than
+   the next line_map's start_location.
    (The top line is line 1 and the leftmost column is column 1; line/column 0
    means "entire file/line" or "unknown line/column" or "not applicable".)
 
@@ -184,8 +357,24 @@ struct GTY((tag ("1"))) line_map_ordinary : public line_map {
      cpp_buffer.  */
   unsigned char sysp;
 
-  /* Number of the low-order source_location bits used for a column number.  */
-  unsigned int column_bits : 8;
+  /* Number of the low-order source_location bits used for column numbers
+     and ranges.  */
+  unsigned int m_column_and_range_bits : 8;
+
+  /* Number of the low-order "column" bits used for storing short ranges
+     inline, rather than in the ad-hoc table.
+     MSB                                                                 LSB
+     31                                                                    0
+     +-------------------------+-------------------------------------------+
+     |                         |<---map->column_and_range_bits (e.g. 12)-->|
+     +-------------------------+-----------------------+-------------------+
+     |                         | column_and_range_bits | map->range_bits   |
+     |                         |   - range_bits        |                   |
+     +-------------------------+-----------------------+-------------------+
+     | row bits                | effective column bits | short range bits  |
+     |                         |    (e.g. 7)           |   (e.g. 5)        |
+     +-------------------------+-----------------------+-------------------+ */
+  unsigned int m_range_bits : 8;
 };
 
 /* This is the highest possible source location encoded within an
@@ -381,15 +570,6 @@ ORDINARY_MAP_IN_SYSTEM_HEADER_P (const line_map_ordinary *ord_map)
   return ord_map->sysp;
 }
 
-/* Get the number of the low-order source_location bits used for a
-   column number within ordinary map MAP.  */
-
-inline unsigned char
-ORDINARY_MAP_NUMBER_OF_COLUMN_BITS (const line_map_ordinary *ord_map)
-{
-  return ord_map->column_bits;
-}
-
 /* Get the filename of ordinary map MAP.  */
 
 inline const char *
@@ -470,9 +650,11 @@ struct GTY(()) maps_info_macro {
   unsigned int cache;
 };
 
-/* Data structure to associate an arbitrary data to a source location.  */
+/* Data structure to associate a source_range together with an arbitrary
+   data pointer with a source location.  */
 struct GTY(()) location_adhoc_data {
   source_location locus;
+  source_range src_range;
   void * GTY((skip)) data;
 };
 
@@ -534,6 +716,12 @@ struct GTY(()) line_maps {
 
   /* True if we've seen a #line or # 44 "file" directive.  */
   bool seen_line_directive;
+
+  /* The default value of range_bits in ordinary line maps.  */
+  unsigned int default_range_bits;
+
+  unsigned int num_optimized_ranges;
+  unsigned int num_unoptimized_ranges;
 };
 
 /* Returns the number of allocated maps so far. MAP_KIND shall be TRUE
@@ -771,10 +959,14 @@ LINEMAPS_LAST_ALLOCATED_MACRO_MAP (const line_maps *set)
 
 extern void location_adhoc_data_fini (struct line_maps *);
 extern source_location get_combined_adhoc_loc (struct line_maps *,
-					       source_location, void *);
+					       source_location,
+					       source_range,
+					       void *);
 extern void *get_data_from_adhoc_loc (struct line_maps *, source_location);
 extern source_location get_location_from_adhoc_loc (struct line_maps *,
 						    source_location);
+
+extern source_range get_range_from_loc (line_maps *set, source_location loc);
 
 /* Get whether location LOC is an ad-hoc location.  */
 
@@ -784,14 +976,21 @@ IS_ADHOC_LOC (source_location loc)
   return (loc & MAX_SOURCE_LOCATION) != loc;
 }
 
+/* Get whether location LOC is a "pure" location, or
+   whether it is an ad-hoc location, or embeds range information.  */
+
+bool
+pure_location_p (line_maps *set, source_location loc);
+
 /* Combine LOC and BLOCK, giving a combined adhoc location.  */
 
 inline source_location
 COMBINE_LOCATION_DATA (struct line_maps *set,
 		       source_location loc,
+		       source_range src_range,
 		       void *block)
 {
-  return get_combined_adhoc_loc (set, loc, block);
+  return get_combined_adhoc_loc (set, loc, src_range, block);
 }
 
 extern void rebuild_location_adhoc_htab (struct line_maps *);
@@ -867,6 +1066,14 @@ int linemap_location_in_system_header_p (struct line_maps *,
 bool linemap_location_from_macro_expansion_p (const struct line_maps *,
 					      source_location);
 
+/* With the precondition that LOCATION is the locus of a token that is
+   an argument of a function-like macro MACRO_MAP and appears in the
+   expansion of MACRO_MAP, return the locus of that argument in the
+   context of the caller of MACRO_MAP.  */
+
+extern source_location linemap_macro_map_loc_unwind_toward_spelling
+  (line_maps *set, const line_map_macro *macro_map, source_location location);
+
 /* source_location values from 0 to RESERVED_LOCATION_COUNT-1 will
    be reserved for libcpp user as special values, no token from libcpp
    will contain any of those locations.  */
@@ -877,7 +1084,7 @@ inline linenum_type
 SOURCE_LINE (const line_map_ordinary *ord_map, source_location loc)
 {
   return ((loc - ord_map->start_location)
-	  >> ord_map->column_bits) + ord_map->to_line;
+	  >> ord_map->m_column_and_range_bits) + ord_map->to_line;
 }
 
 /* Convert a map and source_location to source column number.  */
@@ -885,7 +1092,7 @@ inline linenum_type
 SOURCE_COLUMN (const line_map_ordinary *ord_map, source_location loc)
 {
   return ((loc - ord_map->start_location)
-	  & ((1 << ord_map->column_bits) - 1));
+	  & ((1 << ord_map->m_column_and_range_bits) - 1)) >> ord_map->m_range_bits;
 }
 
 /* Return the location of the last source line within an ordinary
@@ -895,7 +1102,7 @@ LAST_SOURCE_LINE_LOCATION (const line_map_ordinary *map)
 {
   return (((map[1].start_location - 1
 	    - map->start_location)
-	   & ~((1 << map->column_bits) - 1))
+	   & ~((1 << map->m_column_and_range_bits) - 1))
 	  + map->start_location);
 }
 
@@ -945,7 +1152,8 @@ linemap_position_for_column (struct line_maps *, unsigned int);
 /* Encode and return a source location from a given line and
    column.  */
 source_location
-linemap_position_for_line_and_column (const line_map_ordinary *,
+linemap_position_for_line_and_column (line_maps *set,
+				      const line_map_ordinary *,
 				      linenum_type, unsigned int);
 
 /* Encode and return a source_location starting from location LOC and
@@ -1014,6 +1222,258 @@ typedef struct
   /* In a system header?. */
   bool sysp;
 } expanded_location;
+
+/* Both gcc and emacs number source *lines* starting at 1, but
+   they have differing conventions for *columns*.
+
+   GCC uses a 1-based convention for source columns,
+   whereas Emacs's M-x column-number-mode uses a 0-based convention.
+
+   For example, an error in the initial, left-hand
+   column of source line 3 is reported by GCC as:
+
+      some-file.c:3:1: error: ...etc...
+
+   On navigating to the location of that error in Emacs
+   (e.g. via "next-error"),
+   the locus is reported in the Mode Line
+   (assuming M-x column-number-mode) as:
+
+     some-file.c   10%   (3, 0)
+
+   i.e. "3:1:" in GCC corresponds to "(3, 0)" in Emacs.  */
+
+/* A location within a rich_location: a caret&range, with
+   the caret potentially flagged for display.  */
+
+struct location_range
+{
+  source_location m_loc;
+
+  /* Should a caret be drawn for this range?  Typically this is
+     true for the 0th range, and false for subsequent ranges,
+     but the Fortran frontend overrides this for rendering things like:
+
+       x = x + y
+           1   2
+       Error: Shapes for operands at (1) and (2) are not conformable
+
+     where "1" and "2" are notionally carets.  */
+  bool m_show_caret_p;
+};
+
+class fixit_hint;
+  class fixit_insert;
+  class fixit_remove;
+  class fixit_replace;
+
+/* A "rich" source code location, for use when printing diagnostics.
+   A rich_location has one or more carets&ranges, where the carets
+   are optional.  These are referred to as "ranges" from here.
+   Typically the zeroth range has a caret; other ranges sometimes
+   have carets.
+
+   The "primary" location of a rich_location is the caret of range 0,
+   used for determining the line/column when printing diagnostic
+   text, such as:
+
+      some-file.c:3:1: error: ...etc...
+
+   Additional ranges may be added to help the user identify other
+   pertinent clauses in a diagnostic.
+
+   rich_location instances are intended to be allocated on the stack
+   when generating diagnostics, and to be short-lived.
+
+   Examples of rich locations
+   --------------------------
+
+   Example A
+   *********
+      int i = "foo";
+              ^
+   This "rich" location is simply a single range (range 0), with
+   caret = start = finish at the given point.
+
+   Example B
+   *********
+      a = (foo && bar)
+          ~~~~~^~~~~~~
+   This rich location has a single range (range 0), with the caret
+   at the first "&", and the start/finish at the parentheses.
+   Compare with example C below.
+
+   Example C
+   *********
+      a = (foo && bar)
+           ~~~ ^~ ~~~
+   This rich location has three ranges:
+   - Range 0 has its caret and start location at the first "&" and
+     end at the second "&.
+   - Range 1 has its start and finish at the "f" and "o" of "foo";
+     the caret is not flagged for display, but is perhaps at the "f"
+     of "foo".
+   - Similarly, range 2 has its start and finish at the "b" and "r" of
+     "bar"; the caret is not flagged for display, but is perhaps at the
+     "b" of "bar".
+   Compare with example B above.
+
+   Example D (Fortran frontend)
+   ****************************
+       x = x + y
+           1   2
+   This rich location has range 0 at "1", and range 1 at "2".
+   Both are flagged for caret display.  Both ranges have start/finish
+   equal to their caret point.  The frontend overrides the diagnostic
+   context's default caret character for these ranges.
+
+   Example E
+   *********
+      printf ("arg0: %i  arg1: %s arg2: %i",
+                               ^~
+              100, 101, 102);
+                   ~~~
+   This rich location has two ranges:
+   - range 0 is at the "%s" with start = caret = "%" and finish at
+     the "s".
+   - range 1 has start/finish covering the "101" and is not flagged for
+     caret printing; it is perhaps at the start of "101".  */
+
+class rich_location
+{
+ public:
+  /* Constructors.  */
+
+  /* Constructing from a location.  */
+  rich_location (line_maps *set, source_location loc);
+
+  /* Constructing from a source_range.  */
+  rich_location (source_range src_range);
+
+  /* Destructor.  */
+  ~rich_location ();
+
+  /* Accessors.  */
+  source_location get_loc () const { return get_loc (0); }
+  source_location get_loc (unsigned int idx) const;
+
+  void
+  add_range (source_location loc,  bool show_caret_p);
+
+  void
+  set_range (line_maps *set, unsigned int idx, source_location loc,
+	     bool show_caret_p);
+
+  unsigned int get_num_locations () const { return m_num_ranges; }
+
+  location_range *get_range (unsigned int idx)
+  {
+    linemap_assert (idx < m_num_ranges);
+    return &m_ranges[idx];
+  }
+
+  expanded_location get_expanded_location (unsigned int idx);
+
+  void
+  override_column (int column);
+
+  /* Fix-it hints.  */
+  void
+  add_fixit_insert (source_location where,
+		    const char *new_content);
+
+  void
+  add_fixit_remove (source_range src_range);
+
+  void
+  add_fixit_replace (source_range src_range,
+		     const char *new_content);
+
+  unsigned int get_num_fixit_hints () const { return m_num_fixit_hints; }
+  fixit_hint *get_fixit_hint (int idx) const { return m_fixit_hints[idx]; }
+
+public:
+  static const int MAX_RANGES = 3;
+  static const int MAX_FIXIT_HINTS = 2;
+
+protected:
+  unsigned int m_num_ranges;
+  location_range m_ranges[MAX_RANGES];
+
+  int m_column_override;
+
+  bool m_have_expanded_location;
+  expanded_location m_expanded_location;
+
+  unsigned int m_num_fixit_hints;
+  fixit_hint *m_fixit_hints[MAX_FIXIT_HINTS];
+};
+
+class fixit_hint
+{
+public:
+  enum kind {INSERT, REMOVE, REPLACE};
+
+  virtual ~fixit_hint () {}
+
+  virtual enum kind get_kind () const = 0;
+  virtual bool affects_line_p (const char *file, int line) = 0;
+};
+
+class fixit_insert : public fixit_hint
+{
+ public:
+  fixit_insert (source_location where,
+		const char *new_content);
+  ~fixit_insert ();
+  enum kind get_kind () const { return INSERT; }
+  bool affects_line_p (const char *file, int line);
+
+  source_location get_location () const { return m_where; }
+  const char *get_string () const { return m_bytes; }
+  size_t get_length () const { return m_len; }
+
+ private:
+  source_location m_where;
+  char *m_bytes;
+  size_t m_len;
+};
+
+class fixit_remove : public fixit_hint
+{
+ public:
+  fixit_remove (source_range src_range);
+  ~fixit_remove () {}
+
+  enum kind get_kind () const { return REMOVE; }
+  bool affects_line_p (const char *file, int line);
+
+  source_range get_range () const { return m_src_range; }
+
+ private:
+  source_range m_src_range;
+};
+
+class fixit_replace : public fixit_hint
+{
+ public:
+  fixit_replace (source_range src_range,
+                 const char *new_content);
+  ~fixit_replace ();
+
+  enum kind get_kind () const { return REPLACE; }
+  bool affects_line_p (const char *file, int line);
+
+  source_range get_range () const { return m_src_range; }
+  const char *get_string () const { return m_bytes; }
+  size_t get_length () const { return m_len; }
+
+ private:
+  source_range m_src_range;
+  char *m_bytes;
+  size_t m_len;
+};
+
 
 /* This is enum is used by the function linemap_resolve_location
    below.  The meaning of the values is explained in the comment of
@@ -1130,6 +1590,8 @@ struct linemap_stats
   long macro_maps_used_size;
   long macro_maps_locations_size;
   long duplicated_macro_maps_locations_size;
+  long adhoc_table_size;
+  long adhoc_table_entries_used;
 };
 
 /* Return the highest location emitted for a given file for which
@@ -1157,5 +1619,14 @@ void linemap_dump (FILE *, struct line_maps *, unsigned, bool);
    NUM_ORDINARY specifies how many ordinary maps to dump.  NUM_MACRO
    specifies how many macro maps to dump.  */
 void line_table_dump (FILE *, struct line_maps *, unsigned int, unsigned int);
+
+/* The rich_location class requires a way to expand source_location instances.
+   We would directly use expand_location_to_spelling_point, which is
+   implemented in gcc/input.c, but we also need to use it for rich_location
+   within genmatch.c.
+   Hence we require client code of libcpp to implement the following
+   symbol.  */
+extern expanded_location
+linemap_client_expand_location_to_spelling_point (source_location );
 
 #endif /* !LIBCPP_LINE_MAP_H  */

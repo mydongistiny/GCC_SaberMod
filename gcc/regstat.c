@@ -1,5 +1,5 @@
 /* Scanning of rtl for dataflow analysis.
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck (zadeck@naturalbridge.com).
 
 This file is part of GCC.
@@ -23,14 +23,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
 #include "rtl.h"
+#include "predict.h"
 #include "df.h"
-#include "tm_p.h"
-#include "flags.h"
 #include "regs.h"
-#include "except.h"
-#include "timevar.h"
 
 
 struct regstat_n_sets_and_refs_t *regstat_n_sets_and_refs;
@@ -448,7 +444,7 @@ regstat_bb_compute_calls_crossed (unsigned int bb_index, bitmap live)
       struct df_insn_info *insn_info = DF_INSN_INFO_GET (insn);
       unsigned int regno;
 
-      if (!INSN_P (insn))
+      if (!NONDEBUG_INSN_P (insn))
 	continue;
 
       /* Process the defs.  */

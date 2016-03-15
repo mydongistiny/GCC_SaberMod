@@ -1,5 +1,5 @@
 /* Expand the basic unary and binary arithmetic operations, for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -22,34 +22,26 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
+#include "rtl.h"
+#include "tree.h"
 #include "predict.h"
+#include "tm_p.h"
+#include "expmed.h"
+#include "optabs.h"
+#include "emit-rtl.h"
+#include "recog.h"
 #include "diagnostic-core.h"
 
 /* Include insn-config.h before expr.h so that HAVE_conditional_move
    is properly defined.  */
-#include "insn-config.h"
-#include "rtl.h"
-#include "alias.h"
-#include "tree.h"
-#include "tree-hasher.h"
 #include "stor-layout.h"
-#include "tm_p.h"
-#include "flags.h"
 #include "except.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "stmt.h"
 #include "expr.h"
-#include "insn-codes.h"
-#include "optabs.h"
 #include "optabs-tree.h"
 #include "libfuncs.h"
-#include "recog.h"
-#include "reload.h"
-#include "target.h"
 
 static void prepare_float_lib_cmp (rtx, rtx, enum rtx_code, rtx *,
 				   machine_mode *);
@@ -1001,6 +993,7 @@ expand_binop_directly (machine_mode mode, optab binoptab,
   bool commutative_p;
   rtx_insn *pat;
   rtx xop0 = op0, xop1 = op1;
+  bool canonicalize_op1 = false;
 
   /* If it is a commutative operator and the modes would match
      if we would swap the operands, we can save the conversions.  */
@@ -1014,6 +1007,11 @@ expand_binop_directly (machine_mode mode, optab binoptab,
   xop0 = avoid_expensive_constant (xmode0, binoptab, 0, xop0, unsignedp);
   if (!shift_optab_p (binoptab))
     xop1 = avoid_expensive_constant (xmode1, binoptab, 1, xop1, unsignedp);
+  else
+    /* Shifts and rotates often use a different mode for op1 from op0;
+       for VOIDmode constants we don't know the mode, so force it
+       to be canonicalized using convert_modes.  */
+    canonicalize_op1 = true;
 
   /* In case the insn wants input operands in modes different from
      those of the actual operands, convert the operands.  It would
@@ -1028,7 +1026,8 @@ expand_binop_directly (machine_mode mode, optab binoptab,
       mode0 = xmode0;
     }
 
-  mode1 = GET_MODE (xop1) != VOIDmode ? GET_MODE (xop1) : mode;
+  mode1 = ((GET_MODE (xop1) != VOIDmode || canonicalize_op1)
+	   ? GET_MODE (xop1) : mode);
   if (xmode1 != VOIDmode && xmode1 != mode1)
     {
       xop1 = convert_modes (xmode1, mode1, xop1, unsignedp);
@@ -1055,7 +1054,8 @@ expand_binop_directly (machine_mode mode, optab binoptab,
       /* The mode of the result is different then the mode of the
 	 arguments.  */
       tmp_mode = insn_data[(int) icode].operand[0].mode;
-      if (GET_MODE_NUNITS (tmp_mode) != 2 * GET_MODE_NUNITS (mode))
+      if (VECTOR_MODE_P (mode)
+	  && GET_MODE_NUNITS (tmp_mode) != 2 * GET_MODE_NUNITS (mode))
 	{
 	  delete_insns_since (last);
 	  return NULL_RTX;
@@ -1124,6 +1124,16 @@ expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
     {
       op1 = negate_rtx (mode, op1);
       binoptab = add_optab;
+    }
+  /* For shifts, constant invalid op1 might be expanded from different
+     mode than MODE.  As those are invalid, force them to a register
+     to avoid further problems during expansion.  */
+  else if (CONST_INT_P (op1)
+	   && shift_optab_p (binoptab)
+	   && UINTVAL (op1) >= GET_MODE_BITSIZE (GET_MODE_INNER (mode)))
+    {
+      op1 = gen_int_mode (INTVAL (op1), GET_MODE_INNER (mode));
+      op1 = force_reg (GET_MODE_INNER (mode), op1);
     }
 
   /* Record where to delete back to if we backtrack.  */
@@ -2230,6 +2240,58 @@ expand_doubleword_clz (machine_mode mode, rtx op0, rtx target)
   return 0;
 }
 
+/* Try calculating popcount of a double-word quantity as two popcount's of
+   word-sized quantities and summing up the results.  */
+static rtx
+expand_doubleword_popcount (machine_mode mode, rtx op0, rtx target)
+{
+  rtx t0, t1, t;
+  rtx_insn *seq;
+
+  start_sequence ();
+
+  t0 = expand_unop_direct (word_mode, popcount_optab,
+			   operand_subword_force (op0, 0, mode), NULL_RTX,
+			   true);
+  t1 = expand_unop_direct (word_mode, popcount_optab,
+			   operand_subword_force (op0, 1, mode), NULL_RTX,
+			   true);
+  if (!t0 || !t1)
+    {
+      end_sequence ();
+      return NULL_RTX;
+    }
+
+  /* If we were not given a target, use a word_mode register, not a
+     'mode' register.  The result will fit, and nobody is expecting
+     anything bigger (the return type of __builtin_popcount* is int).  */
+  if (!target)
+    target = gen_reg_rtx (word_mode);
+
+  t = expand_binop (word_mode, add_optab, t0, t1, target, 0, OPTAB_DIRECT);
+
+  seq = get_insns ();
+  end_sequence ();
+
+  add_equal_note (seq, t, POPCOUNT, op0, 0);
+  emit_insn (seq);
+  return t;
+}
+
+/* Try calculating
+	(parity:wide x)
+   as
+	(parity:narrow (low (x) ^ high (x))) */
+static rtx
+expand_doubleword_parity (machine_mode mode, rtx op0, rtx target)
+{
+  rtx t = expand_binop (word_mode, xor_optab,
+			operand_subword_force (op0, 0, mode),
+			operand_subword_force (op0, 1, mode),
+			NULL_RTX, 0, OPTAB_DIRECT);
+  return expand_unop (word_mode, parity_optab, t, target, true);
+}
+
 /* Try calculating
 	(bswap:narrow x)
    as
@@ -2589,7 +2651,7 @@ expand_absneg_bit (enum rtx_code code, machine_mode mode,
    different mode or with a libcall.  */
 static rtx
 expand_unop_direct (machine_mode mode, optab unoptab, rtx op0, rtx target,
-	     int unsignedp)
+		    int unsignedp)
 {
   if (optab_handler (unoptab, mode) != CODE_FOR_nothing)
     {
@@ -2670,6 +2732,27 @@ expand_unop (machine_mode mode, optab unoptab, rtx op0, rtx target,
       if (temp)
 	return temp;
       goto try_libcall;
+    }
+
+  if (unoptab == popcount_optab
+      && GET_MODE_SIZE (mode) == 2 * UNITS_PER_WORD
+      && optab_handler (unoptab, word_mode) != CODE_FOR_nothing
+      && optimize_insn_for_speed_p ())
+    {
+      temp = expand_doubleword_popcount (mode, op0, target);
+      if (temp)
+	return temp;
+    }
+
+  if (unoptab == parity_optab
+      && GET_MODE_SIZE (mode) == 2 * UNITS_PER_WORD
+      && (optab_handler (unoptab, word_mode) != CODE_FOR_nothing
+	  || optab_handler (popcount_optab, word_mode) != CODE_FOR_nothing)
+      && optimize_insn_for_speed_p ())
+    {
+      temp = expand_doubleword_parity (mode, op0, target);
+      if (temp)
+	return temp;
     }
 
   /* Widening (or narrowing) bswap needs special treatment.  */
@@ -4218,6 +4301,56 @@ emit_conditional_move (rtx target, enum rtx_code code, rtx op0, rtx op1,
   return NULL_RTX;
 }
 
+
+/* Emit a conditional negate or bitwise complement using the
+   negcc or notcc optabs if available.  Return NULL_RTX if such operations
+   are not available.  Otherwise return the RTX holding the result.
+   TARGET is the desired destination of the result.  COMP is the comparison
+   on which to negate.  If COND is true move into TARGET the negation
+   or bitwise complement of OP1.  Otherwise move OP2 into TARGET.
+   CODE is either NEG or NOT.  MODE is the machine mode in which the
+   operation is performed.  */
+
+rtx
+emit_conditional_neg_or_complement (rtx target, rtx_code code,
+				     machine_mode mode, rtx cond, rtx op1,
+				     rtx op2)
+{
+  optab op = unknown_optab;
+  if (code == NEG)
+    op = negcc_optab;
+  else if (code == NOT)
+    op = notcc_optab;
+  else
+    gcc_unreachable ();
+
+  insn_code icode = direct_optab_handler (op, mode);
+
+  if (icode == CODE_FOR_nothing)
+    return NULL_RTX;
+
+  if (!target)
+    target = gen_reg_rtx (mode);
+
+  rtx_insn *last = get_last_insn ();
+  struct expand_operand ops[4];
+
+  create_output_operand (&ops[0], target, mode);
+  create_fixed_operand (&ops[1], cond);
+  create_input_operand (&ops[2], op1, mode);
+  create_input_operand (&ops[3], op2, mode);
+
+  if (maybe_expand_insn (icode, 4, ops))
+    {
+      if (ops[0].value != target)
+	convert_move (target, ops[0].value, false);
+
+      return target;
+    }
+  delete_insns_since (last);
+  return NULL_RTX;
+}
+
 /* Emit a conditional addition instruction if the machine supports one for that
    condition and machine mode.
 
@@ -4846,6 +4979,33 @@ expand_fix (rtx to, rtx from, int unsignedp)
     }
 }
 
+
+/* Promote integer arguments for a libcall if necessary.
+   emit_library_call_value cannot do the promotion because it does not
+   know if it should do a signed or unsigned promotion.  This is because
+   there are no tree types defined for libcalls.  */
+
+static rtx
+prepare_libcall_arg (rtx arg, int uintp)
+{
+  machine_mode mode = GET_MODE (arg);
+  machine_mode arg_mode;
+  if (SCALAR_INT_MODE_P (mode))
+    {
+      /*  If we need to promote the integer function argument we need to do
+	  it here instead of inside emit_library_call_value because in
+	  emit_library_call_value we don't know if we should do a signed or
+	  unsigned promotion.  */
+
+      int unsigned_p = 0;
+      arg_mode = promote_function_mode (NULL_TREE, mode,
+					&unsigned_p, NULL_TREE, 0);
+      if (arg_mode != mode)
+	return convert_to_mode (arg_mode, arg, uintp);
+    }
+    return arg;
+}
+
 /* Generate code to convert FROM or TO a fixed-point.
    If UINTP is true, either TO or FROM is an unsigned integer.
    If SATP is true, we need to saturate the result.  */
@@ -4887,6 +5047,9 @@ expand_fixed_convert (rtx to, rtx from, int uintp, int satp)
 
   libfunc = convert_optab_libfunc (tab, to_mode, from_mode);
   gcc_assert (libfunc);
+
+  from = prepare_libcall_arg (from, uintp);
+  from_mode = GET_MODE (from);
 
   start_sequence ();
   value = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST, to_mode,
@@ -5108,11 +5271,13 @@ get_rtx_code (enum tree_code tcode, bool unsignedp)
 }
 
 /* Return comparison rtx for COND. Use UNSIGNEDP to select signed or
-   unsigned operators. Do not generate compare instruction.  */
+   unsigned operators.  OPNO holds an index of the first comparison
+   operand in insn with code ICODE.  Do not generate compare instruction.  */
 
 static rtx
 vector_compare_rtx (enum tree_code tcode, tree t_op0, tree t_op1,
-		    bool unsignedp, enum insn_code icode)
+		    bool unsignedp, enum insn_code icode,
+		    unsigned int opno)
 {
   struct expand_operand ops[2];
   rtx rtx_op0, rtx_op1;
@@ -5138,7 +5303,7 @@ vector_compare_rtx (enum tree_code tcode, tree t_op0, tree t_op1,
 
   create_input_operand (&ops[0], rtx_op0, m0);
   create_input_operand (&ops[1], rtx_op1, m1);
-  if (!maybe_legitimize_operands (icode, 4, 2, ops))
+  if (!maybe_legitimize_operands (icode, opno, 2, ops))
     gcc_unreachable ();
   return gen_rtx_fmt_ee (rcode, VOIDmode, ops[0].value, ops[1].value);
 }
@@ -5157,12 +5322,12 @@ shift_amt_for_vec_perm_mask (rtx sel)
     return NULL_RTX;
 
   first = INTVAL (CONST_VECTOR_ELT (sel, 0));
-  if (first >= 2*nelt)
+  if (first >= nelt)
     return NULL_RTX;
   for (i = 1; i < nelt; i++)
     {
       int idx = INTVAL (CONST_VECTOR_ELT (sel, i));
-      unsigned int expected = (i + first) & (2 * nelt - 1);
+      unsigned int expected = i + first;
       /* Indices into the second vector are all equivalent.  */
       if (idx < 0 || (MIN (nelt, (unsigned) idx) != MIN (nelt, expected)))
 	return NULL_RTX;
@@ -5199,17 +5364,6 @@ expand_vec_perm_1 (enum insn_code icode, rtx target,
   else
     {
       create_input_operand (&ops[1], v0, tmode);
-      /* See if this can be handled with a vec_shr.  We only do this if the
-         second vector is all zeroes.  */
-      enum insn_code shift_code = optab_handler (vec_shr_optab, GET_MODE (v0));
-      if (v1 == CONST0_RTX (GET_MODE (v1)) && shift_code)
-	if (rtx shift_amt = shift_amt_for_vec_perm_mask (sel))
-	  {
-	    create_convert_operand_from_type (&ops[2], shift_amt,
-					      sizetype_tab[(int) stk_sizetype]);
-	    if (maybe_expand_insn (shift_code, 3, ops))
-	      return ops[0].value;
-	  }
       create_input_operand (&ops[2], v1, tmode);
     }
 
@@ -5251,6 +5405,44 @@ expand_vec_perm (machine_mode mode, rtx v0, rtx v1, rtx sel, rtx target)
   gcc_assert (GET_MODE_CLASS (GET_MODE (sel)) == MODE_VECTOR_INT);
   if (GET_CODE (sel) == CONST_VECTOR)
     {
+      /* See if this can be handled with a vec_shr.  We only do this if the
+	 second vector is all zeroes.  */
+      enum insn_code shift_code = optab_handler (vec_shr_optab, mode);
+      enum insn_code shift_code_qi = ((qimode != VOIDmode && qimode != mode)
+				      ? optab_handler (vec_shr_optab, qimode)
+				      : CODE_FOR_nothing);
+      rtx shift_amt = NULL_RTX;
+      if (v1 == CONST0_RTX (GET_MODE (v1))
+	  && (shift_code != CODE_FOR_nothing
+	      || shift_code_qi != CODE_FOR_nothing))
+	{
+	  shift_amt = shift_amt_for_vec_perm_mask (sel);
+	  if (shift_amt)
+	    {
+	      struct expand_operand ops[3];
+	      if (shift_code != CODE_FOR_nothing)
+		{
+		  create_output_operand (&ops[0], target, mode);
+		  create_input_operand (&ops[1], v0, mode);
+		  create_convert_operand_from_type (&ops[2], shift_amt,
+						    sizetype);
+		  if (maybe_expand_insn (shift_code, 3, ops))
+		    return ops[0].value;
+		}
+	      if (shift_code_qi != CODE_FOR_nothing)
+		{
+		  tmp = gen_reg_rtx (qimode);
+		  create_output_operand (&ops[0], tmp, qimode);
+		  create_input_operand (&ops[1], gen_lowpart (qimode, v0),
+					qimode);
+		  create_convert_operand_from_type (&ops[2], shift_amt,
+						    sizetype);
+		  if (maybe_expand_insn (shift_code_qi, 3, ops))
+		    return gen_lowpart (mode, ops[0].value);
+		}
+	    }
+	}
+
       icode = direct_optab_handler (vec_perm_const_optab, mode);
       if (icode != CODE_FOR_nothing)
 	{
@@ -5352,6 +5544,38 @@ expand_vec_perm (machine_mode mode, rtx v0, rtx v1, rtx sel, rtx target)
   return tmp;
 }
 
+/* Generate insns for a VEC_COND_EXPR with mask, given its TYPE and its
+   three operands.  */
+
+rtx
+expand_vec_cond_mask_expr (tree vec_cond_type, tree op0, tree op1, tree op2,
+			   rtx target)
+{
+  struct expand_operand ops[4];
+  machine_mode mode = TYPE_MODE (vec_cond_type);
+  machine_mode mask_mode = TYPE_MODE (TREE_TYPE (op0));
+  enum insn_code icode = get_vcond_mask_icode (mode, mask_mode);
+  rtx mask, rtx_op1, rtx_op2;
+
+  if (icode == CODE_FOR_nothing)
+    return 0;
+
+  mask = expand_normal (op0);
+  rtx_op1 = expand_normal (op1);
+  rtx_op2 = expand_normal (op2);
+
+  mask = force_reg (mask_mode, mask);
+  rtx_op1 = force_reg (GET_MODE (rtx_op1), rtx_op1);
+
+  create_output_operand (&ops[0], target, mode);
+  create_input_operand (&ops[1], rtx_op1, mode);
+  create_input_operand (&ops[2], rtx_op2, mode);
+  create_input_operand (&ops[3], mask, mask_mode);
+  expand_insn (icode, 4, ops);
+
+  return ops[0].value;
+}
+
 /* Generate insns for a VEC_COND_EXPR, given its TYPE and its
    three operands.  */
 
@@ -5373,18 +5597,26 @@ expand_vec_cond_expr (tree vec_cond_type, tree op0, tree op1, tree op2,
       op0a = TREE_OPERAND (op0, 0);
       op0b = TREE_OPERAND (op0, 1);
       tcode = TREE_CODE (op0);
-      unsignedp = TYPE_UNSIGNED (TREE_TYPE (op0a));
     }
   else
     {
-      /* Fake op0 < 0.  */
       gcc_assert (VECTOR_BOOLEAN_TYPE_P (TREE_TYPE (op0)));
-      op0a = op0;
-      op0b = build_zero_cst (TREE_TYPE (op0));
-      tcode = LT_EXPR;
-      unsignedp = false;
+      if (get_vcond_mask_icode (mode, TYPE_MODE (TREE_TYPE (op0)))
+	  != CODE_FOR_nothing)
+	return expand_vec_cond_mask_expr (vec_cond_type, op0, op1,
+					  op2, target);
+      /* Fake op0 < 0.  */
+      else
+	{
+	  gcc_assert (GET_MODE_CLASS (TYPE_MODE (TREE_TYPE (op0)))
+		      == MODE_VECTOR_INT);
+	  op0a = op0;
+	  op0b = build_zero_cst (TREE_TYPE (op0));
+	  tcode = LT_EXPR;
+	}
     }
   cmp_op_mode = TYPE_MODE (TREE_TYPE (op0a));
+  unsignedp = TYPE_UNSIGNED (TREE_TYPE (op0a));
 
 
   gcc_assert (GET_MODE_SIZE (mode) == GET_MODE_SIZE (cmp_op_mode)
@@ -5394,7 +5626,7 @@ expand_vec_cond_expr (tree vec_cond_type, tree op0, tree op1, tree op2,
   if (icode == CODE_FOR_nothing)
     return 0;
 
-  comparison = vector_compare_rtx (tcode, op0a, op0b, unsignedp, icode);
+  comparison = vector_compare_rtx (tcode, op0a, op0b, unsignedp, icode, 4);
   rtx_op1 = expand_normal (op1);
   rtx_op2 = expand_normal (op2);
 
@@ -5405,6 +5637,40 @@ expand_vec_cond_expr (tree vec_cond_type, tree op0, tree op1, tree op2,
   create_fixed_operand (&ops[4], XEXP (comparison, 0));
   create_fixed_operand (&ops[5], XEXP (comparison, 1));
   expand_insn (icode, 6, ops);
+  return ops[0].value;
+}
+
+/* Generate insns for a vector comparison into a mask.  */
+
+rtx
+expand_vec_cmp_expr (tree type, tree exp, rtx target)
+{
+  struct expand_operand ops[4];
+  enum insn_code icode;
+  rtx comparison;
+  machine_mode mask_mode = TYPE_MODE (type);
+  machine_mode vmode;
+  bool unsignedp;
+  tree op0a, op0b;
+  enum tree_code tcode;
+
+  op0a = TREE_OPERAND (exp, 0);
+  op0b = TREE_OPERAND (exp, 1);
+  tcode = TREE_CODE (exp);
+
+  unsignedp = TYPE_UNSIGNED (TREE_TYPE (op0a));
+  vmode = TYPE_MODE (TREE_TYPE (op0a));
+
+  icode = get_vec_cmp_icode (vmode, mask_mode, unsignedp);
+  if (icode == CODE_FOR_nothing)
+    return 0;
+
+  comparison = vector_compare_rtx (tcode, op0a, op0b, unsignedp, icode, 2);
+  create_output_operand (&ops[0], target, mask_mode);
+  create_fixed_operand (&ops[1], comparison);
+  create_fixed_operand (&ops[2], XEXP (comparison, 0));
+  create_fixed_operand (&ops[3], XEXP (comparison, 1));
+  expand_insn (icode, 4, ops);
   return ops[0].value;
 }
 
@@ -5810,9 +6076,9 @@ expand_atomic_exchange (rtx target, rtx mem, rtx val, enum memmodel model)
 
    *PTARGET_BOOL is an optional place to store the boolean success/failure.
    *PTARGET_OVAL is an optional place to store the old value from memory.
-   Both target parameters may be NULL to indicate that we do not care about
-   that return value.  Both target parameters are updated on success to
-   the actual location of the corresponding result.
+   Both target parameters may be NULL or const0_rtx to indicate that we do
+   not care about that return value.  Both target parameters are updated on
+   success to the actual location of the corresponding result.
 
    MEMMODEL is the memory model variant to use.
 
@@ -5837,6 +6103,9 @@ expand_atomic_compare_and_swap (rtx *ptarget_bool, rtx *ptarget_oval,
   /* Make sure we always have some place to put the return oldval.
      Further, make sure that place is distinct from the input expected,
      just in case we need that path down below.  */
+  if (ptarget_oval && *ptarget_oval == const0_rtx)
+    ptarget_oval = NULL;
+
   if (ptarget_oval == NULL
       || (target_oval = *ptarget_oval) == NULL
       || reg_overlap_mentioned_p (expected, target_oval))
@@ -5846,6 +6115,9 @@ expand_atomic_compare_and_swap (rtx *ptarget_bool, rtx *ptarget_oval,
   if (icode != CODE_FOR_nothing)
     {
       machine_mode bool_mode = insn_data[icode].operand[0].mode;
+
+      if (ptarget_bool && *ptarget_bool == const0_rtx)
+	ptarget_bool = NULL;
 
       /* Make sure we always have a place for the bool operand.  */
       if (ptarget_bool == NULL

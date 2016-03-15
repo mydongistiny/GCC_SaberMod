@@ -1,5 +1,5 @@
 /* Handle exceptional things in C++.
-   Copyright (C) 1989-2015 Free Software Foundation, Inc.
+   Copyright (C) 1989-2016 Free Software Foundation, Inc.
    Contributed by Michael Tiemann <tiemann@cygnus.com>
    Rewritten by Mike Stump <mrs@cygnus.com>, based upon an
    initial re-implementation courtesy Tad Hunt.
@@ -24,17 +24,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
+#include "cp-tree.h"
 #include "stringpool.h"
 #include "trans-mem.h"
 #include "attribs.h"
-#include "cp-tree.h"
-#include "flags.h"
-#include "tree-inline.h"
 #include "tree-iterator.h"
-#include "target.h"
 
 static void push_eh_cleanup (tree);
 static tree prepare_eh_type (tree);
@@ -668,6 +662,16 @@ do_free_exception (tree ptr)
       /* Declare void __cxa_free_exception (void *) throw().  */
       fn = declare_library_fn (fn, void_type_node, ptr_type_node,
 			       ECF_NOTHROW | ECF_LEAF);
+
+      if (flag_tm)
+	{
+	  tree fn2 = get_identifier ("_ITM_cxa_free_exception");
+	  if (!get_global_value_if_present (fn2, &fn2))
+	    fn2 = declare_library_fn (fn2, void_type_node,
+				      ptr_type_node,
+				      ECF_NOTHROW | ECF_LEAF | ECF_TM_PURE);
+	  record_tm_replacement (fn, fn2);
+	}
     }
 
   return cp_build_function_call_nary (fn, tf_warning_or_error, ptr, NULL_TREE);
@@ -1036,7 +1040,8 @@ nothrow_libfn_p (const_tree fn)
      unless the system headers are playing rename tricks, and if
      they are, we don't want to be confused by them.  */
   id = DECL_NAME (fn);
-  return !!libc_name_p (IDENTIFIER_POINTER (id), IDENTIFIER_LENGTH (id));
+  return !!libc_name::libc_name_p (IDENTIFIER_POINTER (id),
+				   IDENTIFIER_LENGTH (id));
 }
 
 /* Returns nonzero if an exception of type FROM will be caught by a

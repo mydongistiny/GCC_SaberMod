@@ -1,5 +1,5 @@
 /* Header file for normal form into SSA.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -48,5 +48,6 @@ extern void dump_names_replaced_by (FILE *, tree);
 extern void debug_names_replaced_by (tree);
 extern void dump_update_ssa (FILE *);
 extern void debug_update_ssa (void);
+extern bitmap names_to_release;
 
 #endif /* GCC_TREE_INTO_SSA_H */

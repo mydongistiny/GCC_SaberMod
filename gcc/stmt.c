@@ -1,5 +1,5 @@
 /* Expands front end tree to back end RTL for GCC
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,39 +26,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "predict.h"
+#include "alloc-pool.h"
+#include "tm_p.h"
+#include "optabs.h"
+#include "regs.h"
+#include "emit-rtl.h"
+#include "pretty-print.h"
+#include "diagnostic-core.h"
 
-#include "alias.h"
 #include "fold-const.h"
 #include "varasm.h"
 #include "stor-layout.h"
-#include "tm_p.h"
-#include "flags.h"
-#include "except.h"
-#include "insn-config.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
 #include "stmt.h"
 #include "expr.h"
-#include "libfuncs.h"
-#include "recog.h"
-#include "diagnostic-core.h"
-#include "output.h"
 #include "langhooks.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "target.h"
 #include "cfganal.h"
-#include "internal-fn.h"
-#include "regs.h"
-#include "alloc-pool.h"
-#include "pretty-print.h"
 #include "params.h"
 #include "dumpfile.h"
 #include "builtins.h"
@@ -445,7 +434,8 @@ parse_input_constraint (const char **constraint_p, int input_num,
 	if (reg_class_for_constraint (cn) != NO_REGS
 	    || insn_extra_address_constraint (cn))
 	  *allows_reg = true;
-	else if (insn_extra_memory_constraint (cn))
+	else if (insn_extra_memory_constraint (cn)
+		 || insn_extra_special_memory_constraint (cn))
 	  *allows_mem = true;
 	else
 	  insn_extra_constraint_allows_reg_mem (cn, allows_reg, allows_mem);

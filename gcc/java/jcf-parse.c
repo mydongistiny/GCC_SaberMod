@@ -1,5 +1,5 @@
 /* Parser for Java(TM) .class files.
-   Copyright (C) 1996-2015 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,24 +26,16 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
+#include "target.h"
+#include "function.h"
+#include "bitmap.h"
 #include "tree.h"
-#include "options.h"
 #include "stringpool.h"
-#include "obstack.h"
-#include "flags.h"
-#include "java-except.h"
+#include "cgraph.h"
+#include "diagnostic-core.h"
 #include "javaop.h"
 #include "java-tree.h"
-#include "diagnostic-core.h"
-#include "parse.h"
 #include "debug.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
-#include "bitmap.h"
-#include "target.h"
 #include "toplev.h"
 
 #ifdef HAVE_LOCALE_H
@@ -1061,7 +1053,7 @@ get_constant (JCF *jcf, int index)
 	long buf = num;
 	REAL_VALUE_TYPE d;
 
-	real_from_target_fmt (&d, &buf, &ieee_single_format);
+	real_from_target (&d, &buf, &ieee_single_format);
 	value = build_real (float_type_node, d);
 	break;
       }
@@ -1079,7 +1071,7 @@ get_constant (JCF *jcf, int index)
 	else
 	  buf[0] = lo, buf[1] = hi;
 
-	real_from_target_fmt (&d, buf, &ieee_double_format);
+	real_from_target (&d, buf, &ieee_double_format);
 	value = build_real (double_type_node, d);
 	break;
       }

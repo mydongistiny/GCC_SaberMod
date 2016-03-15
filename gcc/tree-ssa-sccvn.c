@@ -1,5 +1,5 @@
 /* SCC value numbering for trees
-   Copyright (C) 2006-2015 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org>
 
 This file is part of GCC.
@@ -22,41 +22,41 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "alloc-pool.h"
 #include "ssa.h"
+#include "expmed.h"
+#include "insn-config.h"
+#include "emit-rtl.h"
+#include "cgraph.h"
+#include "gimple-pretty-print.h"
 #include "alias.h"
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "cfganal.h"
-#include "gimple-pretty-print.h"
 #include "tree-inline.h"
 #include "internal-fn.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimplify.h"
 #include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
 #include "calls.h"
-#include "emit-rtl.h"
 #include "varasm.h"
 #include "stmt.h"
 #include "expr.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
 #include "dumpfile.h"
-#include "alloc-pool.h"
 #include "cfgloop.h"
 #include "params.h"
 #include "tree-ssa-propagate.h"
 #include "tree-ssa-sccvn.h"
 #include "tree-cfg.h"
 #include "domwalk.h"
-#include "cgraph.h"
 #include "gimple-iterator.h"
 #include "gimple-match.h"
 
@@ -637,6 +637,9 @@ vn_reference_eq (const_vn_reference_t const vr1, const_vn_reference_t const vr2)
 	{
 	  if (vro1->opcode == MEM_REF)
 	    deref1 = true;
+	  /* Do not look through a storage order barrier.  */
+	  else if (vro1->opcode == VIEW_CONVERT_EXPR && vro1->reverse)
+	    return false;
 	  if (vro1->off == -1)
 	    break;
 	  off1 += vro1->off;
@@ -645,6 +648,9 @@ vn_reference_eq (const_vn_reference_t const vr1, const_vn_reference_t const vr2)
 	{
 	  if (vro2->opcode == MEM_REF)
 	    deref2 = true;
+	  /* Do not look through a storage order barrier.  */
+	  else if (vro2->opcode == VIEW_CONVERT_EXPR && vro2->reverse)
+	    return false;
 	  if (vro2->off == -1)
 	    break;
 	  off2 += vro2->off;
@@ -744,13 +750,17 @@ copy_reference_ops_from_ref (tree ref, vec<vn_reference_op_s> *result)
 	case MEM_REF:
 	  /* The base address gets its own vn_reference_op_s structure.  */
 	  temp.op0 = TREE_OPERAND (ref, 1);
-	  if (tree_fits_shwi_p (TREE_OPERAND (ref, 1)))
-	    temp.off = tree_to_shwi (TREE_OPERAND (ref, 1));
+	    {
+	      offset_int off = mem_ref_offset (ref);
+	      if (wi::fits_shwi_p (off))
+		temp.off = off.to_shwi ();
+	    }
 	  temp.clique = MR_DEPENDENCE_CLIQUE (ref);
 	  temp.base = MR_DEPENDENCE_BASE (ref);
+	  temp.reverse = REF_REVERSE_STORAGE_ORDER (ref);
 	  break;
 	case BIT_FIELD_REF:
-	  /* Record bits and position.  */
+	  /* Record bits, position and storage order.  */
 	  temp.op0 = TREE_OPERAND (ref, 1);
 	  temp.op1 = TREE_OPERAND (ref, 2);
 	  if (tree_fits_shwi_p (TREE_OPERAND (ref, 2)))
@@ -759,6 +769,7 @@ copy_reference_ops_from_ref (tree ref, vec<vn_reference_op_s> *result)
 	      if (off % BITS_PER_UNIT == 0)
 		temp.off = off / BITS_PER_UNIT;
 	    }
+	  temp.reverse = REF_REVERSE_STORAGE_ORDER (ref);
 	  break;
 	case COMPONENT_REF:
 	  /* The field decl is enough to unambiguously specify the field,
@@ -855,8 +866,11 @@ copy_reference_ops_from_ref (tree ref, vec<vn_reference_op_s> *result)
 	     operand), so we don't have to put anything
 	     for op* as it will be handled by the iteration  */
 	case REALPART_EXPR:
+	  temp.off = 0;
+	  break;
 	case VIEW_CONVERT_EXPR:
 	  temp.off = 0;
+	  temp.reverse = storage_order_barrier_p (ref);
 	  break;
 	case IMAGPART_EXPR:
 	  /* This is only interesting for its constant offset.  */
@@ -1356,13 +1370,29 @@ fully_constant_vn_reference_p (vn_reference_t ref)
 	  else
 	    {
 	      unsigned char buf[MAX_BITSIZE_MODE_ANY_MODE / BITS_PER_UNIT];
-	      if (native_encode_expr (ctor, buf, size, off) > 0)
-		return native_interpret_expr (ref->type, buf, size);
+	      int len = native_encode_expr (ctor, buf, size, off);
+	      if (len > 0)
+		return native_interpret_expr (ref->type, buf, len);
 	    }
 	}
     }
 
   return NULL_TREE;
+}
+
+/* Return true if OPS contain a storage order barrier.  */
+
+static bool
+contains_storage_order_barrier_p (vec<vn_reference_op_s> ops)
+{
+  vn_reference_op_t op;
+  unsigned i;
+
+  FOR_EACH_VEC_ELT (ops, i, op)
+    if (op->opcode == VIEW_CONVERT_EXPR && op->reverse)
+      return true;
+
+  return false;
 }
 
 /* Transform any SSA_NAME's in a vector of vn_reference_op_s
@@ -1702,7 +1732,9 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
       tree ref2 = TREE_OPERAND (gimple_call_arg (def_stmt, 0), 0);
       tree base2;
       HOST_WIDE_INT offset2, size2, maxsize2;
-      base2 = get_ref_base_and_extent (ref2, &offset2, &size2, &maxsize2);
+      bool reverse;
+      base2 = get_ref_base_and_extent (ref2, &offset2, &size2, &maxsize2,
+				       &reverse);
       size2 = tree_to_uhwi (gimple_call_arg (def_stmt, 2)) * 8;
       if ((unsigned HOST_WIDE_INT)size2 / 8
 	  == tree_to_uhwi (gimple_call_arg (def_stmt, 2))
@@ -1725,8 +1757,9 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
     {
       tree base2;
       HOST_WIDE_INT offset2, size2, maxsize2;
+      bool reverse;
       base2 = get_ref_base_and_extent (gimple_assign_lhs (def_stmt),
-				       &offset2, &size2, &maxsize2);
+				       &offset2, &size2, &maxsize2, &reverse);
       if (maxsize2 != -1
 	  && operand_equal_p (base, base2, 0)
 	  && offset2 <= offset
@@ -1746,14 +1779,17 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
 	   && maxsize % BITS_PER_UNIT == 0
 	   && offset % BITS_PER_UNIT == 0
 	   && is_gimple_reg_type (vr->type)
+	   && !contains_storage_order_barrier_p (vr->operands)
 	   && gimple_assign_single_p (def_stmt)
 	   && is_gimple_min_invariant (gimple_assign_rhs1 (def_stmt)))
     {
       tree base2;
       HOST_WIDE_INT offset2, size2, maxsize2;
+      bool reverse;
       base2 = get_ref_base_and_extent (gimple_assign_lhs (def_stmt),
-				       &offset2, &size2, &maxsize2);
-      if (maxsize2 != -1
+				       &offset2, &size2, &maxsize2, &reverse);
+      if (!reverse
+	  && maxsize2 != -1
 	  && maxsize2 == size2
 	  && size2 % BITS_PER_UNIT == 0
 	  && offset2 % BITS_PER_UNIT == 0
@@ -1785,6 +1821,7 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
      to access pieces from.  */
   else if (ref->size == maxsize
 	   && is_gimple_reg_type (vr->type)
+	   && !contains_storage_order_barrier_p (vr->operands)
 	   && gimple_assign_single_p (def_stmt)
 	   && TREE_CODE (gimple_assign_rhs1 (def_stmt)) == SSA_NAME)
     {
@@ -1797,10 +1834,13 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
 	{
 	  tree base2;
 	  HOST_WIDE_INT offset2, size2, maxsize2, off;
+	  bool reverse;
 	  base2 = get_ref_base_and_extent (gimple_assign_lhs (def_stmt),
-					   &offset2, &size2, &maxsize2);
+					   &offset2, &size2, &maxsize2,
+					   &reverse);
 	  off = offset - offset2;
-	  if (maxsize2 != -1
+	  if (!reverse
+	      && maxsize2 != -1
 	      && maxsize2 == size2
 	      && operand_equal_p (base, base2, 0)
 	      && offset2 <= offset
@@ -1849,7 +1889,7 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
     {
       tree base2;
       HOST_WIDE_INT maxsize2;
-      int i, j;
+      int i, j, k;
       auto_vec<vn_reference_op_s> rhs;
       vn_reference_op_t vro;
       ao_ref r;
@@ -1908,6 +1948,14 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
 	 try handling outermost VIEW_CONVERT_EXPRs.  */
       if (j != -1)
 	return (void *)-1;
+
+      /* Punt if the additional ops contain a storage order barrier.  */
+      for (k = i; k >= 0; k--)
+	{
+	  vro = &vr->operands[k];
+	  if (vro->opcode == VIEW_CONVERT_EXPR && vro->reverse)
+	    return (void *)-1;
+	}
 
       /* Now re-write REF to be based on the rhs of the assignment.  */
       copy_reference_ops_from_ref (gimple_assign_rhs1 (def_stmt), &rhs);
@@ -1982,7 +2030,6 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
       HOST_WIDE_INT rhs_offset, copy_size, lhs_offset;
       vn_reference_op_s op;
       HOST_WIDE_INT at;
-
 
       /* Only handle non-variable, addressable refs.  */
       if (ref->size != maxsize
@@ -2183,11 +2230,12 @@ vn_reference_lookup_pieces (tree vuse, alias_set_type set, tree type,
    number if it exists in the hash table.  Return NULL_TREE if it does
    not exist in the hash table or if the result field of the structure
    was NULL..  VNRESULT will be filled in with the vn_reference_t
-   stored in the hashtable if one exists.  */
+   stored in the hashtable if one exists.  When TBAA_P is false assume
+   we are looking up a store and treat it as having alias-set zero.  */
 
 tree
 vn_reference_lookup (tree op, tree vuse, vn_lookup_kind kind,
-		     vn_reference_t *vnresult)
+		     vn_reference_t *vnresult, bool tbaa_p)
 {
   vec<vn_reference_op_s> operands;
   struct vn_reference_s vr1;
@@ -2201,7 +2249,7 @@ vn_reference_lookup (tree op, tree vuse, vn_lookup_kind kind,
   vr1.operands = operands
     = valueize_shared_reference_ops_from_ref (op, &valuezied_anything);
   vr1.type = TREE_TYPE (op);
-  vr1.set = get_alias_set (op);
+  vr1.set = tbaa_p ? get_alias_set (op) : 0;
   vr1.hashcode = vn_reference_compute_hash (&vr1);
   if ((cst = fully_constant_vn_reference_p (&vr1)))
     return cst;
@@ -2217,6 +2265,8 @@ vn_reference_lookup (tree op, tree vuse, vn_lookup_kind kind,
 	  || !ao_ref_init_from_vn_reference (&r, vr1.set, vr1.type,
 					     vr1.operands))
 	ao_ref_init (&r, op);
+      if (! tbaa_p)
+	r.ref_alias_set = r.base_alias_set = 0;
       vn_walk_kind = kind;
       wvnresult =
 	(vn_reference_t)walk_non_aliased_vuses (&r, vr1.vuse,
@@ -2717,11 +2767,15 @@ cond_stmts_equal_p (gcond *cond1, gcond *cond2, bool *inverted_p)
   else
     return false;
 
-  if (! expressions_equal_p (vn_valueize (lhs1), vn_valueize (lhs2))
-      || ! expressions_equal_p (vn_valueize (rhs1), vn_valueize (rhs2)))
-    return false;
-
-  return true;
+  lhs1 = vn_valueize (lhs1);
+  rhs1 = vn_valueize (rhs1);
+  lhs2 = vn_valueize (lhs2);
+  rhs2 = vn_valueize (rhs2);
+  return ((expressions_equal_p (lhs1, lhs2)
+	   && expressions_equal_p (rhs1, rhs2))
+	  || (commutative_tree_code (code1)
+	      && expressions_equal_p (lhs1, rhs2)
+	      && expressions_equal_p (rhs1, lhs2)));
 }
 
 /* Compare two phi entries for equality, ignoring VN_TOP arguments.  */
@@ -2918,6 +2972,87 @@ print_scc (FILE *out, vec<tree> scc)
   fprintf (out, "\n");
 }
 
+/* Return true if BB1 is dominated by BB2 taking into account edges
+   that are not executable.  */
+
+static bool
+dominated_by_p_w_unex (basic_block bb1, basic_block bb2)
+{
+  edge_iterator ei;
+  edge e;
+
+  if (dominated_by_p (CDI_DOMINATORS, bb1, bb2))
+    return true;
+
+  /* Before iterating we'd like to know if there exists a
+     (executable) path from bb2 to bb1 at all, if not we can
+     directly return false.  For now simply iterate once.  */
+
+  /* Iterate to the single executable bb1 predecessor.  */
+  if (EDGE_COUNT (bb1->preds) > 1)
+    {
+      edge prede = NULL;
+      FOR_EACH_EDGE (e, ei, bb1->preds)
+	if (e->flags & EDGE_EXECUTABLE)
+	  {
+	    if (prede)
+	      {
+		prede = NULL;
+		break;
+	      }
+	    prede = e;
+	  }
+      if (prede)
+	{
+	  bb1 = prede->src;
+
+	  /* Re-do the dominance check with changed bb1.  */
+	  if (dominated_by_p (CDI_DOMINATORS, bb1, bb2))
+	    return true;
+	}
+    }
+
+  /* Iterate to the single executable bb2 successor.  */
+  edge succe = NULL;
+  FOR_EACH_EDGE (e, ei, bb2->succs)
+    if (e->flags & EDGE_EXECUTABLE)
+      {
+	if (succe)
+	  {
+	    succe = NULL;
+	    break;
+	  }
+	succe = e;
+      }
+  if (succe)
+    {
+      /* Verify the reached block is only reached through succe.
+	 If there is only one edge we can spare us the dominator
+	 check and iterate directly.  */
+      if (EDGE_COUNT (succe->dest->preds) > 1)
+	{
+	  FOR_EACH_EDGE (e, ei, succe->dest->preds)
+	    if (e != succe
+		&& (e->flags & EDGE_EXECUTABLE))
+	      {
+		succe = NULL;
+		break;
+	      }
+	}
+      if (succe)
+	{
+	  bb2 = succe->dest;
+
+	  /* Re-do the dominance check with changed bb2.  */
+	  if (dominated_by_p (CDI_DOMINATORS, bb1, bb2))
+	    return true;
+	}
+    }
+
+  /* We could now iterate updating bb1 / bb2.  */
+  return false;
+}
+
 /* Set the value number of FROM to TO, return true if it has changed
    as a result.  */
 
@@ -2986,6 +3121,86 @@ set_ssa_val_to (tree from, tree to)
 	       == get_addr_base_and_unit_offset (TREE_OPERAND (to, 0), &toff))
 	   && coff == toff))
     {
+      /* If we equate two SSA names we have to make the side-band info
+         of the leader conservative (and remember whatever original value
+	 was present).  */
+      if (TREE_CODE (to) == SSA_NAME)
+	{
+	  if (INTEGRAL_TYPE_P (TREE_TYPE (to))
+	      && SSA_NAME_RANGE_INFO (to))
+	    {
+	      if (SSA_NAME_IS_DEFAULT_DEF (to)
+		  || dominated_by_p_w_unex
+			(gimple_bb (SSA_NAME_DEF_STMT (from)),
+			 gimple_bb (SSA_NAME_DEF_STMT (to))))
+		/* Keep the info from the dominator.  */
+		;
+	      else if (SSA_NAME_IS_DEFAULT_DEF (from)
+		       || dominated_by_p_w_unex
+			    (gimple_bb (SSA_NAME_DEF_STMT (to)),
+			     gimple_bb (SSA_NAME_DEF_STMT (from))))
+		{
+		  /* Save old info.  */
+		  if (! VN_INFO (to)->info.range_info)
+		    {
+		      VN_INFO (to)->info.range_info = SSA_NAME_RANGE_INFO (to);
+		      VN_INFO (to)->range_info_anti_range_p
+			= SSA_NAME_ANTI_RANGE_P (to);
+		    }
+		  /* Use that from the dominator.  */
+		  SSA_NAME_RANGE_INFO (to) = SSA_NAME_RANGE_INFO (from);
+		  SSA_NAME_ANTI_RANGE_P (to) = SSA_NAME_ANTI_RANGE_P (from);
+		}
+	      else
+		{
+		  /* Save old info.  */
+		  if (! VN_INFO (to)->info.range_info)
+		    {
+		      VN_INFO (to)->info.range_info = SSA_NAME_RANGE_INFO (to);
+		      VN_INFO (to)->range_info_anti_range_p
+			= SSA_NAME_ANTI_RANGE_P (to);
+		    }
+		  /* Rather than allocating memory and unioning the info
+		     just clear it.  */
+		  SSA_NAME_RANGE_INFO (to) = NULL;
+		}
+	    }
+	  else if (POINTER_TYPE_P (TREE_TYPE (to))
+		   && SSA_NAME_PTR_INFO (to))
+	    {
+	      if (SSA_NAME_IS_DEFAULT_DEF (to)
+		  || dominated_by_p_w_unex
+			(gimple_bb (SSA_NAME_DEF_STMT (from)),
+			 gimple_bb (SSA_NAME_DEF_STMT (to))))
+		/* Keep the info from the dominator.  */
+		;
+	      else if (SSA_NAME_IS_DEFAULT_DEF (from)
+		       || dominated_by_p_w_unex
+			    (gimple_bb (SSA_NAME_DEF_STMT (to)),
+			     gimple_bb (SSA_NAME_DEF_STMT (from))))
+		{
+		  /* Save old info.  */
+		  if (! VN_INFO (to)->info.ptr_info)
+		    VN_INFO (to)->info.ptr_info = SSA_NAME_PTR_INFO (to);
+		  /* Use that from the dominator.  */
+		  SSA_NAME_PTR_INFO (to) = SSA_NAME_PTR_INFO (from);
+		}
+	      else if (! SSA_NAME_PTR_INFO (from)
+		       /* Handle the case of trivially equivalent info.  */
+		       || memcmp (SSA_NAME_PTR_INFO (to),
+				  SSA_NAME_PTR_INFO (from),
+				  sizeof (ptr_info_def)) != 0)
+		{
+		  /* Save old info.  */
+		  if (! VN_INFO (to)->info.ptr_info)
+		    VN_INFO (to)->info.ptr_info = SSA_NAME_PTR_INFO (to);
+		  /* Rather than allocating memory and unioning the info
+		     just clear it.  */
+		  SSA_NAME_PTR_INFO (to) = NULL;
+		}
+	    }
+	}
+
       VN_INFO (from)->valnum = to;
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, " (changed)\n");
@@ -3138,7 +3353,7 @@ visit_reference_op_load (tree lhs, tree op, gimple *stmt)
   last_vuse = gimple_vuse (stmt);
   last_vuse_ptr = &last_vuse;
   result = vn_reference_lookup (op, gimple_vuse (stmt),
-				default_vn_walk_kind, NULL);
+				default_vn_walk_kind, NULL, true);
   last_vuse_ptr = NULL;
 
   /* We handle type-punning through unions by value-numbering based
@@ -3170,8 +3385,11 @@ visit_reference_op_load (tree lhs, tree op, gimple *stmt)
 	      gimple_seq stmts = NULL;
 	      result = maybe_push_res_to_seq (rcode, TREE_TYPE (op), ops,
 					      &stmts);
-	      gcc_assert (result && gimple_seq_singleton_p (stmts));
-	      new_stmt = gimple_seq_first_stmt (stmts);
+	      if (result)
+		{
+		  gcc_assert (gimple_seq_singleton_p (stmts));
+		  new_stmt = gimple_seq_first_stmt (stmts);
+		}
 	    }
 	  else
 	    /* The expression is already available.  */
@@ -3257,7 +3475,7 @@ visit_reference_op_store (tree lhs, tree op, gimple *stmt)
      Otherwise, the vdefs for the store are used when inserting into
      the table, since the store generates a new memory state.  */
 
-  result = vn_reference_lookup (lhs, vuse, VN_NOWALK, NULL);
+  result = vn_reference_lookup (lhs, vuse, VN_NOWALK, NULL, false);
 
   if (result)
     {
@@ -3272,7 +3490,7 @@ visit_reference_op_store (tree lhs, tree op, gimple *stmt)
       && default_vn_walk_kind == VN_WALK)
     {
       assign = build2 (MODIFY_EXPR, TREE_TYPE (lhs), lhs, op);
-      vn_reference_lookup (assign, vuse, VN_NOWALK, &vnresult);
+      vn_reference_lookup (assign, vuse, VN_NOWALK, &vnresult, false);
       if (vnresult)
 	{
 	  VN_INFO (vdef)->use_processed = true;
@@ -3336,6 +3554,7 @@ visit_phi (gimple *phi)
   tree result;
   tree sameval = VN_TOP;
   bool allsame = true;
+  unsigned n_executable = 0;
 
   /* TODO: We could check for this in init_sccvn, and replace this
      with a gcc_assert.  */
@@ -3351,6 +3570,7 @@ visit_phi (gimple *phi)
       {
 	tree def = PHI_ARG_DEF_FROM_EDGE (phi, e);
 
+	++n_executable;
 	if (TREE_CODE (def) == SSA_NAME)
 	  def = SSA_VAL (def);
 	if (def == VN_TOP)
@@ -3365,9 +3585,11 @@ visit_phi (gimple *phi)
       }
   
   /* If none of the edges was executable or all incoming values are
-     undefined keep the value-number at VN_TOP.  */
-  if (sameval == VN_TOP)
-    return set_ssa_val_to (PHI_RESULT (phi), VN_TOP);
+     undefined keep the value-number at VN_TOP.  If only a single edge
+     is exectuable use its value.  */
+  if (sameval == VN_TOP
+      || n_executable == 1)
+    return set_ssa_val_to (PHI_RESULT (phi), sameval);
 
   /* First see if it is equivalent to a phi node in this block.  We prefer
      this as it allows IV elimination - see PRs 66502 and 67167.  */
@@ -4094,9 +4316,21 @@ free_scc_vn (void)
     {
       tree name = ssa_name (i);
       if (name
-	  && has_VN_INFO (name)
-	  && VN_INFO (name)->needs_insertion)
-	release_ssa_name (name);
+	  && has_VN_INFO (name))
+	{
+	  if (VN_INFO (name)->needs_insertion)
+	    release_ssa_name (name);
+	  else if (POINTER_TYPE_P (TREE_TYPE (name))
+		   && VN_INFO (name)->info.ptr_info)
+	    SSA_NAME_PTR_INFO (name) = VN_INFO (name)->info.ptr_info;
+	  else if (INTEGRAL_TYPE_P (TREE_TYPE (name))
+		   && VN_INFO (name)->info.range_info)
+	    {
+	      SSA_NAME_RANGE_INFO (name) = VN_INFO (name)->info.range_info;
+	      SSA_NAME_ANTI_RANGE_P (name)
+		= VN_INFO (name)->range_info_anti_range_p;
+	    }
+	}
     }
   obstack_free (&vn_ssa_aux_obstack, NULL);
   vn_ssa_aux_table.release ();
@@ -4153,9 +4387,10 @@ class sccvn_dom_walker : public dom_walker
 {
 public:
   sccvn_dom_walker ()
-    : dom_walker (CDI_DOMINATORS), fail (false), cond_stack (vNULL) {}
+    : dom_walker (CDI_DOMINATORS, true), fail (false), cond_stack (vNULL) {}
+  ~sccvn_dom_walker ();
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
   virtual void after_dom_children (basic_block);
 
   void record_cond (basic_block,
@@ -4167,6 +4402,11 @@ public:
   vec<std::pair <basic_block, std::pair <vn_nary_op_t, vn_nary_op_t> > >
     cond_stack;
 };
+
+sccvn_dom_walker::~sccvn_dom_walker ()
+{
+  cond_stack.release ();
+}
 
 /* Record a temporary condition for the BB and its dominated blocks.  */
 
@@ -4253,67 +4493,48 @@ sccvn_dom_walker::after_dom_children (basic_block bb)
 
 /* Value number all statements in BB.  */
 
-void
+edge
 sccvn_dom_walker::before_dom_children (basic_block bb)
 {
   edge e;
   edge_iterator ei;
 
   if (fail)
-    return;
-
-  /* If any of the predecessor edges that do not come from blocks dominated
-     by us are still marked as possibly executable consider this block
-     reachable.  */
-  bool reachable = bb == ENTRY_BLOCK_PTR_FOR_FN (cfun);
-  FOR_EACH_EDGE (e, ei, bb->preds)
-    if (!dominated_by_p (CDI_DOMINATORS, e->src, bb))
-      reachable |= (e->flags & EDGE_EXECUTABLE);
-
-  /* If the block is not reachable all outgoing edges are not
-     executable.  Neither are incoming edges with src dominated by us.  */
-  if (!reachable)
-    {
-      if (dump_file && (dump_flags & TDF_DETAILS))
-	fprintf (dump_file, "Marking all outgoing edges of unreachable "
-		 "BB %d as not executable\n", bb->index);
-
-      FOR_EACH_EDGE (e, ei, bb->succs)
-	e->flags &= ~EDGE_EXECUTABLE;
-
-      FOR_EACH_EDGE (e, ei, bb->preds)
-	{
-	  if (dominated_by_p (CDI_DOMINATORS, e->src, bb))
-	    {
-	      if (dump_file && (dump_flags & TDF_DETAILS))
-		fprintf (dump_file, "Marking backedge from BB %d into "
-			 "unreachable BB %d as not executable\n",
-			 e->src->index, bb->index);
-	      e->flags &= ~EDGE_EXECUTABLE;
-	    }
-	}
-      return;
-    }
+    return NULL;
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     fprintf (dump_file, "Visiting BB %d\n", bb->index);
 
   /* If we have a single predecessor record the equivalence from a
      possible condition on the predecessor edge.  */
-  if (single_pred_p (bb))
+  edge pred_e = NULL;
+  FOR_EACH_EDGE (e, ei, bb->preds)
     {
-      edge e = single_pred_edge (bb);
+      /* Ignore simple backedges from this to allow recording conditions
+         in loop headers.  */
+      if (dominated_by_p (CDI_DOMINATORS, e->src, e->dest))
+	continue;
+      if (! pred_e)
+	pred_e = e;
+      else
+	{
+	  pred_e = NULL;
+	  break;
+	}
+    }
+  if (pred_e)
+    {
       /* Check if there are multiple executable successor edges in
 	 the source block.  Otherwise there is no additional info
 	 to be recorded.  */
       edge e2;
-      FOR_EACH_EDGE (e2, ei, e->src->succs)
-	if (e2 != e
+      FOR_EACH_EDGE (e2, ei, pred_e->src->succs)
+	if (e2 != pred_e
 	    && e2->flags & EDGE_EXECUTABLE)
 	  break;
       if (e2 && (e2->flags & EDGE_EXECUTABLE))
 	{
-	  gimple *stmt = last_stmt (e->src);
+	  gimple *stmt = last_stmt (pred_e->src);
 	  if (stmt
 	      && gimple_code (stmt) == GIMPLE_COND)
 	    {
@@ -4321,11 +4542,11 @@ sccvn_dom_walker::before_dom_children (basic_block bb)
 	      tree lhs = gimple_cond_lhs (stmt);
 	      tree rhs = gimple_cond_rhs (stmt);
 	      record_conds (bb, code, lhs, rhs,
-			    (e->flags & EDGE_TRUE_VALUE) != 0);
+			    (pred_e->flags & EDGE_TRUE_VALUE) != 0);
 	      code = invert_tree_comparison (code, HONOR_NANS (lhs));
 	      if (code != ERROR_MARK)
 		record_conds (bb, code, lhs, rhs,
-			      (e->flags & EDGE_TRUE_VALUE) == 0);
+			      (pred_e->flags & EDGE_TRUE_VALUE) == 0);
 	    }
 	}
     }
@@ -4340,7 +4561,7 @@ sccvn_dom_walker::before_dom_children (basic_block bb)
 	  && !DFS (res))
 	{
 	  fail = true;
-	  return;
+	  return NULL;
 	}
     }
   for (gimple_stmt_iterator gsi = gsi_start_bb (bb);
@@ -4353,20 +4574,20 @@ sccvn_dom_walker::before_dom_children (basic_block bb)
 	    && !DFS (op))
 	  {
 	    fail = true;
-	    return;
+	    return NULL;
 	  }
     }
 
   /* Finally look at the last stmt.  */
   gimple *stmt = last_stmt (bb);
   if (!stmt)
-    return;
+    return NULL;
 
   enum gimple_code code = gimple_code (stmt);
   if (code != GIMPLE_COND
       && code != GIMPLE_SWITCH
       && code != GIMPLE_GOTO)
-    return;
+    return NULL;
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
@@ -4409,19 +4630,17 @@ sccvn_dom_walker::before_dom_children (basic_block bb)
       gcc_unreachable ();
     }
   if (!val)
-    return;
+    return NULL;
 
   edge taken = find_taken_edge (bb, vn_valueize (val));
   if (!taken)
-    return;
+    return NULL;
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     fprintf (dump_file, "Marking all edges out of BB %d but (%d -> %d) as "
 	     "not executable\n", bb->index, bb->index, taken->dest->index);
 
-  FOR_EACH_EDGE (e, ei, bb->succs)
-    if (e != taken)
-      e->flags &= ~EDGE_EXECUTABLE;
+  return taken;
 }
 
 /* Do SCCVN.  Returns true if it finished, false if we bailed out
@@ -4431,7 +4650,6 @@ sccvn_dom_walker::before_dom_children (basic_block bb)
 bool
 run_scc_vn (vn_lookup_kind default_vn_walk_kind_)
 {
-  basic_block bb;
   size_t i;
 
   default_vn_walk_kind = default_vn_walk_kind_;
@@ -4459,15 +4677,6 @@ run_scc_vn (vn_lookup_kind default_vn_walk_kind_)
 		bitmap_set_bit (const_parms, SSA_NAME_VERSION (name));
 	    }
 	}
-    }
-
-  /* Mark all edges as possibly executable.  */
-  FOR_ALL_BB_FN (bb, cfun)
-    {
-      edge_iterator ei;
-      edge e;
-      FOR_EACH_EDGE (e, ei, bb->succs)
-	e->flags |= EDGE_EXECUTABLE;
     }
 
   /* Walk all blocks in dominator order, value-numbering stmts
@@ -4559,6 +4768,10 @@ expressions_equal_p (tree e1, tree e2)
 {
   /* The obvious case.  */
   if (e1 == e2)
+    return true;
+
+  /* If either one is VN_TOP consider them equal.  */
+  if (e1 == VN_TOP || e2 == VN_TOP)
     return true;
 
   /* If only one of them is null, they cannot be equal.  */

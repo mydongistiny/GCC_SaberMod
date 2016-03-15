@@ -1,4 +1,4 @@
-/* Copyright (C) 2012-2015 Free Software Foundation, Inc.
+/* Copyright (C) 2012-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -113,16 +113,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "cp-tree.h"
-#include "output.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
-#include "tree-iterator.h"
 #include "vtable-verify.h"
-#include "gimplify.h"
+#include "cp-tree.h"
 #include "stringpool.h"
+#include "cgraph.h"
+#include "output.h"
+#include "tree-iterator.h"
+#include "gimplify.h"
 #include "stor-layout.h"
 
 static int num_calls_to_regset = 0;
@@ -1185,11 +1182,7 @@ vtv_generate_init_routine (void)
       TREE_STATIC (vtv_fndecl) = 1;
       TREE_USED (vtv_fndecl) = 1;
       DECL_PRESERVE_P (vtv_fndecl) = 1;
-#if defined (TARGET_PECOFF)
       if (flag_vtable_verify == VTV_PREINIT_PRIORITY && !TARGET_PECOFF)
-#else
-      if (flag_vtable_verify == VTV_PREINIT_PRIORITY)
-#endif
         DECL_STATIC_CONSTRUCTOR (vtv_fndecl) = 0;
 
       gimplify_function_tree (vtv_fndecl);
@@ -1197,11 +1190,7 @@ vtv_generate_init_routine (void)
 
       symtab->process_new_functions ();
 
-#if defined (TARGET_PECOFF)
       if (flag_vtable_verify == VTV_PREINIT_PRIORITY && !TARGET_PECOFF)
-#else
-      if (flag_vtable_verify == VTV_PREINIT_PRIORITY)
-#endif
         assemble_vtv_preinit_initializer (vtv_fndecl);
 
     }

@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, Synopsys DesignWare ARC cpu.
-   Copyright (C) 1994-2015 Free Software Foundation, Inc.
+   Copyright (C) 1994-2016 Free Software Foundation, Inc.
 
    Sources derived from work done by Sankhya Technologies (www.sankhya.com) on
    behalf of Synopsys Inc.
@@ -80,10 +80,26 @@ along with GCC; see the file COPYING3.  If not see
 	builtin_define ("__A7__");	\
 	builtin_define ("__ARC700__");	\
       }					\
+    else if (TARGET_EM)			\
+      {					\
+	builtin_define ("__EM__");	\
+      }					\
+    else if (TARGET_HS)			\
+      {					\
+	builtin_define ("__HS__");	\
+      }					\
+    if (TARGET_ATOMIC)			\
+      {					\
+	builtin_define ("__ARC_ATOMIC__");	\
+      }					\
     if (TARGET_NORM)			\
       {					\
 	builtin_define ("__ARC_NORM__");\
 	builtin_define ("__Xnorm");	\
+      }					\
+    if (TARGET_LL64)			\
+      {					\
+	builtin_define ("__ARC_LL64__");\
       }					\
     if (TARGET_MUL64_SET)		\
       builtin_define ("__ARC_MUL64__");\
@@ -143,7 +159,9 @@ along with GCC; see the file COPYING3.  If not see
 %{mcpu=ARC700|!mcpu=*:%{mlock}} \
 %{mcpu=ARC700|!mcpu=*:%{mswape}} \
 %{mcpu=ARC700|!mcpu=*:%{mrtsc}} \
-"
+%{mcpu=ARCHS:-mHS} \
+%{mcpu=ARCEM:-mEM} \
+%{matomic:-mlock}"
 
 #if DEFAULT_LIBC == LIBC_UCLIBC
 /* Note that the default is to link against dynamic libraries, if they are
@@ -237,7 +255,8 @@ along with GCC; see the file COPYING3.  If not see
 #define TARGET_MIXED_CODE (TARGET_MIXED_CODE_SET)
 
 #define TARGET_SPFP (TARGET_SPFP_FAST_SET || TARGET_SPFP_COMPACT_SET)
-#define TARGET_DPFP (TARGET_DPFP_FAST_SET || TARGET_DPFP_COMPACT_SET)
+#define TARGET_DPFP (TARGET_DPFP_FAST_SET || TARGET_DPFP_COMPACT_SET	\
+		     || TARGET_FP_DP_AX)
 
 #define SUBTARGET_SWITCHES
 
@@ -246,12 +265,14 @@ along with GCC; see the file COPYING3.  If not see
 
 /* Non-zero means the cpu supports norm instruction.  This flag is set by
    default for A7, and only for pre A7 cores when -mnorm is given.  */
-#define TARGET_NORM (TARGET_ARC700 || TARGET_NORM_SET)
+#define TARGET_NORM (TARGET_ARC700 || TARGET_NORM_SET || TARGET_HS)
 /* Indicate if an optimized floating point emulation library is available.  */
-#define TARGET_OPTFPE \
- (TARGET_ARC700 \
-  /* We need a barrel shifter and NORM.  */ \
-  || (TARGET_ARC600 && TARGET_NORM_SET))
+#define TARGET_OPTFPE				\
+   (TARGET_ARC700				\
+    /* We need a barrel shifter and NORM.  */	\
+    || (TARGET_ARC600 && TARGET_NORM_SET)	\
+    || TARGET_HS				\
+    || (TARGET_EM && TARGET_NORM_SET && TARGET_BARREL_SHIFTER))
 
 /* Non-zero means the cpu supports swap instruction.  This flag is set by
    default for A7, and only for pre A7 cores when -mswap is given.  */
@@ -271,11 +292,15 @@ along with GCC; see the file COPYING3.  If not see
 
 /* For an anulled-true delay slot insn for a delayed branch, should we only
    use conditional execution?  */
-#define TARGET_AT_DBR_CONDEXEC  (!TARGET_ARC700)
+#define TARGET_AT_DBR_CONDEXEC  (!TARGET_ARC700 && !TARGET_V2)
 
 #define TARGET_ARC600 (arc_cpu == PROCESSOR_ARC600)
 #define TARGET_ARC601 (arc_cpu == PROCESSOR_ARC601)
 #define TARGET_ARC700 (arc_cpu == PROCESSOR_ARC700)
+#define TARGET_EM     (arc_cpu == PROCESSOR_ARCEM)
+#define TARGET_HS     (arc_cpu == PROCESSOR_ARCHS)
+#define TARGET_V2							\
+  ((arc_cpu == PROCESSOR_ARCHS) || (arc_cpu == PROCESSOR_ARCEM))
 
 /* Recast the cpu class to be the cpu attribute.  */
 #define arc_cpu_attr ((enum attr_cpu)arc_cpu)
@@ -690,6 +715,12 @@ enum reg_class
 #define ARC_FIRST_SIMD_DMA_CONFIG_OUT_REG  136
 #define ARC_LAST_SIMD_DMA_CONFIG_REG       143
 
+/* ARCv2 double-register accumulator.  */
+#define ACC_REG_FIRST 58
+#define ACC_REG_LAST  59
+#define ACCL_REGNO    (TARGET_BIG_ENDIAN ? ACC_REG_FIRST + 1 : ACC_REG_FIRST)
+#define ACCH_REGNO    (TARGET_BIG_ENDIAN ? ACC_REG_FIRST : ACC_REG_FIRST + 1)
+
 /* The same information, inverted:
    Return the class number of the smallest class containing
    reg number REGNO.  This could be a conditional expression
@@ -744,6 +775,7 @@ extern enum reg_class arc_regno_reg_class[];
   ((unsigned) (((X) >> (SHIFT)) + 0x100) \
    < 0x200 - ((unsigned) (OFFSET) >> (SHIFT)))
 #define SIGNED_INT12(X) ((unsigned) ((X) + 0x800) < 0x1000)
+#define SIGNED_INT16(X) ((unsigned) ((X) + 0x8000) < 0x10000)
 #define LARGE_INT(X) \
 (((X) < 0) \
  ? (X) >= (-(HOST_WIDE_INT) 0x7fffffff - 1) \
@@ -840,7 +872,7 @@ arc_return_addr_rtx(COUNT,FRAME)
    for a call to a function whose data type is FNTYPE.
    For a library call, FNTYPE is 0.  */
 #define INIT_CUMULATIVE_ARGS(CUM,FNTYPE,LIBNAME,INDIRECT,N_NAMED_ARGS) \
-((CUM) = 0)
+  ((CUM) = 0)
 
 /* The number of registers used for parameter passing.  Local to this file.  */
 #define MAX_ARC_PARM_REGS 8
@@ -1305,6 +1337,7 @@ do {							\
 #endif
 #define SET_ASM_OP "\t.set\t"
 
+extern char rname29[], rname30[];
 extern char rname56[], rname57[], rname58[], rname59[];
 /* How to refer to registers in assembler output.
    This sequence is indexed by compiler's hard-register-number (see above).  */
@@ -1312,7 +1345,7 @@ extern char rname56[], rname57[], rname58[], rname59[];
 {  "r0",   "r1",   "r2",   "r3",       "r4",     "r5",     "r6",    "r7",	\
    "r8",   "r9",  "r10",  "r11",      "r12",    "r13",    "r14",   "r15",	\
   "r16",  "r17",  "r18",  "r19",      "r20",    "r21",    "r22",   "r23",	\
-  "r24",  "r25",   "gp",   "fp",       "sp", "ilink1", "ilink2", "blink",	\
+  "r24",  "r25",   "gp",   "fp",       "sp",  rname29,  rname30, "blink",	\
   "r32",  "r33",  "r34",  "r35",      "r36",    "r37",    "r38",   "r39",	\
    "d1",   "d1",   "d2",   "d2",      "r44",    "r45",    "r46",   "r47",	\
   "r48",  "r49",  "r50",  "r51",      "r52",    "r53",    "r54",   "r55",	\
@@ -1631,12 +1664,13 @@ extern enum arc_function_type arc_compute_function_type (struct function *);
    && GET_CODE (PATTERN (X)) != CLOBBER \
    && get_attr_is_##NAME (X) == IS_##NAME##_YES) \
 
-#define REVERSE_CONDITION(CODE,MODE) \
-	(((MODE) == CC_FP_GTmode || (MODE) == CC_FP_GEmode \
-	  || (MODE) == CC_FP_UNEQmode || (MODE) == CC_FP_ORDmode \
-	  || (MODE) == CC_FPXmode) \
-	 ? reverse_condition_maybe_unordered ((CODE)) \
-	 : reverse_condition ((CODE)))
+#define REVERSE_CONDITION(CODE,MODE)				 \
+  (((MODE) == CC_FP_GTmode || (MODE) == CC_FP_GEmode		 \
+    || (MODE) == CC_FP_UNEQmode || (MODE) == CC_FP_ORDmode	 \
+    || (MODE) == CC_FPXmode || (MODE) == CC_FPU_UNEQmode	 \
+    || (MODE) == CC_FPUmode)					 \
+   ? reverse_condition_maybe_unordered ((CODE))			 \
+   : reverse_condition ((CODE)))
 
 #define ADJUST_INSN_LENGTH(X, LENGTH) \
   ((LENGTH) \
@@ -1677,5 +1711,48 @@ enum
    the predicated varaint.  */
 #define SFUNC_CHECK_PREDICABLE \
   (GET_CODE (PATTERN (insn)) != COND_EXEC || !flag_pic || !TARGET_MEDIUM_CALLS)
+
+/* MPYW feature macro.  Only valid for ARCHS and ARCEM cores.  */
+#define TARGET_MPYW     ((arc_mpy_option > 0) && TARGET_V2)
+/* Full ARCv2 multiplication feature macro.  */
+#define TARGET_MULTI    ((arc_mpy_option > 1) && TARGET_V2)
+/* General MPY feature macro.  */
+#define TARGET_MPY      ((TARGET_ARC700 && (!TARGET_NOMPY_SET)) || TARGET_MULTI)
+/* ARC700 MPY feature macro.  */
+#define TARGET_ARC700_MPY (TARGET_ARC700 && (!TARGET_NOMPY_SET))
+/* Any multiplication feature macro.  */
+#define TARGET_ANY_MPY						\
+  (TARGET_MPY || TARGET_MUL64_SET || TARGET_MULMAC_32BY16_SET)
+
+/* ARC600 and ARC601 feature macro.  */
+#define TARGET_ARC600_FAMILY (TARGET_ARC600 || TARGET_ARC601)
+/* ARC600, ARC601 and ARC700 feature macro.  */
+#define TARGET_ARCOMPACT_FAMILY				\
+  (TARGET_ARC600 || TARGET_ARC601 || TARGET_ARC700)
+/* Loop count register can be read in very next instruction after has
+   been written to by an ordinary instruction.  */
+#define TARGET_LP_WR_INTERLOCK (!TARGET_ARC600_FAMILY)
+
+/* FPU defines.  */
+/* Any FPU support.  */
+#define TARGET_HARD_FLOAT (arc_fpu_build != 0)
+/* Single precision floating point support.  */
+#define TARGET_FP_SP_BASE   ((arc_fpu_build & FPU_SP) != 0)
+/* Double precision floating point support.  */
+#define TARGET_FP_DP_BASE   ((arc_fpu_build & FPU_DP) != 0)
+/* Single precision floating point support with fused operation.  */
+#define TARGET_FP_SP_FUSED  ((arc_fpu_build & FPU_SF) != 0)
+/* Double precision floating point support with fused operation.  */
+#define TARGET_FP_DP_FUSED  ((arc_fpu_build & FPU_DF) != 0)
+/* Single precision floating point conversion instruction support.  */
+#define TARGET_FP_SP_CONV   ((arc_fpu_build & FPU_SC) != 0)
+/* Double precision floating point conversion instruction support.  */
+#define TARGET_FP_DP_CONV   ((arc_fpu_build & FPU_DC) != 0)
+/* Single precision floating point SQRT/DIV instruction support.  */
+#define TARGET_FP_SP_SQRT   ((arc_fpu_build & FPU_SD) != 0)
+/* Double precision floating point SQRT/DIV instruction support.  */
+#define TARGET_FP_DP_SQRT   ((arc_fpu_build & FPU_DD) != 0)
+/* Double precision floating point assist instruction support.  */
+#define TARGET_FP_DP_AX     ((arc_fpu_build & FPX_DP) != 0)
 
 #endif /* GCC_ARC_H */

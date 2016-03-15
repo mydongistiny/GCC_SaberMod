@@ -1,5 +1,5 @@
 /* Data and Control Flow Analysis for Trees.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -57,7 +57,7 @@ extern bool is_ctrl_altering_stmt (gimple *);
 extern bool simple_goto_p (gimple *);
 extern bool stmt_ends_bb_p (gimple *);
 extern bool assert_unreachable_fallthru_edge_p (edge);
-extern void delete_tree_cfg_annotations (void);
+extern void delete_tree_cfg_annotations (function *);
 extern gphi *get_virtual_phi (basic_block);
 extern gimple *first_stmt (basic_block);
 extern gimple *last_stmt (basic_block);

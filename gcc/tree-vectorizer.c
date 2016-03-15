@@ -1,5 +1,5 @@
 /* Vectorizer
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
 
 This file is part of GCC.
@@ -57,29 +57,23 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "dumpfile.h"
 #include "backend.h"
-#include "predict.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "predict.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "cgraph.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "tree-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
-#include "cgraph.h"
 #include "tree-ssa-loop-manip.h"
 #include "tree-cfg.h"
 #include "cfgloop.h"
 #include "tree-vectorizer.h"
-#include "tree-pass.h"
 #include "tree-ssa-propagate.h"
 #include "dbgcnt.h"
-#include "gimple-fold.h"
 #include "tree-scalar-evolution.h"
 
 
@@ -183,6 +177,21 @@ adjust_simduid_builtins (hash_table<simduid_to_vf> *htab)
 	      break;
 	    case IFN_GOMP_SIMD_ORDERED_START:
 	    case IFN_GOMP_SIMD_ORDERED_END:
+	      if (integer_onep (gimple_call_arg (stmt, 0)))
+		{
+		  enum built_in_function bcode
+		    = (ifn == IFN_GOMP_SIMD_ORDERED_START
+		       ? BUILT_IN_GOMP_ORDERED_START
+		       : BUILT_IN_GOMP_ORDERED_END);
+		  gimple *g
+		    = gimple_build_call (builtin_decl_explicit (bcode), 0);
+		  tree vdef = gimple_vdef (stmt);
+		  gimple_set_vdef (g, vdef);
+		  SSA_NAME_DEF_STMT (vdef) = g;
+		  gimple_set_vuse (g, gimple_vuse (stmt));
+		  gsi_replace (&i, g, true);
+		  continue;
+		}
 	      gsi_remove (&i, true);
 	      unlink_stmt_vdef (stmt);
 	      continue;
@@ -356,6 +365,33 @@ vect_destroy_datarefs (vec_info *vinfo)
 }
 
 
+/* Return whether STMT is inside the region we try to vectorize.  */
+
+bool
+vect_stmt_in_region_p (vec_info *vinfo, gimple *stmt)
+{
+  if (!gimple_bb (stmt))
+    return false;
+
+  if (loop_vec_info loop_vinfo = dyn_cast <loop_vec_info> (vinfo))
+    {
+      struct loop *loop = LOOP_VINFO_LOOP (loop_vinfo);
+      if (!flow_bb_inside_loop_p (loop, gimple_bb (stmt)))
+	return false;
+    }
+  else
+    {
+      bb_vec_info bb_vinfo = as_a <bb_vec_info> (vinfo);
+      if (gimple_bb (stmt) != BB_VINFO_BB (bb_vinfo)
+	  || gimple_uid (stmt) == -1U
+	  || gimple_code (stmt) == GIMPLE_PHI)
+	return false;
+    }
+
+  return true;
+}
+
+
 /* If LOOP has been versioned during ifcvt, return the internal call
    guarding it.  */
 
@@ -500,7 +536,13 @@ vectorize_loops (void)
 	  continue;
 
         if (!dbg_cnt (vect_loop))
-	  break;
+	  {
+	    /* We may miss some if-converted loops due to
+	       debug counter.  Set any_ifcvt_loops to visit
+	       them at finalization.  */
+	    any_ifcvt_loops = true;
+	    break;
+	  }
 
 	gimple *loop_vectorized_call = vect_loop_vectorized_call (loop);
 	if (loop_vectorized_call)
@@ -562,12 +604,18 @@ vectorize_loops (void)
   for (i = 1; i < vect_loops_num; i++)
     {
       loop_vec_info loop_vinfo;
+      bool has_mask_store;
 
       loop = get_loop (cfun, i);
       if (!loop)
 	continue;
       loop_vinfo = (loop_vec_info) loop->aux;
+      has_mask_store = false;
+      if (loop_vinfo)
+	has_mask_store = LOOP_VINFO_HAS_MASK_STORE (loop_vinfo);
       destroy_loop_vec_info (loop_vinfo, true);
+      if (has_mask_store)
+	optimize_mask_stores (loop);
       loop->aux = NULL;
     }
 
@@ -698,22 +746,25 @@ pass_slp_vectorize::execute (function *fun)
       scev_initialize ();
     }
 
+  /* Mark all stmts as not belonging to the current region and unvisited.  */
+  FOR_EACH_BB_FN (bb, fun)
+    {
+      for (gimple_stmt_iterator gsi = gsi_start_bb (bb); !gsi_end_p (gsi);
+	   gsi_next (&gsi))
+	{
+	  gimple *stmt = gsi_stmt (gsi);
+	  gimple_set_uid (stmt, -1);
+	  gimple_set_visited (stmt, false);
+	}
+    }
+
   init_stmt_vec_info_vec ();
 
   FOR_EACH_BB_FN (bb, fun)
     {
-      vect_location = find_bb_location (bb);
-
-      if (vect_slp_analyze_bb (bb))
-        {
-          if (!dbg_cnt (vect_slp))
-            break;
-
-          vect_slp_transform_bb (bb);
-          if (dump_enabled_p ())
-            dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, vect_location,
-			     "basic block vectorized\n");
-        }
+      if (vect_slp_bb (bb))
+	dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, vect_location,
+			 "basic block vectorized\n");
     }
 
   free_stmt_vec_info_vec ();

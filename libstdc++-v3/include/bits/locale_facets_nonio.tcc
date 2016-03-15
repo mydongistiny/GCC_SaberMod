@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 2007-2015 Free Software Foundation, Inc.
+// Copyright (C) 2007-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -578,7 +578,7 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL_OR_CXX11
     {
       const locale __loc = __io.getloc();
       const ctype<_CharT>& __ctype = use_facet<ctype<_CharT> >(__loc);
-#ifdef _GLIBCXX_USE_C99
+#if _GLIBCXX_USE_C99_STDIO
       // First try a buffer perhaps big enough.
       int __cs_size = 64;
       char* __cs = static_cast<char*>(__builtin_alloca(__cs_size));
@@ -751,7 +751,7 @@ _GLIBCXX_END_NAMESPACE_LDBL_OR_CXX11
 		case 'S':
 		  // Seconds. [tm_sec]
 		  // [00, 60] in C99 (one leap-second), [00, 61] in C89.
-#ifdef _GLIBCXX_USE_C99
+#if _GLIBCXX_USE_C99
 		  __beg = _M_extract_num(__beg, __end, __tm->tm_sec, 0, 60, 2,
 #else
 		  __beg = _M_extract_num(__beg, __end, __tm->tm_sec, 0, 61, 2,

@@ -1,6 +1,6 @@
 // Components for manipulating sequences of characters -*- C++ -*-
 
-// Copyright (C) 1997-2015 Free Software Foundation, Inc.
+// Copyright (C) 1997-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -323,7 +323,6 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
       template<class _Iterator>
         static void
         _S_copy_chars(_CharT* __p, _Iterator __k1, _Iterator __k2)
-	_GLIBCXX_NOEXCEPT
         {
 	  for (; __k1 != __k2; ++__k1, (void)++__p)
 	    traits_type::assign(*__p, *__k1); // These types are off.
@@ -2901,7 +2900,6 @@ _GLIBCXX_END_NAMESPACE_CXX11
       template<class _Iterator>
         static void
         _S_copy_chars(_CharT* __p, _Iterator __k1, _Iterator __k2)
-	_GLIBCXX_NOEXCEPT
         {
 	  for (; __k1 != __k2; ++__k1, (void)++__p)
 	    traits_type::assign(*__p, *__k1); // These types are off.
@@ -4904,6 +4902,18 @@ _GLIBCXX_END_NAMESPACE_CXX11
       int
       compare(size_type __pos, size_type __n1, const _CharT* __s,
 	      size_type __n2) const;
+
+# ifdef _GLIBCXX_TM_TS_INTERNAL
+      friend void
+      ::_txnal_cow_string_C1_for_exceptions(void* that, const char* s,
+					    void* exc);
+      friend const char*
+      ::_txnal_cow_string_c_str(const void *that);
+      friend void
+      ::_txnal_cow_string_D1(void *that);
+      friend void
+      ::_txnal_cow_string_D1_commit(void *that);
+# endif
   };
 #endif  // !_GLIBCXX_USE_CXX11_ABI
 
@@ -5387,7 +5397,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
 
-#if __cplusplus >= 201103L && defined(_GLIBCXX_USE_C99)
+#if __cplusplus >= 201103L
 
 #include <ext/string_conversions.h>
 
@@ -5396,6 +5406,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 _GLIBCXX_BEGIN_NAMESPACE_CXX11
 
+#if _GLIBCXX_USE_C99_STDLIB
   // 21.4 Numeric Conversions [string.conversions].
   inline int
   stoi(const string& __str, size_t* __idx = 0, int __base = 10)
@@ -5434,7 +5445,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
   inline long double
   stold(const string& __str, size_t* __idx = 0)
   { return __gnu_cxx::__stoa(&std::strtold, "stold", __str.c_str(), __idx); }
+#endif // _GLIBCXX_USE_C99_STDLIB
 
+#if _GLIBCXX_USE_C99_STDIO
   // NB: (v)snprintf vs sprintf.
 
   // DR 1261.
@@ -5498,8 +5511,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
     return __gnu_cxx::__to_xstring<string>(&std::vsnprintf, __n,
 					   "%Lf", __val);
   }
+#endif // _GLIBCXX_USE_C99_STDIO
 
-#ifdef _GLIBCXX_USE_WCHAR_T
+#if defined(_GLIBCXX_USE_WCHAR_T) && _GLIBCXX_USE_C99_WCHAR
   inline int 
   stoi(const wstring& __str, size_t* __idx = 0, int __base = 10)
   { return __gnu_cxx::__stoa<long, int>(&std::wcstol, "stoi", __str.c_str(),
@@ -5601,13 +5615,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 					    L"%Lf", __val);
   }
 #endif // _GLIBCXX_HAVE_BROKEN_VSWPRINTF
-#endif
+#endif // _GLIBCXX_USE_WCHAR_T && _GLIBCXX_USE_C99_WCHAR
 
 _GLIBCXX_END_NAMESPACE_CXX11
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
 
-#endif /* C++11 && _GLIBCXX_USE_C99 ... */
+#endif /* C++11 */
 
 #if __cplusplus >= 201103L
 

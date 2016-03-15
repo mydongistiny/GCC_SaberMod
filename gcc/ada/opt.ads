@@ -200,7 +200,7 @@ package Opt is
 
    Alternate_Main_Name : String_Ptr := null;
    --  GNATBIND
-   --  Set to non null when Bind_Alternate_Main_Name is True. This value
+   --  Set to non-null when Bind_Alternate_Main_Name is True. This value
    --  is modified as needed by Gnatbind.Scan_Bind_Arg.
 
    ASIS_Mode : Boolean := False;
@@ -421,9 +421,11 @@ package Opt is
 
    subtype Debug_Level_Value is Nat range 0 .. 3;
    Debugger_Level : Debug_Level_Value := 0;
+   --  GNAT, GNATBIND
    --  The value given to the -g parameter. The default value for -g with
-   --  no value is 2. This is not currently used but is retained for possible
-   --  future use.
+   --  no value is 2. If no -g is specified, defaults to 0.
+   --  Note that the generated code should never depend on this variable,
+   --  since we want debug info to be nonintrusive on the generate code.
 
    Default_Exit_Status : Int := 0;
    --  GNATBIND
@@ -571,27 +573,41 @@ package Opt is
    --  currently active.
 
    type Exception_Mechanism_Type is
-   --  Determines the handling of exceptions. See Exp_Ch11 for details
+   --  Determines the kind of mechanism used to handle exceptions
    --
-     (Front_End_Setjmp_Longjmp_Exceptions,
+     (Front_End_SJLJ,
       --  Exceptions use setjmp/longjmp generated explicitly by the front end
       --  (this includes gigi or other equivalent parts of the code generator).
       --  AT END handlers are converted into exception handlers by the front
       --  end in this mode.
 
-      Back_End_Exceptions);
+      Back_End_ZCX,
       --  Exceptions are handled by the back end. The front end simply
       --  generates the handlers as they appear in the source, and AT END
       --  handlers are left untouched (they are not converted into exception
-      --  handlers when operating in this mode.
+      --  handlers when operating in this mode). Propagation is performed
+      --  using a frame unwinding scheme and requires no particular setup code
+      --  at handler sites on regular execution paths.
+
+      Back_End_SJLJ);
+      --  Similar to Back_End_ZCX with respect to the front-end processing
+      --  of regular and AT-END handlers. A setjmp/longjmp scheme is used to
+      --  propagate and setup handler contexts on regular execution paths.
+
    pragma Convention (C, Exception_Mechanism_Type);
 
-   Exception_Mechanism : Exception_Mechanism_Type :=
-                           Front_End_Setjmp_Longjmp_Exceptions;
+   Exception_Mechanism : Exception_Mechanism_Type := Front_End_SJLJ;
    --  GNAT
-   --  Set to the appropriate value depending on the default as given in
-   --  system.ads (ZCX_By_Default). The C convention is there to make this
-   --  variable accessible to gigi.
+   --  Set to the appropriate value depending on the flags in system.ads
+   --  (Frontend_Exceptions + ZCX_By_Default). The C convention is there to
+   --  allow access by gigi.
+
+   function Back_End_Exceptions return Boolean;
+   function Front_End_Exceptions return Boolean;
+   function ZCX_Exceptions return Boolean;
+   function SJLJ_Exceptions return Boolean;
+   --  GNAT
+   --  Various properties of the active Exception_Mechanism
 
    Exception_Tracebacks : Boolean := False;
    --  GNATBIND
@@ -702,7 +718,7 @@ package Opt is
    Generate_C_Code : Boolean := False;
    --  GNAT
    --  If True, the Cprint circuitry to generate C code output is activated.
-   --  Set True by use of -gnatd.V.
+   --  Set True by use of -gnateg or -gnatd.V.
 
    Generate_CodePeer_Messages : Boolean := False;
    --  GNAT
@@ -1316,8 +1332,8 @@ package Opt is
 
    Setup_Projects : Boolean := False;
    --  GNAT DRIVER
-   --  Set to True for GNAT SETUP: the Project Manager creates non existing
-   --  object, library and exec directories.
+   --  Set to True for GNAT SETUP: the Project Manager creates nonexistent
+   --  object, library, and exec directories.
 
    Shared_Libgnat : Boolean;
    --  GNATBIND
@@ -1374,7 +1390,7 @@ package Opt is
    Style_Check_Main : Boolean := False;
    --  GNAT
    --  Set True if Style_Check was set for the main unit. This is used to
-   --  renable style checks for units in the mail extended source that get
+   --  enable style checks for units in the main extended source that get
    --  with'ed indirectly. It is set True by use of either the -gnatg or
    --  -gnaty switches, but not by use of the Style_Checks pragma.
 
@@ -1879,7 +1895,7 @@ package Opt is
    --  to date version of Ada).
 
    Ada_Version_Pragma_Config : Node_Id;
-   --  This will be set non empty if it is set by a configuration pragma
+   --  This will be set nonempty if it is set by a configuration pragma
 
    Ada_Version_Explicit_Config : Ada_Version_Type;
    --  GNAT
@@ -2056,7 +2072,7 @@ package Opt is
    --  unit. This affects setting of the assert/debug pragma switches, which
    --  are normally set false by default for an internal unit, except when the
    --  internal unit is the main unit, in which case we use the command line
-   --  settings).
+   --  settings.
 
    procedure Restore_Opt_Config_Switches (Save : Config_Switches_Type);
    --  This procedure restores a set of switch values previously saved by a

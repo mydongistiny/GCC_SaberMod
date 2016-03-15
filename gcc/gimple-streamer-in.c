@@ -1,6 +1,6 @@
 /* Routines for reading GIMPLE from a file stream.
 
-   Copyright (C) 2011-2015 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@google.com>
 
 This file is part of GCC.
@@ -22,20 +22,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "diagnostic.h"
-#include "alias.h"
 #include "backend.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
 #include "ssa.h"
-#include "options.h"
-#include "fold-const.h"
-#include "internal-fn.h"
+#include "gimple-streamer.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
 #include "cgraph.h"
-#include "gimple-streamer.h"
 #include "value-prof.h"
 
 /* Read a PHI function for basic block BB in function FN.  DATA_IN is
@@ -204,8 +198,12 @@ input_gimple_stmt (struct lto_input_block *ib, struct data_in *data_in,
       break;
 
     case GIMPLE_TRANSACTION:
-      gimple_transaction_set_label (as_a <gtransaction *> (stmt),
-				    stream_read_tree (ib, data_in));
+      gimple_transaction_set_label_norm (as_a <gtransaction *> (stmt),
+				         stream_read_tree (ib, data_in));
+      gimple_transaction_set_label_uninst (as_a <gtransaction *> (stmt),
+				           stream_read_tree (ib, data_in));
+      gimple_transaction_set_label_over (as_a <gtransaction *> (stmt),
+				         stream_read_tree (ib, data_in));
       break;
 
     default:

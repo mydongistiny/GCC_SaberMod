@@ -1,5 +1,5 @@
 /* Induction variable canonicalization and loop peeling.
-   Copyright (C) 2004-2015 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -39,34 +39,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "cfghooks.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "tm_p.h"
-#include "profile.h"
+#include "cgraph.h"
 #include "gimple-pretty-print.h"
-#include "internal-fn.h"
+#include "fold-const.h"
+#include "profile.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
-#include "cgraph.h"
 #include "tree-cfg.h"
 #include "tree-ssa-loop-manip.h"
 #include "tree-ssa-loop-niter.h"
 #include "tree-ssa-loop.h"
 #include "tree-into-ssa.h"
 #include "cfgloop.h"
-#include "tree-pass.h"
 #include "tree-chrec.h"
 #include "tree-scalar-evolution.h"
 #include "params.h"
-#include "flags.h"
 #include "tree-inline.h"
-#include "target.h"
 #include "tree-cfgcleanup.h"
 #include "builtins.h"
 
@@ -1138,7 +1132,7 @@ canonicalize_induction_variables (void)
   bool irred_invalidated = false;
   bitmap loop_closed_ssa_invalidated = BITMAP_ALLOC (NULL);
 
-  free_numbers_of_iterations_estimates ();
+  free_numbers_of_iterations_estimates (cfun);
   estimate_numbers_of_iterations ();
 
   FOR_EACH_LOOP (loop, LI_FROM_INNERMOST)
@@ -1170,38 +1164,6 @@ canonicalize_induction_variables (void)
   return 0;
 }
 
-/* Propagate VAL into all uses of SSA_NAME.  */
-
-static void
-propagate_into_all_uses (tree ssa_name, tree val)
-{
-  imm_use_iterator iter;
-  gimple *use_stmt;
-
-  FOR_EACH_IMM_USE_STMT (use_stmt, iter, ssa_name)
-    {
-      gimple_stmt_iterator use_stmt_gsi = gsi_for_stmt (use_stmt);
-      use_operand_p use;
-
-      FOR_EACH_IMM_USE_ON_STMT (use, iter)
-	SET_USE (use, val);
-
-      if (is_gimple_assign (use_stmt)
-	  && get_gimple_rhs_class (gimple_assign_rhs_code (use_stmt))
-	     == GIMPLE_SINGLE_RHS)
-	{
-	  tree rhs = gimple_assign_rhs1 (use_stmt);
-
-	  if (TREE_CODE (rhs) == ADDR_EXPR)
-	    recompute_tree_invariant_for_addr_expr (rhs);
-	}
-
-      fold_stmt_inplace (&use_stmt_gsi);
-      update_stmt (use_stmt);
-      maybe_clean_or_replace_eh_stmt (use_stmt, use_stmt);
-    }
-}
-
 /* Propagate constant SSA_NAMEs defined in basic block BB.  */
 
 static void
@@ -1214,9 +1176,11 @@ propagate_constants_for_unrolling (basic_block bb)
       tree result = gimple_phi_result (phi);
       tree arg = gimple_phi_arg_def (phi, 0);
 
-      if (gimple_phi_num_args (phi) == 1 && TREE_CODE (arg) == INTEGER_CST)
+      if (! SSA_NAME_OCCURS_IN_ABNORMAL_PHI (result)
+	  && gimple_phi_num_args (phi) == 1
+	  && TREE_CODE (arg) == INTEGER_CST)
 	{
-	  propagate_into_all_uses (result, arg);
+	  replace_uses_by (result, arg);
 	  gsi_remove (&gsi, true);
 	  release_ssa_name (result);
 	}
@@ -1235,7 +1199,7 @@ propagate_constants_for_unrolling (basic_block bb)
 	  && (lhs = gimple_assign_lhs (stmt), TREE_CODE (lhs) == SSA_NAME)
 	  && !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
 	{
-	  propagate_into_all_uses (lhs, gimple_assign_rhs1 (stmt));
+	  replace_uses_by (lhs, gimple_assign_rhs1 (stmt));
 	  gsi_remove (&gsi, true);
 	  release_ssa_name (lhs);
 	}
@@ -1326,7 +1290,7 @@ tree_unroll_loops_completely (bool may_increase_size, bool unroll_outer)
       if (loops_state_satisfies_p (LOOP_CLOSED_SSA))
 	loop_closed_ssa_invalidated = BITMAP_ALLOC (NULL);
 
-      free_numbers_of_iterations_estimates ();
+      free_numbers_of_iterations_estimates (cfun);
       estimate_numbers_of_iterations ();
 
       changed = tree_unroll_loops_completely_1 (may_increase_size,
@@ -1376,10 +1340,8 @@ tree_unroll_loops_completely (bool may_increase_size, bool unroll_outer)
 	  /* Clean up the information about numbers of iterations, since
 	     complete unrolling might have invalidated it.  */
 	  scev_reset ();
-#ifdef ENABLE_CHECKING
-	  if (loops_state_satisfies_p (LOOP_CLOSED_SSA))
+	  if (flag_checking && loops_state_satisfies_p (LOOP_CLOSED_SSA))
 	    verify_loop_closed_ssa (true);
-#endif
 	}
       if (loop_closed_ssa_invalidated)
         BITMAP_FREE (loop_closed_ssa_invalidated);
@@ -1532,7 +1494,7 @@ pass_complete_unrolli::execute (function *fun)
     {
       scev_initialize ();
       ret = tree_unroll_loops_completely (optimize >= 3, false);
-      free_numbers_of_iterations_estimates ();
+      free_numbers_of_iterations_estimates (fun);
       scev_finalize ();
     }
   loop_optimizer_finalize ();

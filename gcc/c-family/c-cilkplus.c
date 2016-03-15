@@ -1,7 +1,7 @@
 /* This file contains routines to construct and validate Cilk Plus
    constructs within the C and C++ front ends.
 
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>.
 
 This file is part of GCC.
@@ -23,9 +23,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alias.h"
-#include "tree.h"
-#include "options.h"
 #include "c-common.h"
 
 /* Validate the body of a _Cilk_for construct or a <#pragma simd> for

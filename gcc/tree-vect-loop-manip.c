@@ -1,5 +1,5 @@
 /* Vectorizer Specific Loop Manipulations
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -22,18 +22,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "dumpfile.h"
 #include "backend.h"
-#include "cfghooks.h"
 #include "tree.h"
 #include "gimple.h"
-#include "hard-reg-set.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
 #include "fold-const.h"
 #include "cfganal.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
@@ -41,12 +37,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-loop-manip.h"
 #include "tree-into-ssa.h"
 #include "tree-ssa.h"
-#include "tree-pass.h"
 #include "cfgloop.h"
-#include "diagnostic-core.h"
 #include "tree-scalar-evolution.h"
 #include "tree-vectorizer.h"
-#include "langhooks.h"
 
 /*************************************************************************
   Simple Loop Peeling Utilities
@@ -734,17 +727,26 @@ slpeel_duplicate_current_defs_from_edges (edge from, edge to)
 
   for (gsi_from = gsi_start_phis (from->dest),
        gsi_to = gsi_start_phis (to->dest);
-       !gsi_end_p (gsi_from) && !gsi_end_p (gsi_to);
-       gsi_next (&gsi_from), gsi_next (&gsi_to))
+       !gsi_end_p (gsi_from) && !gsi_end_p (gsi_to);)
     {
       gimple *from_phi = gsi_stmt (gsi_from);
       gimple *to_phi = gsi_stmt (gsi_to);
       tree from_arg = PHI_ARG_DEF_FROM_EDGE (from_phi, from);
+      if (TREE_CODE (from_arg) != SSA_NAME)
+	{	
+	  gsi_next (&gsi_from);
+	  continue;
+	}
       tree to_arg = PHI_ARG_DEF_FROM_EDGE (to_phi, to);
-      if (TREE_CODE (from_arg) == SSA_NAME
-	  && TREE_CODE (to_arg) == SSA_NAME
-	  && get_current_def (to_arg) == NULL_TREE)
+      if (TREE_CODE (to_arg) != SSA_NAME)
+	{	
+	  gsi_next (&gsi_to);
+	  continue;
+	}
+      if (get_current_def (to_arg) == NULL_TREE)
 	set_current_def (to_arg, get_current_def (from_arg));
+      gsi_next (&gsi_from);
+      gsi_next (&gsi_to);
     }
 }
 
@@ -919,9 +921,7 @@ slpeel_tree_duplicate_loop_to_edge_cfg (struct loop *loop,
   free (new_bbs);
   free (bbs);
 
-#ifdef ENABLE_CHECKING
-  verify_dominators (CDI_DOMINATORS);
-#endif
+  checking_verify_dominators (CDI_DOMINATORS);
 
   return new_loop;
 }
@@ -1003,11 +1003,13 @@ slpeel_can_duplicate_loop_p (const struct loop *loop, const_edge e)
   return true;
 }
 
-#ifdef ENABLE_CHECKING
 static void
-slpeel_verify_cfg_after_peeling (struct loop *first_loop,
-                                 struct loop *second_loop)
+slpeel_checking_verify_cfg_after_peeling (struct loop *first_loop,
+					  struct loop *second_loop)
 {
+  if (!flag_checking)
+    return;
+
   basic_block loop1_exit_bb = single_exit (first_loop)->dest;
   basic_block loop2_entry_bb = loop_preheader_edge (second_loop)->src;
   basic_block loop1_entry_bb = loop_preheader_edge (first_loop)->src;
@@ -1035,7 +1037,6 @@ slpeel_verify_cfg_after_peeling (struct loop *first_loop,
      second_loop.  */
   /* TODO */
 }
-#endif
 
 /* If the run time cost model check determines that vectorization is
    not profitable and hence scalar loop should be generated then set
@@ -1691,7 +1692,8 @@ vect_update_ivs_after_vectorizer (loop_vec_info loop_vinfo, tree niters,
 
       /* Skip reduction phis.  */
       stmt_info = vinfo_for_stmt (phi);
-      if (STMT_VINFO_DEF_TYPE (stmt_info) == vect_reduction_def)
+      if (STMT_VINFO_DEF_TYPE (stmt_info) == vect_reduction_def
+	  || STMT_VINFO_DEF_TYPE (stmt_info) == vect_double_reduction_def)
         {
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -1773,9 +1775,7 @@ vect_do_peeling_for_loop_bound (loop_vec_info loop_vinfo,
 				     0, LOOP_VINFO_VECT_FACTOR (loop_vinfo));
   gcc_assert (new_loop);
   gcc_assert (loop_num == loop->num);
-#ifdef ENABLE_CHECKING
-  slpeel_verify_cfg_after_peeling (loop, new_loop);
-#endif
+  slpeel_checking_verify_cfg_after_peeling (loop, new_loop);
 
   /* A guard that controls whether the new_loop is to be executed or skipped
      is placed in LOOP->exit.  LOOP->exit therefore has two successors - one
@@ -2032,9 +2032,7 @@ vect_do_peeling_for_alignment (loop_vec_info loop_vinfo, tree ni_name,
 				   bound, 0);
 
   gcc_assert (new_loop);
-#ifdef ENABLE_CHECKING
-  slpeel_verify_cfg_after_peeling (new_loop, loop);
-#endif
+  slpeel_checking_verify_cfg_after_peeling (new_loop, loop);
   /* For vectorization factor N, we need to copy at most N-1 values 
      for alignment and this means N-2 loopback edge executions.  */
   max_iter = LOOP_VINFO_VECT_FACTOR (loop_vinfo) - 2;
@@ -2296,8 +2294,6 @@ vect_create_cond_for_alias_checks (loop_vec_info loop_vinfo, tree * cond_expr)
     dump_printf_loc (MSG_NOTE, vect_location,
 		     "created %u versioning for alias checks.\n",
 		     comp_alias_ddrs.length ());
-
-  comp_alias_ddrs.release ();
 }
 
 

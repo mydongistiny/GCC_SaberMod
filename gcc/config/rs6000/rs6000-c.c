@@ -1,5 +1,5 @@
 /* Subroutines for the C front end on the PowerPC architecture.
-   Copyright (C) 2002-2015 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
    Contributed by Zack Weinberg <zack@codesourcery.com>
    and Paolo Bonzini <bonzini@gnu.org>
@@ -349,6 +349,8 @@ rs6000_target_modify_macros (bool define_p, HOST_WIDE_INT flags,
     rs6000_define_or_undefine_macro (define_p, "_ARCH_PWR7");
   if ((flags & OPTION_MASK_DIRECT_MOVE) != 0)
     rs6000_define_or_undefine_macro (define_p, "_ARCH_PWR8");
+  if ((flags & OPTION_MASK_MODULO) != 0)
+    rs6000_define_or_undefine_macro (define_p, "_ARCH_PWR9");
   if ((flags & OPTION_MASK_SOFT_FLOAT) != 0)
     rs6000_define_or_undefine_macro (define_p, "_SOFT_FLOAT");
   if ((flags & OPTION_MASK_RECIP_PRECISION) != 0)
@@ -408,6 +410,10 @@ rs6000_cpu_cpp_builtins (cpp_reader *pfile)
     builtin_define ("__RSQRTE__");
   if (TARGET_FRSQRTES)
     builtin_define ("__RSQRTEF__");
+  if (TARGET_FLOAT128)
+    builtin_define ("__FLOAT128__");
+  if (TARGET_FLOAT128_HW)
+    builtin_define ("__FLOAT128_HARDWARE__");
 
   if (TARGET_EXTRA_BUILTINS && cpp_get_options (pfile)->lang != CLK_ASM)
     {
@@ -481,6 +487,11 @@ rs6000_cpu_cpp_builtins (cpp_reader *pfile)
     {
       builtin_define ("__LONG_DOUBLE_128__");
       builtin_define ("__LONGDOUBLE128");
+
+      if (TARGET_IEEEQUAD)
+	builtin_define ("__LONG_DOUBLE_IEEE128__");
+      else
+	builtin_define ("__LONG_DOUBLE_IBM128__");
     }
 
   switch (TARGET_CMODEL)

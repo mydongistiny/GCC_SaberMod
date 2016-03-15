@@ -1,5 +1,5 @@
 /* Declarations for varasm.h.
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -60,7 +60,7 @@ extern void assemble_alias (tree, tree);
    We assume that VALUE has been folded as much as possible;
    therefore, we do not need to check for such things as
    arithmetic-combinations of integers.  */
-extern tree initializer_constant_valid_p (tree, tree);
+extern tree initializer_constant_valid_p (tree, tree, bool = false);
 
 /* Return true if VALUE is a valid constant-valued expression
    for use in initializing a static bit-field; one that can be

@@ -1,5 +1,5 @@
 /* Rewrite a program in Normal form into SSA.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -22,38 +22,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
-#include "fold-const.h"
-#include "flags.h"
-#include "tm_p.h"
+#include "gimple-pretty-print.h"
+#include "diagnostic-core.h"
 #include "langhooks.h"
 #include "cfganal.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
-#include "tree-inline.h"
-#include "tree-pass.h"
-#include "cfgloop.h"
 #include "domwalk.h"
-#include "params.h"
-#include "diagnostic-core.h"
 
 #define PERCENT(x,y) ((float)(x) * 100.0 / (float)(y))
 
@@ -111,7 +94,7 @@ static sbitmap interesting_blocks;
 /* Set of SSA names that have been marked to be released after they
    were registered in the replacement table.  They will be finally
    released after we finish updating the SSA web.  */
-static bitmap names_to_release;
+bitmap names_to_release;
 
 /* vec of vec of PHIs to rewrite in a basic block.  Element I corresponds
    the to basic block with index I.  Allocated once per compilation, *not*
@@ -1408,7 +1391,7 @@ class rewrite_dom_walker : public dom_walker
 public:
   rewrite_dom_walker (cdi_direction direction) : dom_walker (direction) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
   virtual void after_dom_children (basic_block);
 };
 
@@ -1417,7 +1400,7 @@ public:
    (BLOCK_DEFS).  Register new definitions for every PHI node in the
    block.  */
 
-void
+edge
 rewrite_dom_walker::before_dom_children (basic_block bb)
 {
   if (dump_file && (dump_flags & TDF_DETAILS))
@@ -1449,6 +1432,8 @@ rewrite_dom_walker::before_dom_children (basic_block bb)
      reaching definition for the variable and the edge through which that
      definition is reaching the PHI node.  */
   rewrite_add_phi_arguments (bb);
+
+  return NULL;
 }
 
 
@@ -2072,7 +2057,7 @@ class rewrite_update_dom_walker : public dom_walker
 public:
   rewrite_update_dom_walker (cdi_direction direction) : dom_walker (direction) {}
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
   virtual void after_dom_children (basic_block);
 };
 
@@ -2081,7 +2066,7 @@ public:
    for new SSA names produced in this block (BLOCK_DEFS).  Register
    new definitions for every PHI node in the block.  */
 
-void
+edge
 rewrite_update_dom_walker::before_dom_children (basic_block bb)
 {
   bool is_abnormal_phi;
@@ -2094,7 +2079,7 @@ rewrite_update_dom_walker::before_dom_children (basic_block bb)
   block_defs_stack.safe_push (NULL_TREE);
 
   if (!bitmap_bit_p (blocks_to_update, bb->index))
-    return;
+    return NULL;
 
   /* Mark the LHS if any of the arguments flows through an abnormal
      edge.  */
@@ -2150,6 +2135,8 @@ rewrite_update_dom_walker::before_dom_children (basic_block bb)
 
   /* Step 3.  Update PHI nodes.  */
   rewrite_update_phi_arguments (bb);
+
+  return NULL;
 }
 
 /* Called after visiting block BB.  Unwind BLOCK_DEFS_STACK to restore
@@ -2227,7 +2214,7 @@ public:
   mark_def_dom_walker (cdi_direction direction);
   ~mark_def_dom_walker ();
 
-  virtual void before_dom_children (basic_block);
+  virtual edge before_dom_children (basic_block);
 
 private:
   /* Notice that this bitmap is indexed using variable UIDs, so it must be
@@ -2249,7 +2236,7 @@ mark_def_dom_walker::~mark_def_dom_walker ()
 /* Block processing routine for mark_def_sites.  Clear the KILLS bitmap
    at the start of each block, and call mark_def_sites for each statement.  */
 
-void
+edge
 mark_def_dom_walker::before_dom_children (basic_block bb)
 {
   gimple_stmt_iterator gsi;
@@ -2257,6 +2244,7 @@ mark_def_dom_walker::before_dom_children (basic_block bb)
   bitmap_clear (m_kills);
   for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
     mark_def_sites (bb, gsi_stmt (gsi), m_kills);
+  return NULL;
 }
 
 /* Initialize internal data needed during renaming.  */
@@ -3169,44 +3157,45 @@ update_ssa (unsigned update_flags)
   if (!need_ssa_update_p (cfun))
     return;
 
-#ifdef ENABLE_CHECKING
-  timevar_push (TV_TREE_STMT_VERIFY);
-
-  bool err = false;
-
-  FOR_EACH_BB_FN (bb, cfun)
+  if (flag_checking)
     {
-      gimple_stmt_iterator gsi;
-      for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
+      timevar_push (TV_TREE_STMT_VERIFY);
+
+      bool err = false;
+
+      FOR_EACH_BB_FN (bb, cfun)
 	{
-	  gimple *stmt = gsi_stmt (gsi);
-
-	  ssa_op_iter i;
-	  use_operand_p use_p;
-	  FOR_EACH_SSA_USE_OPERAND (use_p, stmt, i, SSA_OP_ALL_USES)
+	  gimple_stmt_iterator gsi;
+	  for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	    {
-	      tree use = USE_FROM_PTR (use_p);
-	      if (TREE_CODE (use) != SSA_NAME)
-		continue;
+	      gimple *stmt = gsi_stmt (gsi);
 
-	      if (SSA_NAME_IN_FREE_LIST (use))
+	      ssa_op_iter i;
+	      use_operand_p use_p;
+	      FOR_EACH_SSA_USE_OPERAND (use_p, stmt, i, SSA_OP_ALL_USES)
 		{
-		  error ("statement uses released SSA name:");
-		  debug_gimple_stmt (stmt);
-		  fprintf (stderr, "The use of ");
-		  print_generic_expr (stderr, use, 0);
-		  fprintf (stderr," should have been replaced\n");
-		  err = true;
+		  tree use = USE_FROM_PTR (use_p);
+		  if (TREE_CODE (use) != SSA_NAME)
+		    continue;
+
+		  if (SSA_NAME_IN_FREE_LIST (use))
+		    {
+		      error ("statement uses released SSA name:");
+		      debug_gimple_stmt (stmt);
+		      fprintf (stderr, "The use of ");
+		      print_generic_expr (stderr, use, 0);
+		      fprintf (stderr," should have been replaced\n");
+		      err = true;
+		    }
 		}
 	    }
 	}
+
+      if (err)
+	internal_error ("cannot update SSA form");
+
+      timevar_pop (TV_TREE_STMT_VERIFY);
     }
-
-  if (err)
-    internal_error ("cannot update SSA form");
-
-  timevar_pop (TV_TREE_STMT_VERIFY);
-#endif
 
   timevar_push (TV_TREE_SSA_INCREMENTAL);
 
@@ -3271,29 +3260,28 @@ update_ssa (unsigned update_flags)
 	 placement heuristics.  */
       prepare_block_for_update (start_bb, insert_phi_p);
 
-#ifdef ENABLE_CHECKING
-      for (i = 1; i < num_ssa_names; ++i)
-	{
-	  tree name = ssa_name (i);
-	  if (!name
-	      || virtual_operand_p (name))
-	    continue;
+      if (flag_checking)
+	for (i = 1; i < num_ssa_names; ++i)
+	  {
+	    tree name = ssa_name (i);
+	    if (!name
+		|| virtual_operand_p (name))
+	      continue;
 
-	  /* For all but virtual operands, which do not have SSA names
-	     with overlapping life ranges, ensure that symbols marked
-	     for renaming do not have existing SSA names associated with
-	     them as we do not re-write them out-of-SSA before going
-	     into SSA for the remaining symbol uses.  */
-	  if (marked_for_renaming (SSA_NAME_VAR (name)))
-	    {
-	      fprintf (stderr, "Existing SSA name for symbol marked for "
-		       "renaming: ");
-	      print_generic_expr (stderr, name, TDF_SLIM);
-	      fprintf (stderr, "\n");
-	      internal_error ("SSA corruption");
-	    }
-	}
-#endif
+	    /* For all but virtual operands, which do not have SSA names
+	       with overlapping life ranges, ensure that symbols marked
+	       for renaming do not have existing SSA names associated with
+	       them as we do not re-write them out-of-SSA before going
+	       into SSA for the remaining symbol uses.  */
+	    if (marked_for_renaming (SSA_NAME_VAR (name)))
+	      {
+		fprintf (stderr, "Existing SSA name for symbol marked for "
+			 "renaming: ");
+		print_generic_expr (stderr, name, TDF_SLIM);
+		fprintf (stderr, "\n");
+		internal_error ("SSA corruption");
+	      }
+	  }
     }
   else
     {

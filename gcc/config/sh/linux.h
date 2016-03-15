@@ -1,5 +1,5 @@
 /* Definitions for SH running Linux-based GNU systems using ELF
-   Copyright (C) 1999-2015 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Contributed by Kazumoto Kojima <kkojima@rr.iij4u.or.jp>
 
 This file is part of GCC.
@@ -67,7 +67,8 @@ along with GCC; see the file COPYING3.  If not see
 #define GLIBC_DYNAMIC_LINKER "/lib/ld-linux.so.2"
 
 #undef SUBTARGET_LINK_EMUL_SUFFIX
-#define SUBTARGET_LINK_EMUL_SUFFIX "_linux"
+#define SUBTARGET_LINK_EMUL_SUFFIX "%{mfdpic:_fd;:_linux}"
+
 #undef SUBTARGET_LINK_SPEC
 #define SUBTARGET_LINK_SPEC \
   "%{shared:-shared} \

@@ -1,5 +1,5 @@
 /* Subroutines for manipulating rtx's in semantically interesting ways.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,31 +21,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "diagnostic-core.h"
-#include "rtl.h"
-#include "alias.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "tm_p.h"
-#include "flags.h"
-#include "except.h"
+#include "target.h"
 #include "function.h"
-#include "insn-config.h"
+#include "rtl.h"
+#include "tree.h"
+#include "tm_p.h"
 #include "expmed.h"
+#include "optabs.h"
+#include "emit-rtl.h"
+#include "recog.h"
+#include "diagnostic-core.h"
+#include "stor-layout.h"
+#include "except.h"
 #include "dojump.h"
 #include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
 #include "expr.h"
-#include "insn-codes.h"
-#include "optabs.h"
-#include "libfuncs.h"
-#include "recog.h"
-#include "langhooks.h"
-#include "target.h"
 #include "common/common-target.h"
 #include "output.h"
 
@@ -885,7 +875,7 @@ promote_ssa_mode (const_tree name, int *punsignedp)
 
 
 
-/* Controls the behaviour of {anti_,}adjust_stack.  */
+/* Controls the behavior of {anti_,}adjust_stack.  */
 static bool suppress_reg_args_size;
 
 /* A helper for adjust_stack and anti_adjust_stack.  */
@@ -1576,7 +1566,7 @@ probe_stack_range (HOST_WIDE_INT first, rtx size)
 					         stack_pointer_rtx,
 					         plus_constant (Pmode,
 								size, first)));
-      emit_library_call (stack_check_libfunc, LCT_NORMAL, VOIDmode, 1, addr,
+      emit_library_call (stack_check_libfunc, LCT_THROW, VOIDmode, 1, addr,
 			 Pmode);
     }
 

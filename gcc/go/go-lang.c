@@ -1,5 +1,5 @@
 /* go-lang.c -- Go frontend gcc interface.
-   Copyright (C) 2009-2015 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -19,28 +19,19 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
-#include "ansidecl.h"
 #include "coretypes.h"
-#include "opts.h"
-#include "alias.h"
+#include "target.h"
 #include "tree.h"
-#include "options.h"
-#include "fold-const.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "gimple-expr.h"
+#include "diagnostic.h"
+#include "opts.h"
+#include "fold-const.h"
 #include "gimplify.h"
 #include "stor-layout.h"
-#include "toplev.h"
 #include "debug.h"
-#include "options.h"
-#include "flags.h"
 #include "convert.h"
-#include "diagnostic.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "target.h"
 #include "common/common-target.h"
 
 #include <mpfr.h>
@@ -98,7 +89,7 @@ static const char *go_relative_import_path = NULL;
 static bool
 go_langhook_init (void)
 {
-  build_common_tree_nodes (false, false);
+  build_common_tree_nodes (false);
 
   /* I don't know why this has to be done explicitly.  */
   void_list_node = build_tree_list (NULL_TREE, void_type_node);
@@ -158,6 +149,9 @@ go_langhook_init_options_struct (struct gcc_options *opts)
   /* Exceptions are used to handle recovering from panics.  */
   opts->x_flag_exceptions = 1;
   opts->x_flag_non_call_exceptions = 1;
+
+  /* We need to keep pointers live for the garbage collector.  */
+  opts->x_flag_keep_gc_roots_live = 1;
 
   /* Go programs expect runtime.Callers to work, and that uses
      libbacktrace that uses debug info.  Set the debug info level to 1

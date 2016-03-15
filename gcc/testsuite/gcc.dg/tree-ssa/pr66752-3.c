@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -fdump-tree-dom1-details -fdump-tree-optimized" } */
+/* { dg-options "-O2 -fdump-tree-vrp1-details -fdump-tree-optimized" } */
 
 extern int status, pt;
 extern int count;
@@ -32,8 +32,9 @@ foo (int N, int c, int b, int *a)
    pt--;
 }
 
-/* There are 3 FSM jump threading opportunities.  */
-/* { dg-final { scan-tree-dump-times "FSM" 3 "dom1"} } */
+/* There are 3 FSM jump threading opportunities, all of which will be
+   realized, which will eliminate testing of FLAG, completely.  */
+/* { dg-final { scan-tree-dump-times "Registering FSM" 3 "vrp1"} } */
 
 /* There should be no assignments or references to FLAG.  */
 /* { dg-final { scan-tree-dump-not "flag" "optimized"} } */

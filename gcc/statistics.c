@@ -1,5 +1,5 @@
 /* Optimization statistics functions.
-   Copyright (C) 2008-2015 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Contributed by Richard Guenther  <rguenther@suse.de>
 
 This file is part of GCC.
@@ -21,11 +21,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tree-pass.h"
-#include "tree-dump.h"
-#include "tm.h"
-#include "hard-reg-set.h"
 #include "function.h"
+#include "tree-pass.h"
 #include "context.h"
 #include "pass_manager.h"
 

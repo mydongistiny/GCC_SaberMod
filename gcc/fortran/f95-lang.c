@@ -1,5 +1,5 @@
 /* gfortran backend interface
-   Copyright (C) 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Paul Brook.
 
 This file is part of GCC.
@@ -24,28 +24,18 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
-#include "ansidecl.h"
-#include "system.h"
 #include "coretypes.h"
-#include "gfortran.h"
-#include "alias.h"
+#include "target.h"
+#include "function.h"
 #include "tree.h"
-#include "options.h"
-#include "flags.h"
+#include "gfortran.h"
+#include "trans.h"
+#include "diagnostic.h" /* For errorcount/warningcount */
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "timevar.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "toplev.h"
-#include "target.h"
 #include "debug.h"
-#include "diagnostic.h" /* For errorcount/warningcount */
-#include "dumpfile.h"
-#include "cgraph.h"
 #include "cpp.h"
-#include "trans.h"
 #include "trans-types.h"
 #include "trans-const.h"
 
@@ -102,6 +92,8 @@ static const struct attribute_spec gfc_attribute_table[] =
   /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
        affects_type_identity } */
   { "omp declare target", 0, 0, true,  false, false,
+    gfc_handle_omp_declare_target_attribute, false },
+  { "oacc function", 0, -1, true,  false, false,
     gfc_handle_omp_declare_target_attribute, false },
   { NULL,		  0, 0, false, false, false, NULL, false }
 };
@@ -499,9 +491,8 @@ gfc_init_decl_processing (void)
   global_binding_level = current_binding_level;
 
   /* Build common tree nodes. char_type_node is unsigned because we
-     only use it for actual characters, not for INTEGER(1). Also, we
-     want double_type_node to actually have double precision.  */
-  build_common_tree_nodes (false, false);
+     only use it for actual characters, not for INTEGER(1).  */
+  build_common_tree_nodes (false);
 
   void_list_node = build_tree_list (NULL_TREE, void_type_node);
 
@@ -988,8 +979,7 @@ gfc_init_builtin_functions (void)
 
   /* Type-generic floating-point classification built-ins.  */
 
-  ftype = build_function_type_list (integer_type_node,
-                                    void_type_node, NULL_TREE);
+  ftype = build_function_type (integer_type_node, NULL_TREE);
   gfc_define_builtin ("__builtin_isfinite", ftype, BUILT_IN_ISFINITE,
 		      "__builtin_isfinite", ATTR_CONST_NOTHROW_LEAF_LIST);
   gfc_define_builtin ("__builtin_isinf", ftype, BUILT_IN_ISINF,
@@ -1003,8 +993,7 @@ gfc_init_builtin_functions (void)
   gfc_define_builtin ("__builtin_signbit", ftype, BUILT_IN_SIGNBIT,
 		      "__builtin_signbit", ATTR_CONST_NOTHROW_LEAF_LIST);
 
-  ftype = build_function_type_list (integer_type_node, void_type_node,
-				    void_type_node, NULL_TREE);
+  ftype = build_function_type (integer_type_node, NULL_TREE);
   gfc_define_builtin ("__builtin_isless", ftype, BUILT_IN_ISLESS,
 		      "__builtin_isless", ATTR_CONST_NOTHROW_LEAF_LIST);
   gfc_define_builtin ("__builtin_islessequal", ftype, BUILT_IN_ISLESSEQUAL,

@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -27,54 +27,38 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
-#include "alias.h"
+#include "predict.h"
+#include "alloc-pool.h"
+#include "gimple-ssa.h"
+#include "cgraph.h"
+#include "lto-streamer.h"
 #include "fold-const.h"
 #include "varasm.h"
 #include "calls.h"
 #include "print-tree.h"
-#include "tree-inline.h"
 #include "langhooks.h"
-#include "toplev.h"
-#include "flags.h"
-#include "debug.h"
-#include "target.h"
-#include "cgraph.h"
 #include "intl.h"
-#include "internal-fn.h"
 #include "tree-eh.h"
 #include "gimple-iterator.h"
-#include "timevar.h"
-#include "dumpfile.h"
-#include "gimple-ssa.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
 #include "value-prof.h"
-#include "except.h"
-#include "diagnostic-core.h"
 #include "ipa-utils.h"
-#include "lto-streamer.h"
-#include "alloc-pool.h"
 #include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "ipa-inline.h"
 #include "cfgloop.h"
 #include "gimple-pretty-print.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "emit-rtl.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
 #include "profile.h"
 #include "params.h"
 #include "tree-chkp.h"
 #include "context.h"
+#include "gimplify.h"
 
 /* FIXME: Only for PROP_loops, but cgraph shouldn't have to know about this.  */
 #include "tree-pass.h"
@@ -516,9 +500,8 @@ cgraph_node::create (tree decl)
       && lookup_attribute ("omp declare target", DECL_ATTRIBUTES (decl)))
     {
       node->offloadable = 1;
-#ifdef ENABLE_OFFLOADING
-      g->have_offload = true;
-#endif
+      if (ENABLE_OFFLOADING)
+	g->have_offload = true;
     }
 
   node->register_symbol ();
@@ -578,7 +561,7 @@ cgraph_node::create_alias (tree alias, tree target)
   alias_node->definition = true;
   alias_node->alias = true;
   if (lookup_attribute ("weakref", DECL_ATTRIBUTES (alias)) != NULL)
-    alias_node->weakref = true;
+    alias_node->transparent_alias = alias_node->weakref = true;
   return alias_node;
 }
 
@@ -832,11 +815,9 @@ symbol_table::create_edge (cgraph_node *caller, cgraph_node *callee,
     {
       /* This is a rather expensive check possibly triggering
 	 construction of call stmt hashtable.  */
-#ifdef ENABLE_CHECKING
       cgraph_edge *e;
-      gcc_checking_assert (
-	!(e = caller->get_edge (call_stmt)) || e->speculative);
-#endif
+      gcc_checking_assert (!(e = caller->get_edge (call_stmt))
+			   || e->speculative);
 
       gcc_assert (is_gimple_call (call_stmt));
     }
@@ -1282,9 +1263,6 @@ cgraph_edge::redirect_call_stmt_to_callee (void)
   gcall *new_stmt;
   gimple_stmt_iterator gsi;
   bool skip_bounds = false;
-#ifdef ENABLE_CHECKING
-  cgraph_node *node;
-#endif
 
   if (e->speculative)
     {
@@ -1298,7 +1276,7 @@ cgraph_edge::redirect_call_stmt_to_callee (void)
       if (decl)
 	e = e->resolve_speculation (decl);
       /* If types do not match, speculation was likely wrong. 
-         The direct edge was posisbly redirected to the clone with a different
+         The direct edge was possibly redirected to the clone with a different
 	 signature.  We did not update the call statement yet, so compare it 
 	 with the reference that still points to the proper type.  */
       else if (!gimple_check_call_matching_types (e->call_stmt,
@@ -1402,13 +1380,11 @@ cgraph_edge::redirect_call_stmt_to_callee (void)
 	  && !skip_bounds))
     return e->call_stmt;
 
-#ifdef ENABLE_CHECKING
-  if (decl)
+  if (flag_checking && decl)
     {
-      node = cgraph_node::get (decl);
+      cgraph_node *node = cgraph_node::get (decl);
       gcc_assert (!node || !node->clone.combined_args_to_skip);
     }
-#endif
 
   if (symtab->dump_file)
     {
@@ -1445,6 +1421,70 @@ cgraph_edge::redirect_call_stmt_to_callee (void)
 	SSA_NAME_DEF_STMT (gimple_vdef (new_stmt)) = new_stmt;
 
       gsi = gsi_for_stmt (e->call_stmt);
+
+      /* For optimized away parameters, add on the caller side
+	 before the call
+	 DEBUG D#X => parm_Y(D)
+	 stmts and associate D#X with parm in decl_debug_args_lookup
+	 vector to say for debug info that if parameter parm had been passed,
+	 it would have value parm_Y(D).  */
+      if (e->callee->clone.combined_args_to_skip && MAY_HAVE_DEBUG_STMTS)
+	{
+	  vec<tree, va_gc> **debug_args
+	    = decl_debug_args_lookup (e->callee->decl);
+	  tree old_decl = gimple_call_fndecl (e->call_stmt);
+	  if (debug_args && old_decl)
+	    {
+	      tree parm;
+	      unsigned i = 0, num;
+	      unsigned len = vec_safe_length (*debug_args);
+	      unsigned nargs = gimple_call_num_args (e->call_stmt);
+	      for (parm = DECL_ARGUMENTS (old_decl), num = 0;
+		   parm && num < nargs;
+		   parm = DECL_CHAIN (parm), num++)
+		if (bitmap_bit_p (e->callee->clone.combined_args_to_skip, num)
+		    && is_gimple_reg (parm))
+		  {
+		    unsigned last = i;
+
+		    while (i < len && (**debug_args)[i] != DECL_ORIGIN (parm))
+		      i += 2;
+		    if (i >= len)
+		      {
+			i = 0;
+			while (i < last
+			       && (**debug_args)[i] != DECL_ORIGIN (parm))
+			  i += 2;
+			if (i >= last)
+			  continue;
+		      }
+		    tree ddecl = (**debug_args)[i + 1];
+		    tree arg = gimple_call_arg (e->call_stmt, num);
+		    if (!useless_type_conversion_p (TREE_TYPE (ddecl),
+						    TREE_TYPE (arg)))
+		      {
+			tree rhs1;
+			if (!fold_convertible_p (TREE_TYPE (ddecl), arg))
+			  continue;
+			if (TREE_CODE (arg) == SSA_NAME
+			    && gimple_assign_cast_p (SSA_NAME_DEF_STMT (arg))
+			    && (rhs1
+				= gimple_assign_rhs1 (SSA_NAME_DEF_STMT (arg)))
+			    && useless_type_conversion_p (TREE_TYPE (ddecl),
+							  TREE_TYPE (rhs1)))
+			  arg = rhs1;
+			else
+			  arg = fold_convert (TREE_TYPE (ddecl), arg);
+		      }
+
+		    gimple *def_temp
+		      = gimple_build_debug_bind (ddecl, unshare_expr (arg),
+						 e->call_stmt);
+		    gsi_insert_before (&gsi, def_temp, GSI_SAME_STMT);
+		  }
+	    }
+	}
+
       gsi_replace (&gsi, new_stmt, false);
       /* We need to defer cleaning EH info on the new statement to
          fixup-cfg.  We may not have dominator information at this point
@@ -1685,39 +1725,38 @@ cgraph_node::remove_callers (void)
 void
 release_function_body (tree decl)
 {
-  if (DECL_STRUCT_FUNCTION (decl))
+  function *fn = DECL_STRUCT_FUNCTION (decl);
+  if (fn)
     {
-      if (DECL_STRUCT_FUNCTION (decl)->cfg
-	  || DECL_STRUCT_FUNCTION (decl)->gimple_df)
+      if (fn->cfg
+	  || fn->gimple_df)
 	{
-	  push_cfun (DECL_STRUCT_FUNCTION (decl));
-	  if (cfun->cfg
-	      && current_loops)
+	  if (fn->cfg
+	      && loops_for_fn (fn))
 	    {
-	      cfun->curr_properties &= ~PROP_loops;
-	      loop_optimizer_finalize ();
+	      fn->curr_properties &= ~PROP_loops;
+	      loop_optimizer_finalize (fn);
 	    }
-	  if (cfun->gimple_df)
+	  if (fn->gimple_df)
 	    {
-	      delete_tree_ssa ();
-	      delete_tree_cfg_annotations ();
-	      cfun->eh = NULL;
+	      delete_tree_ssa (fn);
+	      delete_tree_cfg_annotations (fn);
+	      fn->eh = NULL;
 	    }
-	  if (cfun->cfg)
+	  if (fn->cfg)
 	    {
-	      gcc_assert (!dom_info_available_p (CDI_DOMINATORS));
-	      gcc_assert (!dom_info_available_p (CDI_POST_DOMINATORS));
-	      clear_edges ();
-	      cfun->cfg = NULL;
+	      gcc_assert (!dom_info_available_p (fn, CDI_DOMINATORS));
+	      gcc_assert (!dom_info_available_p (fn, CDI_POST_DOMINATORS));
+	      clear_edges (fn);
+	      fn->cfg = NULL;
 	    }
-	  if (cfun->value_histograms)
-	    free_histograms ();
-	  pop_cfun ();
+	  if (fn->value_histograms)
+	    free_histograms (fn);
 	}
       gimple_set_body (decl, NULL);
       /* Struct function hangs a lot of data that would leak if we didn't
          removed all pointers to it.   */
-      ggc_free (DECL_STRUCT_FUNCTION (decl));
+      ggc_free (fn);
       DECL_STRUCT_FUNCTION (decl) = NULL;
     }
   DECL_SAVED_TREE (decl) = NULL;
@@ -2020,6 +2059,12 @@ cgraph_node::dump (FILE *f)
     fprintf (f, " tm_clone");
   if (icf_merged)
     fprintf (f, " icf_merged");
+  if (merged_comdat)
+    fprintf (f, " merged_comdat");
+  if (split_part)
+    fprintf (f, " split_part");
+  if (indirect_call_target)
+    fprintf (f, " indirect_call_target");
   if (nonfreeing_fn)
     fprintf (f, " nonfreeing_fn");
   if (DECL_STATIC_CONSTRUCTOR (decl))
@@ -2171,7 +2216,7 @@ cgraph_node::get_availability (void)
     avail = AVAIL_NOT_AVAILABLE;
   else if (local.local)
     avail = AVAIL_LOCAL;
-  else if (alias && weakref)
+  else if (transparent_alias)
     ultimate_alias_target (&avail);
   else if (lookup_attribute ("ifunc", DECL_ATTRIBUTES (decl)))
     avail = AVAIL_INTERPOSABLE;
@@ -2179,7 +2224,7 @@ cgraph_node::get_availability (void)
     avail = AVAIL_AVAILABLE;
   /* Inline functions are safe to be analyzed even if their symbol can
      be overwritten at runtime.  It is not meaningful to enforce any sane
-     behaviour on replacing inline function by different body.  */
+     behavior on replacing inline function by different body.  */
   else if (DECL_DECLARED_INLINE_P (decl))
     avail = AVAIL_AVAILABLE;
 
@@ -2279,8 +2324,9 @@ cgraph_node::make_local (cgraph_node *node, void *)
       node->forced_by_abi = false;
       node->local.local = true;
       node->set_section (NULL);
-      node->unique_name = (node->resolution == LDPR_PREVAILING_DEF_IRONLY
-				  || node->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP);
+      node->unique_name = ((node->resolution == LDPR_PREVAILING_DEF_IRONLY
+			   || node->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
+			   && !flag_incremental_link);
       node->resolution = LDPR_PREVAILING_DEF_IRONLY;
       gcc_assert (node->get_availability () == AVAIL_LOCAL);
     }
@@ -2615,7 +2661,8 @@ collect_callers_of_node_1 (cgraph_node *node, void *data)
 
   if (avail > AVAIL_INTERPOSABLE)
     for (cs = node->callers; cs != NULL; cs = cs->next_caller)
-      if (!cs->indirect_inlining_edge)
+      if (!cs->indirect_inlining_edge
+	  && !cs->caller->thunk.thunk_p)
         redirect_callers->safe_push (cs);
   return false;
 }
@@ -2741,7 +2788,7 @@ cgraph_edge::verify_corresponds_to_fndecl (tree decl)
   node = node->ultimate_alias_target ();
 
   /* Optimizers can redirect unreachable calls or calls triggering undefined
-     behaviour to builtin_unreachable.  */
+     behavior to builtin_unreachable.  */
   if (DECL_BUILT_IN_CLASS (callee->decl) == BUILT_IN_NORMAL
       && DECL_FUNCTION_CODE (callee->decl) == BUILT_IN_UNREACHABLE)
     return false;
@@ -3262,10 +3309,12 @@ cgraph_node::get_untransformed_body (void)
   size_t len;
   tree decl = this->decl;
 
-  if (DECL_RESULT (decl))
+  /* Check if body is already there.  Either we have gimple body or
+     the function is thunk and in that case we set DECL_ARGUMENTS.  */
+  if (DECL_ARGUMENTS (decl) || gimple_has_body_p (decl))
     return false;
 
-  gcc_assert (in_lto_p);
+  gcc_assert (in_lto_p && !DECL_RESULT (decl));
 
   timevar_push (TV_IPA_LTO_GIMPLE_IN);
 
@@ -3274,9 +3323,11 @@ cgraph_node::get_untransformed_body (void)
 
   /* We may have renamed the declaration, e.g., a static function.  */
   name = lto_get_decl_name_mapping (file_data, name);
+  struct lto_in_decl_state *decl_state
+	 = lto_get_function_in_decl_state (file_data, decl);
 
   data = lto_get_section_data (file_data, LTO_section_function_body,
-			       name, &len);
+			       name, &len, decl_state->compressed);
   if (!data)
     fatal_error (input_location, "%s: section %s is missing",
 		 file_data->file_name,
@@ -3287,7 +3338,7 @@ cgraph_node::get_untransformed_body (void)
   lto_input_function_body (file_data, this, data);
   lto_stats.num_function_bodies++;
   lto_free_section_data (file_data, LTO_section_function_body, name,
-			 data, len);
+			 data, len, decl_state->compressed);
   lto_free_function_in_decl_state_for_node (this);
   /* Keep lto file data so ipa-inline-analysis knows about cross module
      inlining.  */
@@ -3309,7 +3360,7 @@ cgraph_node::get_body (void)
   updated = get_untransformed_body ();
 
   /* Getting transformed body makes no sense for inline clones;
-     we should never use this on real clones becuase they are materialized
+     we should never use this on real clones because they are materialized
      early.
      TODO: Materializing clones here will likely lead to smaller LTRANS
      footprint. */

@@ -1,5 +1,5 @@
 /* Default language-specific hooks.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva  <aoliva@redhat.com>
 
 This file is part of GCC.
@@ -21,27 +21,20 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "intl.h"
-#include "tm.h"
-#include "toplev.h"
-#include "alias.h"
-#include "tree.h"
-#include "stringpool.h"
-#include "attribs.h"
-#include "tree-inline.h"
-#include "gimplify.h"
-#include "rtl.h"
-#include "insn-config.h"
-#include "flags.h"
-#include "langhooks.h"
 #include "target.h"
-#include "langhooks-def.h"
-#include "diagnostic.h"
-#include "tree-diagnostic.h"
-#include "function.h"
-#include "cgraph.h"
+#include "rtl.h"
+#include "tree.h"
 #include "timevar.h"
+#include "stringpool.h"
+#include "diagnostic.h"
+#include "intl.h"
+#include "toplev.h"
+#include "attribs.h"
+#include "gimplify.h"
+#include "langhooks.h"
+#include "tree-diagnostic.h"
 #include "output.h"
+#include "timevar.h"
 
 /* Do nothing; in many cases the default hook.  */
 
@@ -666,7 +659,11 @@ void
 lhd_append_data (const void *data, size_t len, void *)
 {
   if (data)
-    assemble_string ((const char *)data, len);
+    {
+      timevar_push (TV_IPA_LTO_OUTPUT);
+      assemble_string ((const char *)data, len);
+      timevar_pop (TV_IPA_LTO_OUTPUT);
+    }
 }
 
 

@@ -1,5 +1,5 @@
 /* Perform instruction reorganizations for delay slot filling.
-   Copyright (C) 1992-2015 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu).
    Hacked by Michael Tiemann (tiemann@cygnus.com).
 
@@ -104,31 +104,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
-#include "predict.h"
-#include "tree.h"
+#include "target.h"
 #include "rtl.h"
-#include "df.h"
-#include "diagnostic-core.h"
+#include "tree.h"
+#include "predict.h"
 #include "tm_p.h"
-#include "flags.h"
-#include "alias.h"
-#include "insn-config.h"
 #include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
+#include "insn-config.h"
 #include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
-#include "conditions.h"
-#include "regs.h"
 #include "recog.h"
 #include "insn-attr.h"
 #include "resource.h"
-#include "except.h"
 #include "params.h"
-#include "target.h"
 #include "tree-pass.h"
 
 
@@ -752,6 +739,7 @@ optimize_skip (rtx_jump_insn *insn, vec<rtx_insn *> *delay_list)
       || recog_memoized (trial) < 0
       || (! eligible_for_annul_false (insn, 0, trial, flags)
 	  && ! eligible_for_annul_true (insn, 0, trial, flags))
+      || RTX_FRAME_RELATED_P (trial)
       || can_throw_internal (trial))
     return;
 
@@ -1139,7 +1127,13 @@ steal_delay_list_from_target (rtx_insn *insn, rtx condition, rtx_sequence *seq,
 					      trial, flags)))
 	{
 	  if (must_annul)
-	    used_annul = 1;
+	    {
+	      /* Frame related instructions cannot go into annulled delay
+		 slots, it messes up the dwarf info.  */
+	      if (RTX_FRAME_RELATED_P (trial))
+		return;
+	      used_annul = 1;
+	    }
 	  rtx_insn *temp = copy_delay_slot_insn (trial);
 	  INSN_FROM_TARGET_P (temp) = 1;
 	  add_to_delay_list (temp, &new_delay_list);
@@ -2477,9 +2471,9 @@ fill_slots_from_thread (rtx_jump_insn *insn, rtx condition,
 	      if (eligible_for_delay (insn, *pslots_filled, trial, flags))
 		goto winner;
 	    }
-	  else if (0
-		   || (ANNUL_IFTRUE_SLOTS && ! thread_if_true)
-		   || (ANNUL_IFFALSE_SLOTS && thread_if_true))
+	  else if (!RTX_FRAME_RELATED_P (trial)
+		   && ((ANNUL_IFTRUE_SLOTS && ! thread_if_true)
+		        || (ANNUL_IFFALSE_SLOTS && thread_if_true)))
 	    {
 	      old_trial = trial;
 	      trial = try_split (pat, trial, 0);
@@ -3726,7 +3720,8 @@ dbr_schedule (rtx_insn *first)
     {
       fill_simple_delay_slots (1);
       fill_simple_delay_slots (0);
-      fill_eager_delay_slots ();
+      if (!targetm.no_speculation_in_delay_slots_p ())
+	fill_eager_delay_slots ();
       relax_delay_slots (first);
     }
 

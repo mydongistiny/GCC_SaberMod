@@ -1,5 +1,5 @@
 /* Process declarations and variables for C++ compiler.
-   Copyright (C) 1988-2015 Free Software Foundation, Inc.
+   Copyright (C) 1988-2016 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -29,32 +29,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "alias.h"
-#include "tree.h"
+#include "target.h"
+#include "cp-tree.h"
+#include "c-family/c-common.h"
+#include "timevar.h"
 #include "stringpool.h"
+#include "cgraph.h"
 #include "varasm.h"
 #include "attribs.h"
 #include "stor-layout.h"
 #include "calls.h"
-#include "flags.h"
-#include "cp-tree.h"
 #include "decl.h"
 #include "toplev.h"
-#include "timevar.h"
-#include "cpplib.h"
-#include "target.h"
-#include "c-family/c-common.h"
 #include "c-family/c-objc.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
-#include "tree-inline.h"
 #include "c-family/c-pragma.h"
 #include "dumpfile.h"
 #include "intl.h"
-#include "splay-tree.h"
-#include "langhooks.h"
 #include "c-family/c-ada-spec.h"
 #include "asan.h"
 
@@ -112,6 +102,11 @@ static GTY(()) vec<tree, va_gc> *mangling_aliases;
 /* Nonzero if we're done parsing and into end-of-file activities.  */
 
 int at_eof;
+
+/* True if note_mangling_alias should enqueue mangling aliases for
+   later generation, rather than emitting them right away.  */
+
+bool defer_mangling_aliases = true;
 
 
 /* Return a member function type (a METHOD_TYPE), given FNTYPE (a
@@ -359,6 +354,7 @@ grok_array_decl (location_t loc, tree array_expr, tree index_exp,
   tree expr;
   tree orig_array_expr = array_expr;
   tree orig_index_exp = index_exp;
+  tree overload = NULL_TREE;
 
   if (error_operand_p (array_expr) || error_operand_p (index_exp))
     return error_mark_node;
@@ -384,7 +380,7 @@ grok_array_decl (location_t loc, tree array_expr, tree index_exp,
       if (decltype_p)
 	complain |= tf_decltype;
       expr = build_new_op (loc, ARRAY_REF, LOOKUP_NORMAL, array_expr,
-			   index_exp, NULL_TREE, /*overload=*/NULL, complain);
+			   index_exp, NULL_TREE, &overload, complain);
     }
   else
     {
@@ -429,8 +425,14 @@ grok_array_decl (location_t loc, tree array_expr, tree index_exp,
       expr = build_array_ref (input_location, array_expr, index_exp);
     }
   if (processing_template_decl && expr != error_mark_node)
-    return build_min_non_dep (ARRAY_REF, expr, orig_array_expr, orig_index_exp,
-			      NULL_TREE, NULL_TREE);
+    {
+      if (overload != NULL_TREE)
+	return (build_min_non_dep_op_overload
+		(ARRAY_REF, expr, overload, orig_array_expr, orig_index_exp));
+
+      return build_min_non_dep (ARRAY_REF, expr, orig_array_expr, orig_index_exp,
+				NULL_TREE, NULL_TREE);
+    }
   return expr;
 }
 
@@ -1191,7 +1193,8 @@ is_late_template_attribute (tree attr, tree decl)
 	 second and following arguments.  Attributes like mode, format,
 	 cleanup and several target specific attributes aren't late
 	 just because they have an IDENTIFIER_NODE as first argument.  */
-      if (arg == args && identifier_p (t))
+      if (arg == args && attribute_takes_identifier_p (name)
+	  && identifier_p (t))
 	continue;
 
       if (value_dependent_expression_p (t)
@@ -1453,11 +1456,6 @@ cplus_decl_attributes (tree *decl, tree attributes, int flags)
       if (VAR_P (*decl)
 	  && DECL_CLASS_SCOPE_P (*decl))
 	error ("%q+D static data member inside of declare target directive",
-	       *decl);
-      else if (VAR_P (*decl)
-	       && (DECL_FUNCTION_SCOPE_P (*decl)
-		   || (current_function_decl && !DECL_EXTERNAL (*decl))))
-	error ("%q+D in block scope inside of declare target directive",
 	       *decl);
       else if (!processing_template_decl
 	       && VAR_P (*decl)
@@ -1823,7 +1821,8 @@ comdat_linkage (tree decl)
 	}
     }
 
-  DECL_COMDAT (decl) = 1;
+  if (TREE_PUBLIC (decl))
+    DECL_COMDAT (decl) = 1;
 }
 
 /* For win32 we also want to put explicit instantiations in
@@ -2686,14 +2685,22 @@ reset_type_linkage_2 (tree type)
 	  reset_decl_linkage (ti);
 	}
       for (tree m = TYPE_FIELDS (type); m; m = DECL_CHAIN (m))
-	if (VAR_P (m))
-	  reset_decl_linkage (m);
+	{
+	  tree mem = STRIP_TEMPLATE (m);
+	  if (VAR_P (mem))
+	    reset_decl_linkage (mem);
+	}
       for (tree m = TYPE_METHODS (type); m; m = DECL_CHAIN (m))
 	{
-	  reset_decl_linkage (m);
-	  if (DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (m))
-	    /* Also update its name, for cxx_dwarf_name.  */
-	    DECL_NAME (m) = TYPE_IDENTIFIER (type);
+	  tree mem = STRIP_TEMPLATE (m);
+	  reset_decl_linkage (mem);
+	  if (DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (mem))
+	    {
+	      /* Also update its name, for cxx_dwarf_name.  */
+	      DECL_NAME (mem) = TYPE_IDENTIFIER (type);
+	      if (m != mem)
+		DECL_NAME (m) = TYPE_IDENTIFIER (type);
+	    }
 	}
       binding_table_foreach (CLASSTYPE_NESTED_UTDS (type),
 			     bt_reset_linkage_2, NULL);
@@ -3127,7 +3134,7 @@ get_guard_cond (tree guard, bool thread_safe)
     {
       guard_value = integer_one_node;
       if (!same_type_p (TREE_TYPE (guard_value), TREE_TYPE (guard)))
-	guard_value = convert (TREE_TYPE (guard), guard_value);
+	guard_value = fold_convert (TREE_TYPE (guard), guard_value);
       guard = cp_build_binary_op (input_location,
 				  BIT_AND_EXPR, guard, guard_value,
 				  tf_warning_or_error);
@@ -3135,7 +3142,7 @@ get_guard_cond (tree guard, bool thread_safe)
 
   guard_value = integer_zero_node;
   if (!same_type_p (TREE_TYPE (guard_value), TREE_TYPE (guard)))
-    guard_value = convert (TREE_TYPE (guard), guard_value);
+    guard_value = fold_convert (TREE_TYPE (guard), guard_value);
   return cp_build_binary_op (input_location,
 			     EQ_EXPR, guard, guard_value,
 			     tf_warning_or_error);
@@ -3153,7 +3160,7 @@ set_guard (tree guard)
   guard = get_guard_bits (guard);
   guard_init = integer_one_node;
   if (!same_type_p (TREE_TYPE (guard_init), TREE_TYPE (guard)))
-    guard_init = convert (TREE_TYPE (guard), guard_init);
+    guard_init = fold_convert (TREE_TYPE (guard), guard_init);
   return cp_build_modify_expr (guard, NOP_EXPR, guard_init, 
 			       tf_warning_or_error);
 }
@@ -4225,6 +4232,9 @@ decl_maybe_constant_var_p (tree decl)
     return false;
   if (DECL_DECLARED_CONSTEXPR_P (decl))
     return true;
+  if (DECL_HAS_VALUE_EXPR_P (decl))
+    /* A proxy isn't constant.  */
+    return false;
   return (CP_TYPE_CONST_NON_VOLATILE_P (type)
 	  && INTEGRAL_OR_ENUMERATION_TYPE_P (type));
 }
@@ -4404,7 +4414,7 @@ void
 note_mangling_alias (tree decl ATTRIBUTE_UNUSED, tree id2 ATTRIBUTE_UNUSED)
 {
 #ifdef ASM_OUTPUT_DEF
-  if (at_eof)
+  if (!defer_mangling_aliases)
     generate_mangling_alias (decl, id2);
   else
     {
@@ -4414,7 +4424,9 @@ note_mangling_alias (tree decl ATTRIBUTE_UNUSED, tree id2 ATTRIBUTE_UNUSED)
 #endif
 }
 
-static void
+/* Emit all mangling aliases that were deferred up to this point.  */
+
+void
 generate_mangling_aliases ()
 {
   while (!vec_safe_is_empty (mangling_aliases))
@@ -4423,6 +4435,7 @@ generate_mangling_aliases ()
       tree decl = mangling_aliases->pop();
       generate_mangling_alias (decl, id2);
     }
+  defer_mangling_aliases = false;
 }
 
 /* The entire file is now complete.  If requested, dump everything
@@ -4929,9 +4942,8 @@ cxx_post_compilation_parsing_cleanups (void)
 
   input_location = locus_at_end_of_parsing;
 
-#ifdef ENABLE_CHECKING
-  validate_conversion_obstack ();
-#endif /* ENABLE_CHECKING */
+  if (flag_checking)
+    validate_conversion_obstack ();
 
   timevar_stop (TV_PHASE_LATE_PARSING_CLEANUPS);
 }
@@ -5064,6 +5076,10 @@ mark_used (tree decl, tsubst_flags_t complain)
 
   /* Set TREE_USED for the benefit of -Wunused.  */
   TREE_USED (decl) = 1;
+
+  if (TREE_CODE (decl) == TEMPLATE_DECL)
+    return true;
+
   if (DECL_CLONED_FUNCTION_P (decl))
     TREE_USED (DECL_CLONED_FUNCTION (decl)) = 1;
 

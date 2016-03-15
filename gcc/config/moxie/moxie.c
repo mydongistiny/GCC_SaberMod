@@ -1,5 +1,5 @@
 /* Target Code for moxie
-   Copyright (C) 2008-2015 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Contributed by Anthony Green.
 
    This file is part of GCC.
@@ -106,7 +106,7 @@ moxie_operand_lossage (const char *msgid, rtx op)
 /* The PRINT_OPERAND_ADDRESS worker.  */
 
 static void
-moxie_print_operand_address (FILE *file, rtx x)
+moxie_print_operand_address (FILE *file, machine_mode, rtx x)
 {
   switch (GET_CODE (x))
     {
@@ -183,7 +183,7 @@ moxie_print_operand (FILE *file, rtx x, int code)
       return;
 
     case MEM:
-      output_address (XEXP (operand, 0));
+      output_address (GET_MODE (XEXP (operand, 0)), XEXP (operand, 0));
       return;
 
     default:

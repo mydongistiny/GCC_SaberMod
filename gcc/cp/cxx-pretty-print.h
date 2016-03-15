@@ -1,5 +1,5 @@
 /* Interface for the GNU C++ pretty-printer.
-   Copyright (C) 2003-2015 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -107,5 +107,6 @@ void pp_cxx_parameterized_constraint (cxx_pretty_printer *, tree);
 void pp_cxx_conjunction (cxx_pretty_printer *, tree);
 void pp_cxx_disjunction (cxx_pretty_printer *, tree);
 void pp_cxx_constraint (cxx_pretty_printer *, tree);
+void pp_cxx_constrained_type_spec (cxx_pretty_printer *, tree);
 
 #endif /* GCC_CXX_PRETTY_PRINT_H */

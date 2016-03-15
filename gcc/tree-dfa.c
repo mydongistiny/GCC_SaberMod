@@ -1,5 +1,5 @@
 /* Data flow functions for trees.
-   Copyright (C) 2001-2015 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -22,33 +22,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "tree-pass.h"
 #include "ssa.h"
-#include "alias.h"
+#include "tree-pretty-print.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "tm_p.h"
 #include "langhooks.h"
-#include "flags.h"
-#include "tree-pretty-print.h"
-#include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
-#include "tree-inline.h"
-#include "tree-pass.h"
-#include "params.h"
 
 /* Build and maintain data flow information for trees.  */
 
@@ -383,12 +368,14 @@ get_or_create_ssa_default_def (struct function *fn, tree var)
    base variable.  The access range is delimited by bit positions *POFFSET and
    *POFFSET + *PMAX_SIZE.  The access size is *PSIZE bits.  If either
    *PSIZE or *PMAX_SIZE is -1, they could not be determined.  If *PSIZE
-   and *PMAX_SIZE are equal, the access is non-variable.  */
+   and *PMAX_SIZE are equal, the access is non-variable.  If *PREVERSE is
+   true, the storage order of the reference is reversed.  */
 
 tree
 get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
 			 HOST_WIDE_INT *psize,
-			 HOST_WIDE_INT *pmax_size)
+			 HOST_WIDE_INT *pmax_size,
+			 bool *preverse)
 {
   offset_int bitsize = -1;
   offset_int maxsize;
@@ -396,7 +383,8 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
   offset_int bit_offset = 0;
   bool seen_variable_array_ref = false;
 
-  /* First get the final access size from just the outermost expression.  */
+  /* First get the final access size and the storage order from just the
+     outermost expression.  */
   if (TREE_CODE (exp) == COMPONENT_REF)
     size_tree = DECL_SIZE (TREE_OPERAND (exp, 1));
   else if (TREE_CODE (exp) == BIT_FIELD_REF)
@@ -407,11 +395,13 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
       if (mode == BLKmode)
 	size_tree = TYPE_SIZE (TREE_TYPE (exp));
       else
-	bitsize = int (GET_MODE_PRECISION (mode));
+	bitsize = int (GET_MODE_BITSIZE (mode));
     }
   if (size_tree != NULL_TREE
       && TREE_CODE (size_tree) == INTEGER_CST)
     bitsize = wi::to_offset (size_tree);
+
+  *preverse = reverse_storage_order_for_component_p (exp);
 
   /* Initially, maxsize is the same as the accessed element size.
      In the following it will only grow (or become -1).  */
@@ -598,15 +588,6 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
       exp = TREE_OPERAND (exp, 0);
     }
 
-  /* We need to deal with variable arrays ending structures.  */
-  if (seen_variable_array_ref
-      && maxsize != -1
-      && (TYPE_SIZE (TREE_TYPE (exp)) == NULL_TREE
-	  || TREE_CODE (TYPE_SIZE (TREE_TYPE (exp))) != INTEGER_CST
-	  || (bit_offset + maxsize
-	      == wi::to_offset (TYPE_SIZE (TREE_TYPE (exp))))))
-    maxsize = -1;
-
  done:
   if (!wi::fits_shwi_p (bitsize) || wi::neg_p (bitsize))
     {
@@ -631,9 +612,22 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
 
   if (DECL_P (exp))
     {
+      if (flag_unconstrained_commons
+	  && TREE_CODE (exp) == VAR_DECL && DECL_COMMON (exp))
+	{
+	  tree sz_tree = TYPE_SIZE (TREE_TYPE (exp));
+	  /* If size is unknown, or we have read to the end, assume there
+	     may be more to the structure than we are told.  */
+	  if (TREE_CODE (TREE_TYPE (exp)) == ARRAY_TYPE
+	      || (seen_variable_array_ref
+		  && (sz_tree == NULL_TREE
+		      || TREE_CODE (sz_tree) != INTEGER_CST
+		      || (bit_offset + maxsize == wi::to_offset (sz_tree)))))
+	    maxsize = -1;
+	}
       /* If maxsize is unknown adjust it according to the size of the
          base decl.  */
-      if (maxsize == -1
+      else if (maxsize == -1
 	  && DECL_SIZE (exp)
 	  && TREE_CODE (DECL_SIZE (exp)) == INTEGER_CST)
 	maxsize = wi::to_offset (DECL_SIZE (exp)) - bit_offset;

@@ -1,6 +1,6 @@
 /* OpenACC Runtime Library: acc_device_host.
 
-   Copyright (C) 2013-2015 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
    Contributed by Mentor Embedded.
 
@@ -123,7 +123,8 @@ host_host2dev (int n __attribute__ ((unused)),
 }
 
 static void
-host_run (int n __attribute__ ((unused)), void *fn_ptr, void *vars)
+host_run (int n __attribute__ ((unused)), void *fn_ptr, void *vars,
+	  void **args __attribute__((unused)))
 {
   void (*fn)(void *) = (void (*)(void *)) fn_ptr;
 
@@ -135,8 +136,6 @@ host_openacc_exec (void (*fn) (void *),
 		   size_t mapnum __attribute__ ((unused)),
 		   void **hostaddrs,
 		   void **devaddrs __attribute__ ((unused)),
-		   size_t *sizes __attribute__ ((unused)),
-		   unsigned short *kinds __attribute__ ((unused)),
 		   int async __attribute__ ((unused)),
 		   unsigned *dims __attribute ((unused)),
 		   void *targ_mem_desc __attribute__ ((unused)))
@@ -224,7 +223,7 @@ static struct gomp_device_descr host_dispatch =
 
     .mem_map = { NULL },
     /* .lock initilized in goacc_host_init.  */
-    .is_initialized = false,
+    .state = GOMP_DEVICE_UNINITIALIZED,
 
     .openacc = {
       .data_environ = NULL,

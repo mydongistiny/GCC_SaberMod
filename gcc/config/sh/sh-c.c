@@ -1,5 +1,5 @@
 /* Pragma handling for GCC for Renesas / SuperH SH.
-   Copyright (C) 1993-2015 Free Software Foundation, Inc.
+   Copyright (C) 1993-2016 Free Software Foundation, Inc.
    Contributed by Joern Rennecke <joern.rennecke@st.com>.
 
 This file is part of GCC.
@@ -137,6 +137,11 @@ sh_cpu_cpp_builtins (cpp_reader* pfile)
     builtin_define ("__HITACHI__");
   if (TARGET_FMOVD)
     builtin_define ("__FMOVD_ENABLED__");
+  if (TARGET_FDPIC)
+    {
+      builtin_define ("__SH_FDPIC__");
+      builtin_define ("__FDPIC__");
+    }
   builtin_define (TARGET_LITTLE_ENDIAN
 		  ? "__LITTLE_ENDIAN__" : "__BIG_ENDIAN__");
 
