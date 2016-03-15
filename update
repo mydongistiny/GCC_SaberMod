@@ -2,6 +2,6 @@
 #
 # Update script for SaberMod gcc server
 git checkout 4.9.4-fedora && git fetch gnu gcc-4_9-branch && git merge FETCH_HEAD;
-git checkout 5.2.0-fedora && git fetch gnu gcc-5-branch && git merge FETCH_HEAD;
+git checkout 5.3.0-fedora && git fetch gnu gcc-5-branch && git merge FETCH_HEAD;
 git checkout 6.0.0-fedora && git fetch gnu trunk && git merge FETCH_HEAD;
 git push smhub --all;
